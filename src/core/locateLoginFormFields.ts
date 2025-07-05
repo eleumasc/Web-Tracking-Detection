@@ -27,7 +27,6 @@ export default async function locateLoginFormFields(
   if (loginForm) {
     return getResult(loginForm);
   } else {
-    console.log(formStructures);
     throw new Error("Cannot find login form");
   }
 }
