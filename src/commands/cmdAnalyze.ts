@@ -81,7 +81,7 @@ export default async function cmdAnalyze(
       const result = await runAnalyze(siteDetail, {
         headlessBrowser: !args.noHeadlessBrowser,
       });
-      console.log(`end analysis ${siteDetail} [${queueIndex}]`);
+      console.log(`end analysis ${site} [${queueIndex}]`);
       store.createDocument(outputCollection.id, site, result);
     }
   );
