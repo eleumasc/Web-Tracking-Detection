@@ -1,0 +1,34 @@
+{
+  "name": "login-taint-analysis",
+  "version": "1.0.0",
+  "scripts": {
+    "init": "npx playwright install-deps && (curl -L https://foxhound.ias.tu-bs.de/archives/foxhound_linux_v1.49.1_d17e86ff5201b144247e83051e488159ed698ee2.zip -o foxhound.zip && unzip foxhound.zip && rm foxhound.zip)",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "ts-node src/index",
+    "build": "tsc",
+    "start": "node build/index"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "description": "",
+  "devDependencies": {
+    "@tsconfig/recommended": "^1.0.8",
+    "@types/async": "^3.2.24",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/lodash": "^4.17.15",
+    "@types/node": "^22.10.1",
+    "@types/stream-json": "^1.7.8",
+    "@types/yargs": "^17.0.33",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "async": "^3.2.6",
+    "better-sqlite3": "^11.7.0",
+    "lodash": "^4.17.21",
+    "playwright": "1.48.1",
+    "stream-json": "^1.9.1",
+    "yargs": "^17.7.2"
+  }
+}
