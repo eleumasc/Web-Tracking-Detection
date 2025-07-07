@@ -1,10 +1,10 @@
 import locateLoginFormFields from "./locateLoginFormFields";
-import { FullTaintReport, Taint, TaintReport } from "./foxhound";
 import { Page } from "playwright";
+import { Taint, TaintReport, TaintReportWithoutTaint } from "./foxhound";
 import { timeout } from "../util/timeout";
 
 export type SimulateLoginResult = {
-  taintReports: FullTaintReport[];
+  taintReports: TaintReport[];
 };
 
 const SIMULATE_TIMEOUT_MS: number = 5 * 1000; // 5 seconds
@@ -19,7 +19,7 @@ export default async function simulateLogin(
 ): Promise<SimulateLoginResult> {
   const { loginPageUrl, username, password } = options;
 
-  const taintReports: FullTaintReport[] = [];
+  const taintReports: TaintReport[] = [];
   let captureEnabled: boolean = false;
 
   // capture taint reports
@@ -29,7 +29,7 @@ export default async function simulateLogin(
   });
   await page.exposeBinding(
     "__playwright_taint_report",
-    async (_source, value: TaintReport, taint: Taint) => {
+    async (_source, value: TaintReportWithoutTaint, taint: Taint) => {
       if (!captureEnabled) return;
       taintReports.push({ ...value, taint });
     }

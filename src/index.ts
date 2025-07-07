@@ -1,5 +1,6 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
+import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
@@ -60,21 +61,21 @@ async function main() {
       (args) => cmdAnalyze({ action: "resume", ...args })
     )
 
-    // .command(
-    //   "measure <analysis-id>",
-    //   "Perform data processing from a login taint analysis",
-    //   (yargs) =>
-    //     yargs
-    //       .positional("analysis-id", {
-    //         type: "number",
-    //         describe: "ID of the login taint analysis collection",
-    //         demandOption: true,
-    //       })
-    //       .option("db-filepath", {
-    //         type: "string",
-    //       }),
-    //   (args) => cmdMeasure(args)
-    // )
+    .command(
+      "measure <analysis-id>",
+      "Perform data processing from a login taint analysis",
+      (yargs) =>
+        yargs
+          .positional("analysis-id", {
+            type: "number",
+            describe: "ID of the login taint analysis collection",
+            demandOption: true,
+          })
+          .option("db-filepath", {
+            type: "string",
+          }),
+      (args) => cmdMeasure(args)
+    )
 
     .demandCommand(1, "You must provide a valid command.")
     .help()

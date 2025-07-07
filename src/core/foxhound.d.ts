@@ -1,8 +1,8 @@
-export interface FullTaintReport extends TaintReport {
+export interface TaintReport extends TaintReportWithoutTaint {
   taint: Taint;
 }
 
-export interface TaintReport {
+export interface TaintReportWithoutTaint {
   loc: string;
   parentloc: string;
   referrer: string;
