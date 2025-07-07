@@ -1,6 +1,6 @@
 import DocumentStore from "../util/DocumentStore";
 import path from "path";
-import { rootDir } from "../rootDir";
+import { rootDir } from "../env";
 
 const DB_FILEPATH = path.join(rootDir, "login-taint-analysis.sqlite");
 
