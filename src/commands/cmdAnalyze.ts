@@ -6,6 +6,7 @@ import simulateLogin, { SimulateLoginResult } from "../core/simulateLogin";
 import useFoxhound from "../util/useFoxhound";
 import { bomb } from "../util/timeout";
 import { Completion, toCompletion } from "../util/Completion";
+import { PASSWORD, USERNAME } from "../data/credentials";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteDetail } from "../core/SiteDetail";
 import { SITES_COLLECTION_TYPE } from "./cmdLoadSiteList";
@@ -18,9 +19,6 @@ export type AnalyzeResult = {
 export const LOGIN_TAINT_ANALYSIS_COLLECTION_TYPE = "login-taint-analysis";
 
 const ANALYSIS_TIMEOUT_MS: number = 5 * 60 * 1000; // 5 minutes
-
-const USERNAME: string = "qRG1etu18qHQGBvv@gmail.com";
-const PASSWORD: string = "5vpO>F4<c6_/%H68";
 
 export default async function cmdAnalyze(
   args: (
