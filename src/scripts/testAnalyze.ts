@@ -1,7 +1,11 @@
+import assert from "assert";
+import { REAL_PASSWORD, REAL_USERNAME } from "../data/credentials";
 import { runAnalyze } from "../commands/cmdAnalyze";
 import { writeFileSync } from "fs";
 
 (async () => {
+  assert(REAL_USERNAME && REAL_PASSWORD);
+
   const result = await runAnalyze(
     {
       name: "pinterest.com",
@@ -10,6 +14,8 @@ import { writeFileSync } from "fs";
     },
     {
       headlessBrowser: false,
+      username: REAL_USERNAME,
+      password: REAL_PASSWORD,
     }
   );
 

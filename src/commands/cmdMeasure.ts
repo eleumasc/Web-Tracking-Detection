@@ -1,8 +1,8 @@
 import _ from "lodash";
 import assert from "assert";
 import openDocumentStore from "../core/openDocumentStore";
+import { FAKE_PASSWORD } from "../data/credentials";
 import { isSuccess } from "../util/Completion";
-import { PASSWORD } from "../data/credentials";
 import { TaintOperation, TaintReport } from "../core/foxhound";
 import { writeFileSync } from "fs";
 import {
@@ -77,6 +77,6 @@ function isCredentialsSource(taintOp: TaintOperation): boolean {
   return (
     taintOp.source &&
     taintOp.operation === "element.attribute" &&
-    taintOp.arguments[1] === `value=${JSON.stringify(PASSWORD)}`
+    taintOp.arguments[1] === `value=${JSON.stringify(FAKE_PASSWORD)}`
   );
 }

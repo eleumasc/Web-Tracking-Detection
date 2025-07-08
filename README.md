@@ -12,7 +12,8 @@ A tool for automated taint analysis of login pages.
 1. Clone this repository: `git clone https://github.com/eleumasc/Login-Taint-Analysis && cd Login-Taint-Analysis`
 2. Install the dependencies: `npm i`
 3. Run the init script: `npm run init`
-4. Build: `npm run build`
+4. Copy `.env.example` to `.env`, then edit `.env` by setting the correct values
+5. Build: `npm run build`
 
 ## How to use
 

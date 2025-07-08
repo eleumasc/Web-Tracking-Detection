@@ -3,7 +3,7 @@ import useTempPath from "./useTempPath";
 import { BrowserContext, firefox } from "playwright";
 import { rootDir, tuWienMeasurementId } from "../env";
 
-const FOXHOUND_PATH: string = path.join(rootDir, "foxhound", "foxhound");
+export const FOXHOUND_PATH: string = path.join(rootDir, "foxhound", "foxhound");
 
 let firstCall = true;
 

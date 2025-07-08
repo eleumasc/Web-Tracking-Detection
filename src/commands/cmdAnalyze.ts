@@ -6,7 +6,7 @@ import simulateLogin, { SimulateLoginResult } from "../core/simulateLogin";
 import useFoxhound from "../util/useFoxhound";
 import { bomb } from "../util/timeout";
 import { Completion, toCompletion } from "../util/Completion";
-import { PASSWORD, USERNAME } from "../data/credentials";
+import { FAKE_PASSWORD, FAKE_USERNAME } from "../data/credentials";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteDetail } from "../core/SiteDetail";
 import { SITES_COLLECTION_TYPE } from "./cmdLoadSiteList";
@@ -78,6 +78,8 @@ export default async function cmdAnalyze(
       console.log(`begin analysis ${site} [${queueIndex}]`);
       const result = await runAnalyze(siteDetail, {
         headlessBrowser: !args.noHeadlessBrowser,
+        username: FAKE_USERNAME,
+        password: FAKE_PASSWORD,
       });
       console.log(`end analysis ${site} [${queueIndex}]`);
       store.createDocument(outputCollection.id, site, result);
@@ -91,6 +93,8 @@ export async function runAnalyze(
   siteDetail: SiteDetail,
   options: {
     headlessBrowser: boolean;
+    username: string;
+    password: string;
   }
 ): Promise<AnalyzeResult> {
   const result: AnalyzeResult = [];
@@ -102,8 +106,8 @@ export async function runAnalyze(
           () =>
             simulateLogin(page, {
               loginPageUrl,
-              username: USERNAME,
-              password: PASSWORD,
+              username: options.username,
+              password: options.password,
             }),
           ANALYSIS_TIMEOUT_MS
         );
