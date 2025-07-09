@@ -2,25 +2,25 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import openDocumentStore from "../core/openDocumentStore";
-import simulateLogin, { SimulateLoginResult } from "../core/simulateLogin";
+import probe, { ProbeResult } from "../core/probe";
 import useFoxhound from "../util/useFoxhound";
 import { bomb } from "../util/timeout";
 import { Completion, toCompletion } from "../util/Completion";
 import { FAKE_PASSWORD, FAKE_USERNAME } from "../data/credentials";
 import { processTaskQueue } from "../util/TaskQueue";
-import { SiteDetail } from "../core/SiteDetail";
+import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLLECTION_TYPE } from "./cmdLoadSiteList";
 
-export type AnalyzeResult = {
+export type ProbeEntry = {
   loginPageUrl: string;
-  simulateLoginCompletion: Completion<SimulateLoginResult>;
+  completion: Completion<ProbeResult>;
 }[];
 
-export const LOGIN_TAINT_ANALYSIS_COLLECTION_TYPE = "login-taint-analysis";
+export const PROBE_COLLECTION_TYPE = "probe";
 
 const ANALYSIS_TIMEOUT_MS: number = 5 * 60 * 1000; // 5 minutes
 
-export default async function cmdAnalyze(
+export default async function cmdProbe(
   args: (
     | {
         action: "create";
@@ -46,10 +46,10 @@ export default async function cmdAnalyze(
             return sitesCollection.id;
           })(),
           currentTime().toString(),
-          { type: LOGIN_TAINT_ANALYSIS_COLLECTION_TYPE }
+          { type: PROBE_COLLECTION_TYPE }
         )
       : store.getCollectionById(args.outputId);
-  assert(outputCollection.meta.type === LOGIN_TAINT_ANALYSIS_COLLECTION_TYPE);
+  assert(outputCollection.meta.type === PROBE_COLLECTION_TYPE);
   const sitesCollectionId = outputCollection.parentId!;
 
   const tbdSites = _.differenceWith(
@@ -57,8 +57,8 @@ export default async function cmdAnalyze(
     store
       .getDocumentsByCollection(sitesCollectionId)
       .map(
-        (document): SiteDetail =>
-          store.getDocumentData(document.id) as SiteDetail
+        (document): SiteEntry =>
+          store.getDocumentData(document.id) as SiteEntry
       ),
     // processed sites
     store
@@ -73,10 +73,10 @@ export default async function cmdAnalyze(
   await processTaskQueue(
     tbdSites,
     { maxTasks: args.maxTasks },
-    (siteDetail, queueIndex) => async () => {
-      const { name: site } = siteDetail;
+    (siteEntry, queueIndex) => async () => {
+      const { name: site } = siteEntry;
       console.log(`begin analysis ${site} [${queueIndex}]`);
-      const result = await runAnalyze(siteDetail, {
+      const result = await runProbe(siteEntry, {
         headlessBrowser: !args.noHeadlessBrowser,
         username: FAKE_USERNAME,
         password: FAKE_PASSWORD,
@@ -89,22 +89,21 @@ export default async function cmdAnalyze(
   process.exit(0);
 }
 
-export async function runAnalyze(
-  siteDetail: SiteDetail,
+export async function runProbe(
+  siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
     username: string;
     password: string;
   }
-): Promise<AnalyzeResult> {
-  const result: AnalyzeResult = [];
-  for (const loginPageUrl of siteDetail.loginPageCandidates) {
+): Promise<ProbeEntry> {
+  const result: ProbeEntry = [];
+  for (const loginPageUrl of siteEntry.loginPageCandidates) {
     const completion = await toCompletion(() =>
       useFoxhound({ headless: options.headlessBrowser }, async (browser) => {
-        const page = await browser.newPage();
         return bomb(
           () =>
-            simulateLogin(page, {
+            probe(browser, {
               loginPageUrl,
               username: options.username,
               password: options.password,
@@ -115,7 +114,7 @@ export async function runAnalyze(
     );
     result.push({
       loginPageUrl,
-      simulateLoginCompletion: completion,
+      completion,
     });
   }
   return result;

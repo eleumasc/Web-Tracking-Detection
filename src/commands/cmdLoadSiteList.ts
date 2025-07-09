@@ -4,7 +4,7 @@ import path from "path";
 import { createReadStream } from "fs";
 import { parser } from "stream-json";
 import { pipeline } from "stream/promises";
-import { SiteDetail } from "../core/SiteDetail";
+import { SiteEntry } from "../core/SiteEntry";
 import { streamArray } from "stream-json/streamers/StreamArray";
 import { Transform, Writable } from "stream";
 
@@ -30,8 +30,8 @@ export default async function cmdLoadSiteList(filepath: string) {
       objectMode: true,
       transform({ value: data }, _, callback) {
         try {
-          const siteDetail = createSiteDetail(data);
-          callback(null, siteDetail);
+          const siteEntry = createSiteEntry(data);
+          callback(null, siteEntry);
         } catch {
           callback();
         }
@@ -39,8 +39,8 @@ export default async function cmdLoadSiteList(filepath: string) {
     }),
     new Writable({
       objectMode: true,
-      write(siteDetail, _, callback) {
-        store.createDocument(sitesCollection.id, siteDetail.name, siteDetail);
+      write(siteEntry, _, callback) {
+        store.createDocument(sitesCollection.id, siteEntry.name, siteEntry);
         callback();
       },
     })
@@ -49,7 +49,7 @@ export default async function cmdLoadSiteList(filepath: string) {
   process.exit(0);
 }
 
-function createSiteDetail(data: any): SiteDetail {
+function createSiteEntry(data: any): SiteEntry {
   assert(Boolean(data.resolved));
   return {
     name: data.domain,

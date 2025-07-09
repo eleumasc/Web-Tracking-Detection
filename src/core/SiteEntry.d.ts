@@ -1,4 +1,4 @@
-export type SiteDetail = {
+export type SiteEntry = {
   name: string;
   rank: number;
   loginPageCandidates: string[];

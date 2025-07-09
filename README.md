@@ -23,11 +23,6 @@ In the following, execute each command by running `npm run start -- <command>`.
 
 **TBD**
 
-Useful tips:
-
-- Analyses initiated by the `analyze` command can be resumed after an interruption by running `<command>:resume <output-id>`, where `output-id` is the ID of the analysis to resume.
-- Execute a command with the `--help` option to print the command usage.
-
 ## Support
 
 Feel free to open an issue or send a pull request. We will try to sort it as soon as possible.

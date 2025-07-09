@@ -1,6 +1,6 @@
-import cmdAnalyze from "./commands/cmdAnalyze";
+import cmdDetectSPA from "./commands/cmdDetectSPA";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
-import cmdMeasure from "./commands/cmdMeasure";
+import cmdProbe from "./commands/cmdProbe";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
@@ -21,8 +21,8 @@ async function main() {
     )
 
     .command(
-      "analyze <sites-id>",
-      "Create a new login taint analysis",
+      "probe <sites-id>",
+      "Create a new probe analysis",
       (yargs) =>
         yargs
           .positional("sites-id", {
@@ -38,11 +38,11 @@ async function main() {
             type: "boolean",
             default: false,
           }),
-      (args) => cmdAnalyze({ action: "create", ...args })
+      (args) => cmdProbe({ action: "create", ...args })
     )
     .command(
-      "analyze:resume <output-id>",
-      "Resume an existing login taint analysis",
+      "probe:resume <output-id>",
+      "Resume an existing probe analysis",
       (yargs) =>
         yargs
           .positional("output-id", {
@@ -58,23 +58,23 @@ async function main() {
             type: "boolean",
             default: false,
           }),
-      (args) => cmdAnalyze({ action: "resume", ...args })
+      (args) => cmdProbe({ action: "resume", ...args })
     )
 
     .command(
-      "measure <analysis-id>",
-      "Perform data processing from a login taint analysis",
+      "detect-spa <analysis-id>",
+      "Detect SPAs from a probe analysis",
       (yargs) =>
         yargs
           .positional("analysis-id", {
             type: "number",
-            describe: "ID of the login taint analysis collection",
+            describe: "ID of the probe analysis collection",
             demandOption: true,
           })
           .option("db-filepath", {
             type: "string",
           }),
-      (args) => cmdMeasure(args)
+      (args) => cmdDetectSPA(args)
     )
 
     .demandCommand(1, "You must provide a valid command.")
