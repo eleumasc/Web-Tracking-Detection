@@ -14,7 +14,7 @@ export default function cmdDetectSPA(args: {
   const analysisCollection = store.getCollectionById(args.analysisId);
   assert(analysisCollection, PROBE_COLLECTION_TYPE);
 
-  let relevantSites: any[] = [];
+  let spaEntries: any[] = [];
   for (const probeDocument of store.getDocumentsByCollection(
     analysisCollection.id
   )) {
@@ -23,15 +23,16 @@ export default function cmdDetectSPA(args: {
 
     const probeEntry = store.getDocumentData(probeDocument.id) as ProbeEntry;
 
-    const found = detectSPA(probeEntry);
+    const detected = detectSPA(probeEntry);
 
-    if (found) {
-      relevantSites = [...relevantSites, site];
+    if (detected) {
+      const { loginPageUrl } = detected;
+      spaEntries = [...spaEntries, { site, loginPageUrl }];
     }
   }
 
   const report = {
-    relevantSites,
+    spaEntries,
   };
   writeFileSync("report.json", JSON.stringify(report));
 
