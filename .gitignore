@@ -5,6 +5,6 @@ build/
 nohup.out
 foxhound/
 foxhound.zip
-report.json
-test.json
+output/
+secret/
 .env

@@ -1,33 +1,31 @@
 import installFoxhoundTaintReporting from "../util/installFoxhoundTaintReporting";
 import locateLoginFormFields from "./locateLoginFormFields";
 import { BrowserContext } from "playwright";
-import { hasPasswordSource } from "./taint";
+import { Credentials } from "./credentials/Credentials";
 import { TaintReport } from "./foxhound";
 import { timeout } from "../util/timeout";
 
-export type ProbeResult = {
-  password: string;
+export type AnalyzeResult = {
+  credentials: Credentials;
   taintReports: TaintReport[];
 };
 
-export const FAKE_USERNAME: string = "qRG1etu18qHQGBvv@gmail.com";
-export const FAKE_PASSWORD: string = "5vpO>F4<c6_/%H68";
+const SIMULATE_TIMEOUT_MS: number = 30 * 1000; // 30 seconds
 
-const SIMULATE_TIMEOUT_MS: number = 10 * 1000; // 10 seconds
-
-export default async function probe(
+export default async function analyze(
   browser: BrowserContext,
   options: {
     loginPageUrl: string;
+    credentials: Credentials;
   }
-): Promise<ProbeResult> {
-  const { loginPageUrl } = options;
-  const username = FAKE_USERNAME;
-  const password = FAKE_PASSWORD;
+): Promise<AnalyzeResult> {
+  const { loginPageUrl, credentials } = options;
+  const { username, password } = credentials;
 
   // capture taint reports
   const taintReports: TaintReport[] = [];
   await installFoxhoundTaintReporting(browser, {
+    delayNavigationRequests: true,
     onTaintReport: (taintReport) => {
       taintReports.push(taintReport);
     },
@@ -46,9 +44,7 @@ export default async function probe(
   await timeout(SIMULATE_TIMEOUT_MS);
 
   return {
-    password,
-    taintReports: taintReports.filter((taintReport) =>
-      hasPasswordSource(taintReport.taint, password)
-    ),
+    credentials,
+    taintReports,
   };
 }

@@ -1,7 +1,7 @@
 import path from "path";
 import useTempPath from "./useTempPath";
 import { BrowserContext, firefox } from "playwright";
-import { rootDir, tuWienMeasurementId } from "../env";
+import { rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
 
 export const FOXHOUND_PATH: string = path.join(rootDir, "foxhound", "foxhound");
 
@@ -17,12 +17,12 @@ export default async function useFoxhound<T>(
       executablePath: FOXHOUND_PATH,
       locale: "en-GB", // request pages in English
     });
-    if (tuWienMeasurementId) {
+    if (TU_WIEN_MEASUREMENT_ID) {
       await browser.setExtraHTTPHeaders({
-        "X-Research-Measurement": `https://measurements.secpriv.wien/${tuWienMeasurementId}`,
+        "X-Research-Measurement": `https://measurements.secpriv.wien/${TU_WIEN_MEASUREMENT_ID}`,
       });
       if (firstCall)
-        console.log(`TU Wien Measurement ID: ${tuWienMeasurementId}`);
+        console.log(`TU Wien Measurement ID: ${TU_WIEN_MEASUREMENT_ID}`);
     } else {
       if (firstCall)
         console.log("WARNING! TU Wien Measurement ID is empty or not found");

@@ -6,7 +6,6 @@ import probe, { ProbeResult } from "../core/probe";
 import useFoxhound from "../util/useFoxhound";
 import { bomb } from "../util/timeout";
 import { Completion, toCompletion } from "../util/Completion";
-import { FAKE_PASSWORD, FAKE_USERNAME } from "../data/credentials";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLLECTION_TYPE } from "./cmdLoadSiteList";
@@ -57,8 +56,7 @@ export default async function cmdProbe(
     store
       .getDocumentsByCollection(sitesCollectionId)
       .map(
-        (document): SiteEntry =>
-          store.getDocumentData(document.id) as SiteEntry
+        (document): SiteEntry => store.getDocumentData(document.id) as SiteEntry
       ),
     // processed sites
     store
@@ -78,8 +76,6 @@ export default async function cmdProbe(
       console.log(`begin analysis ${site} [${queueIndex}]`);
       const result = await runProbe(siteEntry, {
         headlessBrowser: !args.noHeadlessBrowser,
-        username: FAKE_USERNAME,
-        password: FAKE_PASSWORD,
       });
       console.log(`end analysis ${site} [${queueIndex}]`);
       store.createDocument(outputCollection.id, site, result);
@@ -93,8 +89,6 @@ export async function runProbe(
   siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
-    username: string;
-    password: string;
   }
 ): Promise<ProbeEntry> {
   const result: ProbeEntry = [];
@@ -105,8 +99,6 @@ export async function runProbe(
           () =>
             probe(browser, {
               loginPageUrl,
-              username: options.username,
-              password: options.password,
             }),
           ANALYSIS_TIMEOUT_MS
         );

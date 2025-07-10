@@ -1,3 +1,4 @@
+import cmdAnalyze from "./commands/cmdAnalyze";
 import cmdDetectSPA from "./commands/cmdDetectSPA";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdProbe from "./commands/cmdProbe";
@@ -75,6 +76,47 @@ async function main() {
             type: "string",
           }),
       (args) => cmdDetectSPA(args)
+    )
+
+    .command(
+      "analyze <probe-id>",
+      "Create a new login taint analysis",
+      (yargs) =>
+        yargs
+          .positional("probe-id", {
+            describe: "ID of the probe collection",
+            type: "number",
+            demandOption: true,
+          })
+          .option("max-tasks", {
+            type: "number",
+            default: 1,
+          })
+          .option("no-headless-browser", {
+            type: "boolean",
+            default: false,
+          }),
+      (args) => cmdAnalyze({ action: "create", ...args })
+    )
+    .command(
+      "analyze:resume <output-id>",
+      "Resume an existing login taint analysis",
+      (yargs) =>
+        yargs
+          .positional("output-id", {
+            describe: "ID of the analysis to resume",
+            type: "number",
+            demandOption: true,
+          })
+          .option("max-tasks", {
+            type: "number",
+            default: 1,
+          })
+          .option("no-headless-browser", {
+            type: "boolean",
+            default: false,
+          }),
+      (args) => cmdAnalyze({ action: "resume", ...args })
     )
 
     .demandCommand(1, "You must provide a valid command.")
