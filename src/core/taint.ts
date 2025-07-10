@@ -1,10 +1,22 @@
-import { Taint, TaintOperation, TaintReport } from "./foxhound";
+import assert from "assert";
+import { TaintOperation, TaintReport } from "./foxhound";
 
-export function hasTaintOperation(
-  taint: Taint,
-  fn: (op: TaintOperation) => boolean
+export type TaintOperationPredicate = (op: TaintOperation) => boolean;
+
+export function hasSink(
+  taintReport: TaintReport,
+  fn: TaintOperationPredicate
 ): boolean {
-  return taint.some((range) => range.flow.some((op) => fn(op)));
+  const op = taintReport.taint[0].flow[1];
+  assert(op.operation === taintReport.sink);
+  return fn(op);
+}
+
+export function hasSource(
+  taintReport: TaintReport,
+  fn: TaintOperationPredicate
+): boolean {
+  return taintReport.taint.some((range) => range.flow.some((op) => fn(op)));
 }
 
 export function doesSendPasswordInFlight(
@@ -12,42 +24,121 @@ export function doesSendPasswordInFlight(
   password: string
 ): boolean {
   return (
-    isInFlightNetworkSink(taintReport.sink) &&
-    hasPasswordSource(taintReport.taint, password)
+    hasSink(taintReport, isInFlightNetworkSink()) &&
+    hasSource(taintReport, isPasswordSource(password))
   );
 }
 
-export function isInFlightNetworkSink(sink: string): boolean {
-  switch (sink) {
-    // XMLHttpRequest
-    case "XMLHttpRequest.open(url)":
-    case "XMLHttpRequest.setRequestHeader(value)":
-    case "XMLHttpRequest.send":
-    // fetch
-    case "fetch.url":
-    case "fetch.header(value)":
-    case "fetch.body":
-    // WebSocket
-    case "WebSocket.send":
-    // postMessage
-    case "window.postMessage":
-      return true;
-    default:
-      return false;
-  }
+export function isInFlightNetworkSink(): TaintOperationPredicate {
+  return (op) => {
+    switch (op.operation) {
+      // XMLHttpRequest
+      case "XMLHttpRequest.open(url)":
+      case "XMLHttpRequest.setRequestHeader(value)":
+      case "XMLHttpRequest.send":
+      // fetch
+      case "fetch.url":
+      case "fetch.header(value)":
+      case "fetch.body":
+      // WebSocket
+      case "WebSocket":
+      case "WebSocket.send":
+      // postMessage
+      case "window.postMessage":
+        return true;
+      default:
+        return false;
+    }
+  };
 }
 
-export function isPasswordSource(
-  op: TaintOperation,
-  password: string
-): boolean {
-  return (
-    op.source &&
+export function isPasswordSource(password: string): TaintOperationPredicate {
+  return (op) =>
     op.operation === "element.attribute" &&
-    op.arguments[1] === `value=${JSON.stringify(password)}`
-  );
+    op.arguments[1] === `value=${JSON.stringify(password)}`;
 }
 
-export function hasPasswordSource(taint: Taint, password: string): boolean {
-  return hasTaintOperation(taint, (op) => isPasswordSource(op, password));
+// Storage
+
+export function isStorageSink(): TaintOperationPredicate {
+  return (op) => {
+    switch (op.operation) {
+      // case "document.cookie":
+      case "localStorage.setItem":
+      case "localStorage.setItem(key)":
+        return true;
+      default:
+        return false;
+    }
+  };
 }
+
+export function isStorageSource(): TaintOperationPredicate {
+  return (op) => {
+    switch (op.operation) {
+      // case "document.cookie":
+      case "localStorage.getItem":
+      case "localStorage.getItem":
+        return true;
+      default:
+        return false;
+    }
+  };
+}
+
+// Network
+
+export function isNetworkSink(): TaintOperationPredicate {
+  return (op) => {
+    switch (op.operation) {
+      // XMLHttpRequest
+      case "XMLHttpRequest.open(url)":
+      case "XMLHttpRequest.setRequestHeader(value)":
+      case "XMLHttpRequest.send":
+      // fetch
+      case "fetch.url":
+      case "fetch.header(value)":
+      case "fetch.body":
+      // WebSocket
+      case "WebSocket":
+      case "WebSocket.send":
+      // postMessage
+      case "window.postMessage":
+        return true;
+      default:
+        return false;
+    }
+  };
+}
+
+export function isNetworkSource(): TaintOperationPredicate {
+  return (op) => {
+    switch (op.operation) {
+      // XMLHttpRequest
+      case "XMLHttpRequest.response":
+      // fetch
+      case "fetch.json()":
+      case "fetch.text()":
+      // WebSocket
+      case "WebSocket.MessageEvent.data":
+      // postMessage
+      case "MessageEvent":
+        return true;
+      default:
+        return false;
+    }
+  };
+}
+
+// Loc
+
+export function isLocSink(): TaintOperationPredicate {
+  return (op) => !op.source && op.operation.startsWith("location.");
+}
+
+export function isLocSource(): TaintOperationPredicate {
+  return (op) => op.source && op.operation.startsWith("location.");
+}
+
+// Eval
+// TODO: implement

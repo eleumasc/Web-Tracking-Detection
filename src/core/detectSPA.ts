@@ -1,4 +1,4 @@
-import { doesSendPasswordInFlight, hasPasswordSource } from "./taint";
+import { doesSendPasswordInFlight } from "./taint";
 import { isSuccess } from "../util/Completion";
 import { ProbeEntry } from "../commands/cmdProbe";
 

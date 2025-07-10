@@ -1,7 +1,7 @@
 import installFoxhoundTaintReporting from "../util/installFoxhoundTaintReporting";
 import locateLoginFormFields from "./locateLoginFormFields";
 import { BrowserContext } from "playwright";
-import { hasPasswordSource } from "./taint";
+import { hasSource, isPasswordSource } from "./taint";
 import { TaintReport } from "./foxhound";
 import { timeout } from "../util/timeout";
 
@@ -48,7 +48,7 @@ export default async function probe(
   return {
     password,
     taintReports: taintReports.filter((taintReport) =>
-      hasPasswordSource(taintReport.taint, password)
+      hasSource(taintReport, isPasswordSource(password))
     ),
   };
 }
