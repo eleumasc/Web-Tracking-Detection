@@ -1,15 +1,14 @@
 import assert from "assert";
 import { Credentials } from "./Credentials";
+import { CredentialsMap } from "./CredentialsMap";
 import { CredentialsProvider } from "./CredentialsProvider";
 import { isSameSite } from "../../util/site";
 import { readFileSync } from "fs";
 
-type _CredentialsMap = { url: string; credentials: Credentials }[];
-
 export default class BitwardenExportCredentialsProvider
   implements CredentialsProvider
 {
-  constructor(readonly credentialsMap: _CredentialsMap) {}
+  constructor(readonly credentialsMap: CredentialsMap) {}
 
   get(givenUrl: string): Credentials[] {
     return this.credentialsMap
@@ -21,9 +20,9 @@ export default class BitwardenExportCredentialsProvider
     const data = JSON.parse(readFileSync(file, "utf8"));
 
     assert(data.encrypted === false);
-    const credentialsMap: _CredentialsMap = (data.items as any[])
+    const credentialsMap: CredentialsMap = (data.items as any[])
       .filter((item) => item.type === 1)
-      .flatMap((item): _CredentialsMap => {
+      .flatMap((item): CredentialsMap => {
         const { login } = item;
         const credentials: Credentials = {
           username: login.username,
