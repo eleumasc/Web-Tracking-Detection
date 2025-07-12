@@ -8,8 +8,8 @@ import { isFailure } from "../util/Completion";
 import {
   hasSink,
   hasSource,
-  isNetworkSource,
-  isStorageSink,
+  isCrossOriginSource,
+  isNetworkSink,
 } from "../core/taint";
 
 export default function cmdMeasure(args: {
@@ -21,7 +21,7 @@ export default function cmdMeasure(args: {
   const analysisCollection = store.getCollectionById(args.analysisId);
   assert(analysisCollection, ANALYZE_COLLECTION_TYPE);
 
-  const relevantSites: string[] = [];
+  const relevantSites: any[] = [];
   for (const analysisDocument of store.getDocumentsByCollection(
     analysisCollection.id
   )) {
@@ -37,14 +37,14 @@ export default function cmdMeasure(args: {
       value: { taintReports },
     } = analyzeEntry;
 
-    if (
-      taintReports.some(
-        (taintReport) =>
-          hasSource(taintReport, isNetworkSource()) &&
-          hasSink(taintReport, isStorageSink())
-      )
-    ) {
-      relevantSites.push(site);
+    const relevantTaintReports = taintReports.flatMap((taintReport, index) =>
+      hasSource(taintReport, isCrossOriginSource()) &&
+      hasSink(taintReport, isNetworkSink())
+        ? [index]
+        : []
+    );
+    if (relevantTaintReports.length > 0) {
+      relevantSites.push({ site, relevantTaintReports });
     }
   }
 

@@ -8,15 +8,21 @@ export function hasSink(
   fn: TaintOperationPredicate
 ): boolean {
   const op = taintReport.taint[0].flow[1];
-  assert(op.operation === taintReport.sink);
-  return fn(op);
+  if (op && op.operation === taintReport.sink) {
+    return fn(op);
+  } else {
+    // WTF // data.value.taintReports.find(x => !x.taint[0].flow[1])
+    return false;
+  }
 }
 
 export function hasSource(
   taintReport: TaintReport,
   fn: TaintOperationPredicate
 ): boolean {
-  return taintReport.taint.some((range) => range.flow.some((op) => fn(op)));
+  return taintReport.taint.some((range) =>
+    range.flow.slice(2).some((op) => fn(op))
+  );
 }
 
 export function doesSendPasswordInFlight(
@@ -133,12 +139,45 @@ export function isNetworkSource(): TaintOperationPredicate {
 // Loc
 
 export function isLocSink(): TaintOperationPredicate {
-  return (op) => !op.source && op.operation.startsWith("location.");
+  return (op) => {
+    switch (op.operation) {
+      case "location.search":
+      case "location.hash":
+      case "location.href":
+      case "location.replace":
+        return true;
+      default:
+        return false;
+    }
+  };
 }
 
 export function isLocSource(): TaintOperationPredicate {
-  return (op) => op.source && op.operation.startsWith("location.");
+  return (op) => {
+    switch (op.operation) {
+      case "location.search":
+      case "location.hash":
+      case "location.href":
+        return true;
+      default:
+        return false;
+    }
+  };
 }
 
 // Eval
 // TODO: implement
+
+// Cross-Origin
+
+export function isCrossOriginSource(): TaintOperationPredicate {
+  return (op) => {
+    if (isLocSource()(op)) {
+      return true;
+    } else if (op.operation === "MessageEvent") {
+      return true;
+    } else {
+      return false;
+    }
+  };
+}
