@@ -2,9 +2,9 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import openDocumentStore from "../core/openDocumentStore";
+import writeOutputFileSync from "../core/writeOutputFileSync";
 import { detectSPA } from "../core/detectSPA";
 import { PROBE_COLLECTION_TYPE, ProbeEntry } from "./cmdProbe";
-import { writeFileSync } from "fs";
 
 export default function cmdDetectSPA(args: {
   analysisId: number;
@@ -35,7 +35,7 @@ export default function cmdDetectSPA(args: {
   const report = {
     spaEntries,
   };
-  writeFileSync(`detectSPA-${currentTime()}.json`, JSON.stringify(report));
+  writeOutputFileSync(`detectSPA-${currentTime()}.json`, JSON.stringify(report));
 
   process.exit(0);
 }
