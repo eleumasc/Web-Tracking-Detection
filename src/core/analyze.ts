@@ -1,6 +1,7 @@
 import installFoxhoundTaintReporting from "../util/installFoxhoundTaintReporting";
 import locateLoginFormFields from "./locateLoginFormFields";
 import { BrowserContext } from "playwright";
+import { Completion, toCompletion } from "../util/Completion";
 import { Credentials } from "./credentials/Credentials";
 import { TaintReport } from "./foxhound";
 import { timeout } from "../util/timeout";
@@ -8,6 +9,7 @@ import { timeout } from "../util/timeout";
 export type AnalyzeResult = {
   credentials: Credentials;
   taintReports: TaintReport[];
+  loggedInCompletion?: Completion<boolean>;
 };
 
 const SIMULATE_TIMEOUT_MS: number = 30 * 1000; // 30 seconds
@@ -43,8 +45,21 @@ export default async function analyze(
   await submitButton.click();
   await timeout(SIMULATE_TIMEOUT_MS);
 
+  const loggedInCompletion = await toCompletion(async () => {
+    try {
+      await locateLoginFormFields(page, {});
+      return false;
+    } catch (e) {
+      if (e instanceof Error && e.message === "Cannot find login form") {
+        return true;
+      }
+      throw e;
+    }
+  });
+
   return {
     credentials,
     taintReports,
+    loggedInCompletion,
   };
 }

@@ -8,3 +8,6 @@ export const TU_WIEN_MEASUREMENT_ID: string | undefined =
 
 export const BITWARDEN_EXPORT_FILENAME: string | undefined =
   process.env["BITWARDEN_EXPORT_FILENAME"];
+
+export const BUGMENOT_FILENAME: string | undefined =
+  process.env["BUGMENOT_FILENAME"];

@@ -12,7 +12,7 @@ export default class BitwardenExportCredentialsProvider
 
   get(givenUrl: string): Credentials[] {
     return this.credentialsMap
-      .filter(({ url }) => matchUrl(url, givenUrl))
+      .filter(({ url }) => isSameSite(url, givenUrl))
       .map(({ credentials }) => credentials);
   }
 
@@ -35,8 +35,4 @@ export default class BitwardenExportCredentialsProvider
 
     return new BitwardenExportCredentialsProvider(credentialsMap);
   }
-}
-
-function matchUrl(url: string, givenUrl: string): boolean {
-  return isSameSite(url, givenUrl);
 }

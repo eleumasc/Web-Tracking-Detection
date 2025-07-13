@@ -15,13 +15,16 @@ export type LocateLoginFormFieldsResult = {
 export default async function locateLoginFormFields(
   page: Page,
   options: {
-    loginPageUrl: string;
+    loginPageUrl?: string;
   }
 ): Promise<LocateLoginFormFieldsResult> {
   const { loginPageUrl } = options;
 
-  await page.goto(loginPageUrl);
-  await timeout(NAVIGATE_EXTRA_TIMEOUT_MS);
+  if (loginPageUrl) {
+    await page.goto(loginPageUrl);
+    await timeout(NAVIGATE_EXTRA_TIMEOUT_MS);
+  }
+
   const formStructures = await getFormStructures(page);
   const loginForm = findLoginForm(formStructures);
   if (loginForm) {

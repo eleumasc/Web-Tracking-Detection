@@ -1,13 +1,13 @@
 import _ from "lodash";
 import analyze, { AnalyzeResult } from "../core/analyze";
 import assert from "assert";
-import BitwardenExportCredentialsProvider from "../core/credentials/BitwardenExportCredentialProvider";
+import BugmenotCredentialsProvider from "../core/credentials/BugmenotCredentialsProvider";
 import currentTime from "../util/currentTime";
 import openDocumentStore from "../core/openDocumentStore";
 import path from "path";
 import useFoxhound from "../util/useFoxhound";
-import { BITWARDEN_EXPORT_FILENAME, rootDir } from "../env";
 import { bomb } from "../util/timeout";
+import { BUGMENOT_FILENAME, rootDir } from "../env";
 import { Completion, toCompletion } from "../util/Completion";
 import { CredentialsProvider } from "../core/credentials/CredentialsProvider";
 import { detectSPA } from "../core/detectSPA";
@@ -35,12 +35,19 @@ export default async function cmdAnalyze(
     noHeadlessBrowser: boolean;
   }
 ) {
+  // assert(
+  //   BITWARDEN_EXPORT_FILENAME,
+  //   "BITWARDEN_EXPORT_FILENAME environment variable is not set"
+  // );
+  // const credentialsProvider = BitwardenExportCredentialsProvider.fromFile(
+  //   path.join(rootDir, "secret", BITWARDEN_EXPORT_FILENAME)
+  // );
   assert(
-    BITWARDEN_EXPORT_FILENAME,
-    "BITWARDEN_EXPORT_FILENAME environment variable is not set"
+    BUGMENOT_FILENAME,
+    "BUGMENOT_FILENAME environment variable is not set"
   );
-  const credentialsProvider = BitwardenExportCredentialsProvider.fromFile(
-    path.join(rootDir, "secret", BITWARDEN_EXPORT_FILENAME)
+  const credentialsProvider = BugmenotCredentialsProvider.fromFile(
+    path.join(rootDir, "secret", BUGMENOT_FILENAME)
   );
 
   const store = openDocumentStore();
