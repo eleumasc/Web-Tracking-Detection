@@ -6,10 +6,9 @@ import writeOutputFileSync from "../core/writeOutputFileSync";
 import { ANALYZE_COLLECTION_TYPE, AnalyzeEntry } from "./cmdAnalyze";
 import { isFailure } from "../util/Completion";
 import {
-  hasSink,
-  hasSource,
-  isCrossOriginSource,
-  isNetworkSink,
+  digestTaintReport,
+  isNetworkSource,
+  isStorageSink,
 } from "../core/taint";
 
 export default function cmdMeasure(args: {
@@ -34,14 +33,17 @@ export default function cmdMeasure(args: {
 
     if (isFailure(analyzeEntry)) continue;
     const {
-      value: { taintReports },
+      value: { taintReports, loggedInCompletion },
     } = analyzeEntry;
 
-    const relevantTaintReports = taintReports.flatMap((taintReport, index) =>
-      hasSource(taintReport, isCrossOriginSource()) &&
-      hasSink(taintReport, isNetworkSink())
-        ? [index]
-        : []
+    if (
+      loggedInCompletion &&
+      (isFailure(loggedInCompletion) || !loggedInCompletion.value)
+    )
+      continue;
+
+    const relevantTaintReports = taintReports.flatMap((taintReport) =>
+      digestTaintReport(taintReport, isNetworkSource(), isStorageSink())
     );
     if (relevantTaintReports.length > 0) {
       relevantSites.push({ site, relevantTaintReports });

@@ -1,5 +1,4 @@
-import assert from "assert";
-import { TaintOperation, TaintReport } from "./foxhound";
+import { Taint, TaintOperation, TaintReport } from "./foxhound";
 
 export type TaintOperationPredicate = (op: TaintOperation) => boolean;
 
@@ -8,7 +7,7 @@ export function hasSink(
   fn: TaintOperationPredicate
 ): boolean {
   const op = taintReport.taint[0].flow[1];
-  if (op && op.operation === taintReport.sink) {
+  if (op) {
     return fn(op);
   } else {
     // WTF // data.value.taintReports.find(x => !x.taint[0].flow[1])
@@ -23,6 +22,27 @@ export function hasSource(
   return taintReport.taint.some((range) =>
     range.flow.slice(2).some((op) => fn(op))
   );
+}
+
+export function digestTaintReport(
+  taintReport: TaintReport,
+  fnSource: TaintOperationPredicate,
+  fnSink: TaintOperationPredicate
+): any[] {
+  const { taint, ...rest } = taintReport;
+  if (!hasSink(taintReport, fnSink)) {
+    return [];
+  }
+  const digestedSink = taint[0].flow[1];
+  const digestedTaint = taint.flatMap((range): Taint => {
+    const { flow, ...rest } = range;
+    const digestedFlow = range.flow.slice(2).filter((op) => fnSource(op));
+    return digestedFlow.length > 0 ? [{ ...rest, flow: digestedFlow }] : [];
+  });
+  if (!(digestedTaint.length > 0)) {
+    return [];
+  }
+  return [{ ...rest, sink: digestedSink, taint: digestedTaint }];
 }
 
 export function doesSendPasswordInFlight(
@@ -46,9 +66,6 @@ export function isInFlightNetworkSink(): TaintOperationPredicate {
       case "fetch.url":
       case "fetch.header(value)":
       case "fetch.body":
-      // WebSocket
-      case "WebSocket":
-      case "WebSocket.send":
       // postMessage
       case "window.postMessage":
         return true;
@@ -69,7 +86,7 @@ export function isPasswordSource(password: string): TaintOperationPredicate {
 export function isStorageSink(): TaintOperationPredicate {
   return (op) => {
     switch (op.operation) {
-      // case "document.cookie":
+      case "document.cookie":
       case "localStorage.setItem":
       case "localStorage.setItem(key)":
         return true;
@@ -82,7 +99,7 @@ export function isStorageSink(): TaintOperationPredicate {
 export function isStorageSource(): TaintOperationPredicate {
   return (op) => {
     switch (op.operation) {
-      // case "document.cookie":
+      case "document.cookie":
       case "localStorage.getItem":
       case "localStorage.getItem":
         return true;
@@ -105,11 +122,13 @@ export function isNetworkSink(): TaintOperationPredicate {
       case "fetch.url":
       case "fetch.header(value)":
       case "fetch.body":
+      // sendBeacon
+      case "navigator.sendBeacon":
       // WebSocket
       case "WebSocket":
       case "WebSocket.send":
-      // postMessage
-      case "window.postMessage":
+        // postMessage
+        // case "window.postMessage":
         return true;
       default:
         return false;
@@ -127,8 +146,8 @@ export function isNetworkSource(): TaintOperationPredicate {
       case "fetch.text()":
       // WebSocket
       case "WebSocket.MessageEvent.data":
-      // postMessage
-      case "MessageEvent":
+        // postMessage
+        // case "MessageEvent":
         return true;
       default:
         return false;
@@ -161,23 +180,6 @@ export function isLocSource(): TaintOperationPredicate {
         return true;
       default:
         return false;
-    }
-  };
-}
-
-// Eval
-// TODO: implement
-
-// Cross-Origin
-
-export function isCrossOriginSource(): TaintOperationPredicate {
-  return (op) => {
-    if (isLocSource()(op)) {
-      return true;
-    } else if (op.operation === "MessageEvent") {
-      return true;
-    } else {
-      return false;
     }
   };
 }
