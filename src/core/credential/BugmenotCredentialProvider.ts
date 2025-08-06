@@ -21,13 +21,13 @@ export default class BugmenotCredentialProvider
       return cacheValue;
     }
 
-    const fetchValue = await fetchCredentialCandidates(site);
+    const fetchValue = await fetchCredentials(site);
     this.cacheMap?.set(site, fetchValue);
     return fetchValue;
   }
 }
 
-async function fetchCredentialCandidates(
+async function fetchCredentials(
   site: string
 ): Promise<Credential[]> {
   const response = await fetch(`https://bugmenot.com/view/${site}`);
