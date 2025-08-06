@@ -1,5 +1,5 @@
 import assert from "assert";
-import openDocumentStore from "../core/openDocumentStore";
+import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { createReadStream } from "fs";
 import { parser } from "stream-json";
@@ -8,7 +8,7 @@ import { SiteEntry } from "../core/SiteEntry";
 import { streamArray } from "stream-json/streamers/StreamArray";
 import { Transform, Writable } from "stream";
 
-export const SITES_COLLECTION_TYPE = "sites";
+export const SITES_COLL_TYPE = "sites";
 
 export default async function cmdLoadSiteList(filepath: string) {
   const store = openDocumentStore();
@@ -17,7 +17,7 @@ export default async function cmdLoadSiteList(filepath: string) {
   const filename = path.basename(filepath);
 
   const sitesCollection = store.createCollection(null, filename, {
-    type: SITES_COLLECTION_TYPE,
+    type: SITES_COLL_TYPE,
   });
 
   console.log(`Sites Collection ID: ${sitesCollection.id}`);

@@ -1,4 +1,4 @@
-import { Taint, TaintOperation, TaintReport } from "./foxhound";
+import { Taint, TaintOperation, TaintReport } from "./types";
 
 export type TaintOperationPredicate = (op: TaintOperation) => boolean;
 

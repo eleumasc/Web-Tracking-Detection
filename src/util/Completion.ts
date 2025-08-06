@@ -43,12 +43,24 @@ export const isFailure = <T>(
 };
 
 export const toCompletion = async <T>(
-  callback: () => T | Promise<T>
+  callback: () => T | Promise<T>,
+  options?: {
+    failureOnlyIf: (e: unknown) => boolean;
+  }
 ): Promise<Completion<T>> => {
   try {
     const value = await callback();
     return Success(value);
   } catch (e) {
+    const failureOnlyIf = options?.failureOnlyIf;
+    if (failureOnlyIf) {
+      if (failureOnlyIf(e)) {
+        return Failure.from(e);
+      } else {
+        throw e;
+      }
+    }
+
     return Failure.from(e);
   }
 };

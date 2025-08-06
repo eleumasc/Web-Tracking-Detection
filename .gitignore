@@ -2,9 +2,9 @@ node_modules/
 build/
 *.sqlite
 *.sqlite-journal
-nohup.out
-foxhound/
-foxhound.zip
-output/
-secret/
-.env
+*.out
+/foxhound/
+/foxhound.zip
+/output/
+/secret/
+/.env

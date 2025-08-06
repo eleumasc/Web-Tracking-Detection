@@ -1,6 +1,6 @@
 import { BrowserContext, Page } from "playwright";
-import { Taint, TaintReport, TaintReportWithoutTaint } from "../core/foxhound";
-import { timeout } from "./timeout";
+import { Taint, TaintReport, TaintReportWithoutTaint } from "./types";
+import { timeout } from "../util/timeout";
 
 const NAVIGATE_TIMEOUT_MS: number = 3 * 1000; // 3 seconds
 

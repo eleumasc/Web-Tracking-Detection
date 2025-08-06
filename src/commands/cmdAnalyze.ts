@@ -1,22 +1,23 @@
 import _ from "lodash";
-import analyze, { AnalyzeResult } from "../core/analyze";
 import assert from "assert";
-import BugmenotCredentialsProvider from "../core/credentials/BugmenotCredentialsProvider";
+import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
 import currentTime from "../util/currentTime";
-import openDocumentStore from "../core/openDocumentStore";
-import path from "path";
-import useFoxhound from "../util/useFoxhound";
+import installFoxhoundTaintReporting from "../foxhound/installFoxhoundTaintReporting";
+import openDocumentStore from "../data/openDocumentStore";
+import simulateLogin, { SimulateLoginError } from "../core/simulateLogin";
+import useFoxhound from "../foxhound/useFoxhound";
+import { AnalysisLogEntry, LTAResult } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
-import { BUGMENOT_FILENAME, rootDir } from "../env";
-import { Completion, toCompletion } from "../util/Completion";
-import { CredentialsProvider } from "../core/credentials/CredentialsProvider";
-import { detectSPA } from "../core/detectSPA";
-import { PROBE_COLLECTION_TYPE, ProbeEntry } from "./cmdProbe";
+import { BrowserContext } from "playwright";
+import { Credential } from "../core/credential/Credential";
+import { CredentialProvider } from "../core/credential/CredentialProvider";
+import { isFailure, isSuccess, toCompletion } from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
+import { SiteEntry } from "../core/SiteEntry";
+import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
+import { TaintReport } from "../foxhound/types";
 
-export type AnalyzeEntry = Completion<AnalyzeResult>;
-
-export const ANALYZE_COLLECTION_TYPE = "analyze";
+export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
 const ANALYSIS_TIMEOUT_MS: number = 5 * 60 * 1000; // 5 minutes
 
@@ -24,7 +25,7 @@ export default async function cmdAnalyze(
   args: (
     | {
         action: "create";
-        probeId: number;
+        sitesId: number;
       }
     | {
         action: "resume";
@@ -35,20 +36,7 @@ export default async function cmdAnalyze(
     noHeadlessBrowser: boolean;
   }
 ) {
-  // assert(
-  //   BITWARDEN_EXPORT_FILENAME,
-  //   "BITWARDEN_EXPORT_FILENAME environment variable is not set"
-  // );
-  // const credentialsProvider = BitwardenExportCredentialsProvider.fromFile(
-  //   path.join(rootDir, "secret", BITWARDEN_EXPORT_FILENAME)
-  // );
-  assert(
-    BUGMENOT_FILENAME,
-    "BUGMENOT_FILENAME environment variable is not set"
-  );
-  const credentialsProvider = BugmenotCredentialsProvider.fromFile(
-    path.join(rootDir, "secret", BUGMENOT_FILENAME)
-  );
+  const credentialProvider = new BugmenotCredentialProvider();
 
   const store = openDocumentStore();
 
@@ -56,51 +44,49 @@ export default async function cmdAnalyze(
     args.action === "create"
       ? store.createCollection(
           (() => {
-            const probeCollection = store.getCollectionById(args.probeId);
-            assert(probeCollection.meta.type === PROBE_COLLECTION_TYPE);
-            return probeCollection.id;
+            const sitesCollection = store.getCollectionById(args.sitesId);
+            assert(sitesCollection.meta.type === SITES_COLL_TYPE);
+            return sitesCollection.id;
           })(),
           currentTime().toString(),
-          { type: ANALYZE_COLLECTION_TYPE }
+          { type: ANALYSIS_LOGS_COLL_TYPE }
         )
       : store.getCollectionById(args.outputId);
-  assert(outputCollection.meta.type === ANALYZE_COLLECTION_TYPE);
-  const probeCollectionId = outputCollection.parentId!;
+  assert(outputCollection.meta.type === ANALYSIS_LOGS_COLL_TYPE);
+  const sitesCollectionId = outputCollection.parentId!;
 
-  const tbdLoginPages = _.difference(
-    // all login pages
+  const tbdSites = _.differenceWith(
+    // all sites
     _.uniq(
       store
-        .getDocumentsByCollection(probeCollectionId)
+        .getDocumentsByCollection(sitesCollectionId)
         .map(
-          (document): ProbeEntry =>
-            store.getDocumentData(document.id) as ProbeEntry
+          (document): SiteEntry =>
+            store.getDocumentData(document.id) as SiteEntry
         )
-        .flatMap((probeEntry): string[] => {
-          const detected = detectSPA(probeEntry);
-          return detected ? [detected.loginPageUrl] : [];
-        })
     ),
-    // processed login pages
+    // processed sites
     store
       .getDocumentsByCollection(outputCollection.id)
-      .map((document) => document.name)
+      .map((document) => document.name),
+    (x, y) => x.name === y
   );
 
   console.log(`Output ID: ${outputCollection.id}`);
-  console.log(`${tbdLoginPages.length} login pages remaining`);
+  console.log(`${tbdSites.length} sites remaining`);
 
   await processTaskQueue(
-    tbdLoginPages,
+    tbdSites,
     { maxTasks: args.maxTasks },
-    (loginPageUrl, queueIndex) => async () => {
-      console.log(`begin analysis ${loginPageUrl} [${queueIndex}]`);
-      const result = await runAnalyze(loginPageUrl, {
+    (siteEntry, queueIndex) => async () => {
+      const { name: siteName } = siteEntry;
+      console.log(`begin analysis ${siteName} [${queueIndex}]`);
+      const result = await runAnalyze(siteEntry, {
         headlessBrowser: !args.noHeadlessBrowser,
-        credentialsProvider,
+        credentialProvider,
       });
-      console.log(`end analysis ${loginPageUrl} [${queueIndex}]`);
-      store.createDocument(outputCollection.id, loginPageUrl, result);
+      console.log(`end analysis ${siteName} [${queueIndex}]`);
+      store.createDocument(outputCollection.id, siteName, result);
     }
   );
 
@@ -108,31 +94,93 @@ export default async function cmdAnalyze(
 }
 
 export async function runAnalyze(
-  loginPageUrl: string,
+  siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
-    credentialsProvider: CredentialsProvider;
+    credentialProvider: CredentialProvider;
   }
-): Promise<AnalyzeEntry> {
-  const completion = await toCompletion(() => {
-    const credentialsList = options.credentialsProvider.get(loginPageUrl);
-    if (credentialsList.length < 1) {
-      throw new Error(`No credentials found for ${loginPageUrl}`);
-    }
-    const credentials = credentialsList[0];
-    return useFoxhound(
-      { headless: options.headlessBrowser },
-      async (browser) => {
-        return bomb(
-          () =>
-            analyze(browser, {
-              loginPageUrl,
-              credentials,
-            }),
-          ANALYSIS_TIMEOUT_MS
+): Promise<AnalysisLogEntry> {
+  const { loginPageCandidates } = siteEntry;
+  const { headlessBrowser, credentialProvider } = options;
+
+  return toCompletion(async () => {
+    const ltaResults: LTAResult[] = [];
+
+    outerLoop: for (const loginPageCandidate of loginPageCandidates) {
+      const credentials = await credentialProvider.get(loginPageCandidate);
+      for (const credential of credentials) {
+        const ltaResult = await useFoxhound(
+          { headless: headlessBrowser },
+          async (browser) =>
+            runLoginTaintAnalysis(browser, loginPageCandidate, credential)
         );
+        ltaResults.push(ltaResult);
+
+        const { loginCompletion } = ltaResult;
+        // If loginCompletion is a failure of type SimulateLoginError, stop analyzing this login page candidate.
+        if (isFailure(loginCompletion)) {
+          continue outerLoop;
+        }
+        const {
+          value: { credentialValid },
+        } = loginCompletion;
+        // If the credentials are valid, stop analyzing this site.
+        if (credentialValid) {
+          return ltaResults;
+        }
       }
-    );
+    }
+
+    // Return the analysis results that
+    return ltaResults;
   });
-  return completion;
+}
+
+async function runLoginTaintAnalysis(
+  browser: BrowserContext,
+  loginPageCandidate: string,
+  credential: Credential
+): Promise<LTAResult> {
+  // capture taint reports
+  const taintReports: TaintReport[] = [];
+  await installFoxhoundTaintReporting(browser, {
+    onTaintReport: (taintReport) => {
+      taintReports.push(taintReport);
+    },
+    delayNavigationRequests: true,
+  });
+
+  const loginCompletion = await toCompletion(
+    () =>
+      bomb(
+        () =>
+          simulateLogin(browser, {
+            loginPageCandidate,
+            credential,
+          }),
+        ANALYSIS_TIMEOUT_MS
+      ),
+    {
+      failureOnlyIf: (e) => e instanceof SimulateLoginError,
+    }
+  );
+
+  const credentialValid =
+    isSuccess(loginCompletion) && loginCompletion.value.credentialValid;
+
+  let credentialValidExtra = {};
+  if (credentialValid) {
+    const storageState = await browser.storageState();
+    credentialValidExtra = {
+      taintReports,
+      storageState,
+    };
+  }
+
+  return {
+    loginPageCandidate,
+    credential,
+    loginCompletion,
+    ...credentialValidExtra,
+  };
 }

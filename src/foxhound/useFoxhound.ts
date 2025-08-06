@@ -1,5 +1,5 @@
 import path from "path";
-import useTempPath from "./useTempPath";
+import useTempPath from "../util/useTempPath";
 import { BrowserContext, firefox } from "playwright";
 import { rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
 

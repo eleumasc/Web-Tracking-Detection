@@ -1,4 +1,4 @@
-import DocumentStore from "../util/DocumentStore";
+import DocumentStore from "./DocumentStore";
 import path from "path";
 import { rootDir } from "../env";
 
