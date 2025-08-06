@@ -131,7 +131,7 @@ export async function runAnalyze(
       }
     }
 
-    // Return the analysis results that
+    // Return the analysis log reporting all login attempts on this site.
     return ltaResults;
   });
 }
