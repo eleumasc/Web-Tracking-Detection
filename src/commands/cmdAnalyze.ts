@@ -2,7 +2,7 @@ import _ from "lodash";
 import assert from "assert";
 import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
 import currentTime from "../util/currentTime";
-import installFoxhoundTaintReporting from "../foxhound/installFoxhoundTaintReporting";
+import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import openDocumentStore from "../data/openDocumentStore";
 import simulateLogin, { SimulateLoginError } from "../core/simulateLogin";
 import useFoxhound from "../foxhound/useFoxhound";
@@ -143,7 +143,7 @@ async function runLoginTaintAnalysis(
 ): Promise<LTAResult> {
   // capture taint reports
   const taintReports: TaintReport[] = [];
-  await installFoxhoundTaintReporting(browser, {
+  await installFoxhoundTaintReporter(browser, {
     onTaintReport: (taintReport) => {
       taintReports.push(taintReport);
     },
