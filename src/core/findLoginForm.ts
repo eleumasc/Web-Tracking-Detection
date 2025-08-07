@@ -14,7 +14,12 @@ export default async function findLoginForm(
 ): Promise<FindLoginFormResult | undefined> {
   const formStructures = await getFormStructures(page);
   const loginForm = detectLoginForm(formStructures);
-  return loginForm && getResult(loginForm);
+  if (!loginForm) return undefined;
+  try {
+    return getResult(loginForm);
+  } catch {
+    return undefined;
+  }
 }
 
 async function getResult(
