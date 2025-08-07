@@ -70,7 +70,7 @@ export default async function cmdLoadSiteList(filepath: string) {
 }
 
 function createSiteEntry(data: any): SiteEntry | undefined {
-  if (!Boolean(data.resolved)) return undefined;
+  if (!data.resolved?.reachable) return undefined;
   return {
     name: data.domain,
     rank: data.rank,
