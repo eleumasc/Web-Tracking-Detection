@@ -1,4 +1,3 @@
-import assert from "assert";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { createReadStream } from "fs";
@@ -31,8 +30,14 @@ export default async function cmdLoadSiteList(filepath: string) {
       transform({ value: data }, _, callback) {
         try {
           const siteEntry = createSiteEntry(data);
-          callback(null, siteEntry);
-        } catch {
+          if (siteEntry) {
+            callback(null, siteEntry);
+          } else {
+            // not resolved
+            callback();
+          }
+        } catch (e) {
+          console.error(e);
           callback();
         }
       },
@@ -49,8 +54,8 @@ export default async function cmdLoadSiteList(filepath: string) {
   process.exit(0);
 }
 
-function createSiteEntry(data: any): SiteEntry {
-  assert(Boolean(data.resolved));
+function createSiteEntry(data: any): SiteEntry | undefined {
+  if (!Boolean(data.resolved)) return undefined;
   return {
     name: data.domain,
     rank: data.rank,
