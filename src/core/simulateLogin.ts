@@ -5,7 +5,7 @@ import { timeout } from "../util/timeout";
 
 export type SimulateLoginResult = {
   credentialValid: boolean;
-  captcha?: boolean;
+  noCaptcha?: boolean;
 };
 
 const NAVIGATE_EXTRA_TIMEOUT_MS: number = 10 * 1000; // 10 seconds
@@ -51,14 +51,14 @@ export default async function simulateLogin(
   // validate login
   // We do not solve CAPTCHAs, but the absence of a detected login form is a strong signal that the credential are valid.
   const credentialValid = !Boolean(await findLoginForm(page));
-  // If the credentials are valid but the login form is still present after navigating back to the login page, a CAPTCHA is likely required.
-  let captcha: boolean | undefined;
+  let noCaptcha: boolean | undefined;
   if (credentialValid) {
+    // If the login form is missing after navigating back to the login page, it is likely that no CAPTCHA is required.
     await navigateToLoginPage();
-    captcha = Boolean(await findLoginForm(page));
+    noCaptcha = !Boolean(await findLoginForm(page));
   }
 
-  return { credentialValid, captcha };
+  return { credentialValid, noCaptcha };
 }
 
 export class SimulateLoginError extends Error {
