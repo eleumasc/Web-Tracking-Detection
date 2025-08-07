@@ -1,12 +1,12 @@
+import _ from "lodash";
 import assert from "assert";
 import { Credential } from "./Credential";
 import { CredentialProvider } from "./CredentialProvider";
 import { getSiteByDomain } from "../../util/site";
+import { isEmail } from "../../util/email";
 import { JSDOM } from "jsdom";
 
-export default class BugmenotCredentialProvider
-  implements CredentialProvider
-{
+export default class BugmenotCredentialProvider implements CredentialProvider {
   protected cacheMap: Map<string, Credential[]> | undefined;
 
   constructor(cacheEnabled: boolean = true) {
@@ -27,9 +27,7 @@ export default class BugmenotCredentialProvider
   }
 }
 
-async function fetchCredentials(
-  site: string
-): Promise<Credential[]> {
+async function fetchCredentials(site: string): Promise<Credential[]> {
   const response = await fetch(`https://bugmenot.com/view/${site}`);
   assert(
     response.status === 200,
@@ -37,12 +35,20 @@ async function fetchCredentials(
   );
   const html = await response.text();
   const dom = new JSDOM(html);
-  return [...dom.window.document.querySelectorAll("#content article")].map(
-    (e): Credential => {
-      const [username, password] = [...e.querySelectorAll("kbd")]
-        .slice(0, 2)
-        .map((f) => f.textContent) as [string, string];
-      return { username, password };
-    }
+  const credentials = [
+    ...dom.window.document.querySelectorAll("#content article"),
+  ].map((e): Credential => {
+    const [username, password] = [...e.querySelectorAll("kbd")]
+      .slice(0, 2)
+      .map((f) => f.textContent) as [string, string];
+    return { username, password };
+  });
+
+  // Sort credentials in reverse order (most recent first), and prioritize those where the username is an email address.
+  const sortedCredentials = _.sortBy(
+    _.reverse([...credentials]),
+    (credential) => (isEmail(credential.username) ? 0 : 1)
   );
+
+  return sortedCredentials;
 }
