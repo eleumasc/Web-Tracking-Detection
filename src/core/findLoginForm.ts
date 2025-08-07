@@ -16,7 +16,8 @@ export default async function findLoginForm(
   const loginForm = detectLoginForm(formStructures);
   if (!loginForm) return undefined;
   try {
-    return getResult(loginForm);
+    const result = await getResult(loginForm);
+    return result;
   } catch {
     return undefined;
   }
