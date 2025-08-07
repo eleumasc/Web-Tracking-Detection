@@ -129,6 +129,28 @@ export default class DocumentStore {
     return this.getDocumentById(id);
   }
 
+  bulkCreateDocument(
+    collectionId: number,
+    entries: { name: string; data: any }[]
+  ): void {
+    if (entries.length === 0) return;
+    const { db } = this;
+    const stmt = db.prepare(
+      `INSERT INTO documents (collection, name, data) VALUES ${Array(
+        entries.length
+      )
+        .fill("(?, ?, ?)")
+        .join(", ")}`
+    );
+    stmt.run(
+      entries.flatMap(({ name, data }) => [
+        collectionId,
+        name,
+        JSON.stringify(data),
+      ])
+    );
+  }
+
   importDocument(src: Document, data: any): Document {
     const { id, collectionId, name } = src;
     const { db } = this;

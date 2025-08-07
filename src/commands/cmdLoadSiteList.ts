@@ -9,6 +9,8 @@ import { Transform, Writable } from "stream";
 
 export const SITES_COLL_TYPE = "sites";
 
+const BUFFER_SIZE: number = 50;
+
 export default async function cmdLoadSiteList(filepath: string) {
   const store = openDocumentStore();
 
@@ -21,6 +23,7 @@ export default async function cmdLoadSiteList(filepath: string) {
 
   console.log(`Sites Collection ID: ${sitesCollection.id}`);
 
+  const buffer: { name: string; data: SiteEntry }[] = [];
   await pipeline(
     createReadStream(filepath),
     parser(),
@@ -45,7 +48,19 @@ export default async function cmdLoadSiteList(filepath: string) {
     new Writable({
       objectMode: true,
       write(siteEntry, _, callback) {
-        store.createDocument(sitesCollection.id, siteEntry.name, siteEntry);
+        if (buffer.length < BUFFER_SIZE) {
+          buffer.push({ name: siteEntry.name, data: siteEntry });
+        } else {
+          store.bulkCreateDocument(sitesCollection.id, buffer);
+          buffer.length = 0;
+        }
+        callback();
+      },
+      final(callback) {
+        if (buffer.length !== 0) {
+          store.bulkCreateDocument(sitesCollection.id, buffer);
+          buffer.length = 0;
+        }
         callback();
       },
     })

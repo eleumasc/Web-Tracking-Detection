@@ -37,12 +37,11 @@ export function digestTaintReport(
   const digestedTaint = taint.flatMap((range): Taint => {
     const { flow, ...rest } = range;
     const digestedFlow = range.flow.slice(2).filter((op) => fnSource(op));
-    return digestedFlow.length > 0 ? [{ ...rest, flow: digestedFlow }] : [];
+    return digestedFlow.length !== 0 ? [{ ...rest, flow: digestedFlow }] : [];
   });
-  if (!(digestedTaint.length > 0)) {
-    return [];
-  }
-  return [{ ...rest, sink: digestedSink, taint: digestedTaint }];
+  return digestedTaint.length !== 0
+    ? [{ ...rest, sink: digestedSink, taint: digestedTaint }]
+    : [];
 }
 
 export function doesSendPasswordInFlight(
