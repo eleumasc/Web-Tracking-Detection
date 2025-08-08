@@ -62,13 +62,21 @@ async function main() {
     )
 
     .command(
-      "measure <analysis-id>",
+      "measure <analysis-id> <src-key> <snk-key>",
       "Perform data processing from a login taint analysis",
       (yargs) =>
         yargs
           .positional("analysis-id", {
             type: "number",
             describe: "ID of the login taint analysis collection",
+            demandOption: true,
+          })
+          .positional("src-key", {
+            type: "string",
+            demandOption: true,
+          })
+          .positional("snk-key", {
+            type: "string",
             demandOption: true,
           })
           .option("db-filepath", {
