@@ -1,9 +1,13 @@
 import path from "path";
 import useTempPath from "../util/useTempPath";
 import { BrowserContext, firefox } from "playwright";
-import { rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
+import { FOXHOUND_PATH, rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
 
-export const FOXHOUND_PATH: string = path.join(rootDir, "foxhound", "foxhound");
+export const DEFAULT_FOXHOUND_PATH: string = path.join(
+  rootDir,
+  "foxhound",
+  "foxhound"
+);
 
 let firstCall = true;
 
@@ -14,7 +18,7 @@ export default async function useFoxhound<T>(
   return useTempPath({}, async (userDataDir) => {
     const browser = await firefox.launchPersistentContext(userDataDir, {
       headless: options.headless ?? true,
-      executablePath: FOXHOUND_PATH,
+      executablePath: FOXHOUND_PATH || DEFAULT_FOXHOUND_PATH,
       locale: "en-GB", // request pages in English
     });
     if (TU_WIEN_MEASUREMENT_ID) {
