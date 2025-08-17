@@ -33,6 +33,7 @@ export default function cmdMeasure(args: {
     ["Pwd", (ltaResult) => isPasswordSource(ltaResult.credential.password)],
     ["Stg", () => isStorageSource()],
     ["Net", () => isNetworkSource()],
+    ["XSNet", () => isNetworkSource({ crossSiteRequest: true })],
     ["Loc", () => isLocSource()],
   ]).get(srcKey);
   assert(srcPredicateFactory, `Invalid source: ${srcKey}`);
@@ -43,6 +44,7 @@ export default function cmdMeasure(args: {
   >([
     ["Stg", () => isStorageSink()],
     ["Net", () => isNetworkSink()],
+    ["XSNet", () => isNetworkSink({ crossSiteRequest: true })],
     ["Loc", () => isLocSink()],
   ]).get(snkKey);
   assert(snkPredicateFactory, `Invalid sink: ${snkKey}`);
@@ -87,7 +89,7 @@ export default function cmdMeasure(args: {
     relevantSites,
   };
   writeOutputFileSync(
-    `measure-${currentTime()}-${analysisId}-${srcKey}${snkKey}.json`,
+    `measure-${currentTime()}-${analysisId}-${srcKey}-${snkKey}.json`,
     JSON.stringify(report)
   );
 

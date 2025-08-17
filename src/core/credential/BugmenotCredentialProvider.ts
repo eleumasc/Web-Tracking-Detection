@@ -2,7 +2,7 @@ import _ from "lodash";
 import assert from "assert";
 import { Credential } from "./Credential";
 import { CredentialProvider } from "./CredentialProvider";
-import { getSiteByDomain } from "../../util/site";
+import { getSiteByUrl } from "../../util/site";
 import { isEmail } from "../../util/email";
 import { JSDOM } from "jsdom";
 
@@ -14,7 +14,7 @@ export default class BugmenotCredentialProvider implements CredentialProvider {
   }
 
   async get(givenUrl: string): Promise<Credential[]> {
-    const site = getSiteByDomain(new URL(givenUrl).hostname);
+    const site = getSiteByUrl(givenUrl);
 
     const cacheValue = this.cacheMap?.get(site);
     if (cacheValue) {

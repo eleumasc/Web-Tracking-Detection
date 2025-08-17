@@ -1,6 +1,10 @@
+import { getSiteByUrl } from "../util/site";
 import { Taint, TaintOperation, TaintReport } from "./types";
 
-export type TaintOperationPredicate = (op: TaintOperation) => boolean;
+export type TaintOperationPredicate = (
+  op: TaintOperation,
+  taintReport: TaintReport
+) => boolean;
 
 export function hasSink(
   taintReport: TaintReport,
@@ -8,7 +12,7 @@ export function hasSink(
 ): boolean {
   const op = taintReport.taint[0].flow[1];
   if (op) {
-    return fn(op);
+    return fn(op, taintReport);
   } else {
     // WTF // data.value.taintReports.find(x => !x.taint[0].flow[1])
     return false;
@@ -20,7 +24,7 @@ export function hasSource(
   fn: TaintOperationPredicate
 ): boolean {
   return taintReport.taint.some((range) =>
-    range.flow.slice(2).some((op) => fn(op))
+    range.flow.slice(2).some((op) => fn(op, taintReport))
   );
 }
 
@@ -36,7 +40,9 @@ export function digestTaintReport(
   const digestedSink = taint[0].flow[1];
   const digestedTaint = taint.flatMap((range): Taint => {
     const { flow, ...rest } = range;
-    const digestedFlow = range.flow.slice(2).filter((op) => fnSource(op));
+    const digestedFlow = range.flow
+      .slice(2)
+      .filter((op) => fnSource(op, taintReport));
     return digestedFlow.length !== 0 ? [{ ...rest, flow: digestedFlow }] : [];
   });
   return digestedTaint.length !== 0
@@ -44,35 +50,7 @@ export function digestTaintReport(
     : [];
 }
 
-export function doesSendPasswordInFlight(
-  taintReport: TaintReport,
-  password: string
-): boolean {
-  return (
-    hasSink(taintReport, isInFlightNetworkSink()) &&
-    hasSource(taintReport, isPasswordSource(password))
-  );
-}
-
-export function isInFlightNetworkSink(): TaintOperationPredicate {
-  return (op) => {
-    switch (op.operation) {
-      // XMLHttpRequest
-      case "XMLHttpRequest.open(url)":
-      case "XMLHttpRequest.setRequestHeader(value)":
-      case "XMLHttpRequest.send":
-      // fetch
-      case "fetch.url":
-      case "fetch.header(value)":
-      case "fetch.body":
-      // postMessage
-      case "window.postMessage":
-        return true;
-      default:
-        return false;
-    }
-  };
-}
+// Password
 
 export function isPasswordSource(password: string): TaintOperationPredicate {
   return (op) =>
@@ -110,44 +88,90 @@ export function isStorageSource(): TaintOperationPredicate {
 
 // Network
 
-export function isNetworkSink(): TaintOperationPredicate {
-  return (op) => {
+export function isNetworkSink(
+  options: {
+    crossSiteRequest?: boolean;
+  } = {
+    crossSiteRequest: false,
+  }
+): TaintOperationPredicate {
+  return (op, taintReport) => {
+    const check = (requestUrl: string): boolean => {
+      if (options.crossSiteRequest) {
+        const documentUrl = taintReport.loc;
+        return (
+          getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl, documentUrl)
+        );
+      }
+
+      return true;
+    };
+
     switch (op.operation) {
       // XMLHttpRequest
       case "XMLHttpRequest.open(url)":
-      case "XMLHttpRequest.setRequestHeader(value)":
+        return check(taintReport.str);
       case "XMLHttpRequest.send":
+      case "XMLHttpRequest.setRequestHeader(value)":
+        return check(op.arguments[0]);
       // fetch
       case "fetch.url":
-      case "fetch.header(value)":
+        return check(taintReport.str);
       case "fetch.body":
+        return check(op.arguments[0]);
+      case "fetch.header(value)":
+        // return check(op.arguments[0]);
+        return true; // TODO: fix -- add request url to TaintOperation("fetch.header(value)").arguments
       // sendBeacon
       case "navigator.sendBeacon":
+        return check(op.arguments[0]);
       // WebSocket
       case "WebSocket":
+        return check(taintReport.str);
       case "WebSocket.send":
-        // postMessage
-        // case "window.postMessage":
-        return true;
+        return check(op.arguments[0]);
+      // // postMessage
+      // case "window.postMessage":
+      //   return true;
       default:
         return false;
     }
   };
 }
 
-export function isNetworkSource(): TaintOperationPredicate {
-  return (op) => {
+export function isNetworkSource(
+  options: {
+    crossSiteRequest?: boolean;
+  } = {
+    crossSiteRequest: false,
+  }
+): TaintOperationPredicate {
+  return (op, taintReport) => {
+    const check = (requestUrl: string): boolean => {
+      if (options.crossSiteRequest) {
+        const documentUrl = taintReport.loc;
+        return (
+          getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl, documentUrl)
+        );
+      }
+
+      return true;
+    };
+
     switch (op.operation) {
       // XMLHttpRequest
       case "XMLHttpRequest.response":
+        return check(op.arguments[0]);
       // fetch
       case "fetch.json()":
       case "fetch.text()":
+        return true; // TODO: fix -- add request url to TaintOperation("fetch.text" | "fetch.json").arguments
       // WebSocket
       case "WebSocket.MessageEvent.data":
-        // postMessage
-        // case "MessageEvent":
-        return true;
+        return true; // TODO: fix -- add request url to TaintOperation("fetch.header(value)").arguments
+      // // postMessage
+      // case "MessageEvent":
+      //   return true;
       default:
         return false;
     }
