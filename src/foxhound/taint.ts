@@ -110,7 +110,7 @@ export function isNetworkSink(
     switch (op.operation) {
       // XMLHttpRequest
       case "XMLHttpRequest.open(url)":
-        return check(taintReport.str);
+        return check(taintReport.str); // foxhound-fixed (complete URL)
       case "XMLHttpRequest.send":
       case "XMLHttpRequest.setRequestHeader(value)":
         return check(op.arguments[0]);
@@ -120,14 +120,13 @@ export function isNetworkSink(
       case "fetch.body":
         return check(op.arguments[0]);
       case "fetch.header(value)":
-        // return check(op.arguments[0]);
-        return true; // TODO: fix -- add request url to TaintOperation("fetch.header(value)").arguments
+        return check(op.arguments[0]); // foxhound-fixed
       // sendBeacon
       case "navigator.sendBeacon":
         return check(op.arguments[0]);
       // WebSocket
       case "WebSocket":
-        return check(taintReport.str);
+        return check(op.arguments[0]); // foxhound-fixed (complete URL)
       case "WebSocket.send":
         return check(op.arguments[0]);
       // // postMessage
@@ -165,10 +164,10 @@ export function isNetworkSource(
       // fetch
       case "fetch.json()":
       case "fetch.text()":
-        return true; // TODO: fix -- add request url to TaintOperation("fetch.text" | "fetch.json").arguments
+        return check(op.arguments[0]); // foxhound-fixed
       // WebSocket
       case "WebSocket.MessageEvent.data":
-        return true; // TODO: fix -- add request url to TaintOperation("fetch.header(value)").arguments
+        return check(op.arguments[0]); // foxhound-fixed
       // // postMessage
       // case "MessageEvent":
       //   return true;
