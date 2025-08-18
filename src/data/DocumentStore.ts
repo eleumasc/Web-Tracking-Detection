@@ -129,7 +129,7 @@ export default class DocumentStore {
     return this.getDocumentById(id);
   }
 
-  bulkCreateDocument(
+  bulkInsertDocuments(
     collectionId: number,
     entries: { name: string; data: any }[]
   ): void {
@@ -170,7 +170,6 @@ export default class DocumentStore {
       throw new Error(`Document with ID ${documentId} does not exist`);
     }
     const { data } = row as any;
-    assert(typeof data === "string");
     return JSON.parse(data);
   }
 
@@ -223,6 +222,23 @@ export default class DocumentStore {
     );
     const rows = stmt.all([collectionId]);
     return rows.map((row) => _toDocument(row));
+  }
+
+  getDocumentsWithDataByCollection(
+    collectionId: number
+  ): { document: Document; data: any }[] {
+    const { db } = this;
+    const stmt = db.prepare(
+      "SELECT id, collection, name, data FROM documents WHERE collection = ? ORDER BY id"
+    );
+    const rows = stmt.all([collectionId]);
+    return rows.map((row) => {
+      const { data } = row as any;
+      return {
+        document: _toDocument(row),
+        data: JSON.parse(data),
+      };
+    });
   }
 }
 

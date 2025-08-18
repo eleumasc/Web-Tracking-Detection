@@ -51,14 +51,14 @@ export default async function cmdLoadSiteList(filepath: string) {
         if (buffer.length < BUFFER_SIZE) {
           buffer.push({ name: siteEntry.name, data: siteEntry });
         } else {
-          store.bulkCreateDocument(sitesCollection.id, buffer);
+          store.bulkInsertDocuments(sitesCollection.id, buffer);
           buffer.length = 0;
         }
         callback();
       },
       final(callback) {
         if (buffer.length !== 0) {
-          store.bulkCreateDocument(sitesCollection.id, buffer);
+          store.bulkInsertDocuments(sitesCollection.id, buffer);
           buffer.length = 0;
         }
         callback();

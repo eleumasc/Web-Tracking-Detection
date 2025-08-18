@@ -57,14 +57,9 @@ export default async function cmdAnalyze(
 
   const tbdSites = _.differenceWith(
     // all sites
-    _.uniq(
-      store
-        .getDocumentsByCollection(sitesCollectionId)
-        .map(
-          (document): SiteEntry =>
-            store.getDocumentData(document.id) as SiteEntry
-        )
-    ),
+    store
+      .getDocumentsWithDataByCollection(sitesCollectionId)
+      .map(({ data }): SiteEntry => data),
     // processed sites
     store
       .getDocumentsByCollection(outputCollection.id)
