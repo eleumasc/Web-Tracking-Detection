@@ -1,0 +1,39 @@
+import assert from "assert";
+import { runAnalyze } from "../commands/cmdAnalyze";
+import openDocumentStore from "../data/openDocumentStore";
+import { SITES_COLL_TYPE } from "../commands/cmdLoadSiteList";
+import { SiteEntry } from "../core/SiteEntry";
+import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
+
+async function main(args: { sitesId: number; siteName: string }) {
+  const credentialProvider = new BugmenotCredentialProvider();
+
+  const store = openDocumentStore();
+
+  const sitesCollection = store.getCollectionById(args.sitesId);
+  assert(sitesCollection.meta.type === SITES_COLL_TYPE);
+
+  const siteDocument = store.getDocumentByName(
+    sitesCollection.id,
+    args.siteName
+  );
+  const siteEntry = store.getDocumentData(siteDocument.id) as SiteEntry;
+
+  const result = await runAnalyze(siteEntry, {
+    headlessBrowser: false,
+    credentialProvider,
+  });
+
+  console.log(result);
+
+  process.exit(0);
+}
+
+main(
+  ((argv) => {
+    return {
+      sitesId: parseInt(argv[0]),
+      siteName: argv[1],
+    };
+  })(process.argv.slice(2))
+);
