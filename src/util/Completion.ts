@@ -64,3 +64,14 @@ export const toCompletion = async <T>(
     return Failure.from(e);
   }
 };
+
+export const toFlatCompletion = async <T>(
+  callback: () => Completion<T> | Promise<Completion<T>>
+): Promise<Completion<T>> => {
+  try {
+    const value = await callback();
+    return value;
+  } catch (e) {
+    return Failure.from(e);
+  }
+};

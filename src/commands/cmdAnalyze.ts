@@ -10,12 +10,17 @@ import { AnalysisLogEntry, LTAResult } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { BrowserContext } from "playwright";
 import { Credential } from "../core/credential/Credential";
-import { CredentialProvider } from "../core/credential/CredentialProvider";
-import { isFailure, isSuccess, toCompletion } from "../util/Completion";
+import {
+  isFailure,
+  isSuccess,
+  toCompletion,
+  toFlatCompletion,
+} from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
 import { TaintReport } from "../foxhound/types";
+import execOnChildProcess from "../multiprocessing/execOnChildProcess";
 
 export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
@@ -36,8 +41,6 @@ export default async function cmdAnalyze(
     noHeadlessBrowser: boolean;
   }
 ) {
-  const credentialProvider = new BugmenotCredentialProvider();
-
   const store = openDocumentStore();
 
   const outputCollection =
@@ -76,10 +79,14 @@ export default async function cmdAnalyze(
     (siteEntry, queueIndex) => async () => {
       const { name: siteName } = siteEntry;
       console.log(`begin analysis ${siteName} [${queueIndex}]`);
-      const result = await runAnalyze(siteEntry, {
-        headlessBrowser: !args.noHeadlessBrowser,
-        credentialProvider,
-      });
+      const result = await toFlatCompletion(() =>
+        execOnChildProcess(runAnalyze, [
+          siteEntry,
+          {
+            headlessBrowser: !args.noHeadlessBrowser,
+          },
+        ])
+      );
       console.log(`end analysis ${siteName} [${queueIndex}]`);
       store.createDocument(outputCollection.id, siteName, result);
     }
@@ -92,11 +99,12 @@ export async function runAnalyze(
   siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
-    credentialProvider: CredentialProvider;
   }
 ): Promise<AnalysisLogEntry> {
   const { loginPageCandidates } = siteEntry;
-  const { headlessBrowser, credentialProvider } = options;
+  const { headlessBrowser } = options;
+
+  const credentialProvider = new BugmenotCredentialProvider();
 
   return toCompletion(async () => {
     const ltaResults: LTAResult[] = [];

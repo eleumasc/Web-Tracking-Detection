@@ -3,11 +3,8 @@ import { runAnalyze } from "../commands/cmdAnalyze";
 import openDocumentStore from "../data/openDocumentStore";
 import { SITES_COLL_TYPE } from "../commands/cmdLoadSiteList";
 import { SiteEntry } from "../core/SiteEntry";
-import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
 
 async function main(args: { sitesId: number; siteName: string }) {
-  const credentialProvider = new BugmenotCredentialProvider();
-
   const store = openDocumentStore();
 
   const sitesCollection = store.getCollectionById(args.sitesId);
@@ -21,7 +18,6 @@ async function main(args: { sitesId: number; siteName: string }) {
 
   const result = await runAnalyze(siteEntry, {
     headlessBrowser: false,
-    credentialProvider,
   });
 
   console.log(result);
