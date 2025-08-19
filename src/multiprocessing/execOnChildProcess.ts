@@ -1,6 +1,7 @@
 import { fork } from "child_process";
 import path from "path";
 import { Completion, isSuccess } from "../util/Completion";
+import { MultiProcessingError, ChildProcessError } from "./errors";
 
 export default function execOnChildProcess<A extends any[], R>(
   func: (...args: A) => R,
@@ -55,18 +56,4 @@ export default function execOnChildProcess<A extends any[], R>(
 
     childProcess.send!({ func: func.name, args });
   });
-}
-
-export class ChildProcessError extends Error {
-  constructor(readonly type?: string, message?: string) {
-    super(message);
-    this.name = ChildProcessError.name;
-  }
-}
-
-export class MultiProcessingError extends Error {
-  constructor(message?: string) {
-    super(message);
-    this.name = MultiProcessingError.name;
-  }
 }
