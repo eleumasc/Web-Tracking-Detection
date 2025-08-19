@@ -1,7 +1,6 @@
 import { fork } from "child_process";
 import path from "path";
 import { Completion, isSuccess } from "../util/Completion";
-import { receiveMessage, sendMessage } from "./messaging";
 
 export default function execOnChildProcess<A extends any[], R>(
   func: (...args: A) => R,
@@ -9,14 +8,31 @@ export default function execOnChildProcess<A extends any[], R>(
 ): Promise<Awaited<R>> {
   return new Promise(async (res, rej) => {
     let completion: Completion<Awaited<R>> | undefined;
+    let didExitOrError = false;
 
-    const child = fork(path.join(__dirname, "__child"));
+    const childProcess = fork(path.join(__dirname, "__child"));
 
-    child.on("error", (e) => {
+    // graceful termination
+    const onExitHandler = () => {
+      childProcess.kill();
+    };
+    process.addListener("exit", onExitHandler);
+
+    childProcess.on("error", (e) => {
+      if (didExitOrError) return;
+      didExitOrError = true;
+
+      process.removeListener("exit", onExitHandler);
+
       rej(new MultiProcessingError(e.message));
     });
 
-    child.on("exit", (code, signal) => {
+    childProcess.on("exit", (code, signal) => {
+      if (didExitOrError) return;
+      didExitOrError = true;
+
+      process.removeListener("exit", onExitHandler);
+
       if (!completion) {
         rej(
           new MultiProcessingError(
@@ -33,12 +49,11 @@ export default function execOnChildProcess<A extends any[], R>(
       }
     });
 
-    try {
-      await sendMessage({ func: func.name, args }, child);
-      completion = await receiveMessage(child);
-    } catch {
-      // suppress, let child.on("error") handle errors
-    }
+    childProcess.once("message", (replyMessage: any) => {
+      completion = replyMessage;
+    });
+
+    childProcess.send!({ func: func.name, args });
   });
 }
 
