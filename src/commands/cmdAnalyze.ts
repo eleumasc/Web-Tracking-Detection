@@ -1,6 +1,5 @@
 import _ from "lodash";
 import assert from "assert";
-import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
 import currentTime from "../util/currentTime";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import openDocumentStore from "../data/openDocumentStore";
@@ -101,16 +100,14 @@ export async function runAnalyze(
     headlessBrowser: boolean;
   }
 ): Promise<AnalysisLogEntry> {
-  const { loginPageCandidates } = siteEntry;
+  const { loginPageCandidates, credentials } = siteEntry;
   const { headlessBrowser } = options;
 
-  const credentialProvider = new BugmenotCredentialProvider();
 
   return toCompletion(async () => {
     const ltaResults: LTAResult[] = [];
 
     outerLoop: for (const loginPageCandidate of loginPageCandidates) {
-      const credentials = await credentialProvider.get(loginPageCandidate);
       for (const credential of credentials) {
         const ltaResult = await useFoxhound(
           { headless: headlessBrowser },
