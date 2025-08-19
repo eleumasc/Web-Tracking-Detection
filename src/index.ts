@@ -9,15 +9,15 @@ async function main() {
 
   yargs(hideBin(process.argv))
     .command(
-      "load-site-list <filepath>",
-      "Load site list from a Tranco+SSO list file",
+      "load-site-list <pathOrUrl>",
+      "Load site list from a Tranco+SSO file",
       (yargs) =>
-        yargs.positional("filepath", {
-          describe: "Path to the file containing the Tranco+SSO list",
+        yargs.positional("pathOrUrl", {
+          describe: "Path or URL to a Tranco+SSO file",
           type: "string",
           demandOption: true,
         }),
-      ({ filepath }) => cmdLoadSiteList(filepath)
+      (args) => cmdLoadSiteList(args)
     )
 
     .command(

@@ -1,21 +1,37 @@
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import { createReadStream } from "fs";
 import { parser } from "stream-json";
 import { pipeline } from "stream/promises";
 import { SiteEntry } from "../core/SiteEntry";
 import { streamArray } from "stream-json/streamers/StreamArray";
 import { Transform, Writable } from "stream";
+import { download } from "../util/download";
+import { CredentialProvider } from "../core/credential/CredentialProvider";
+import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
 
 export const SITES_COLL_TYPE = "sites";
 
 const BUFFER_SIZE: number = 50;
 
-export default async function cmdLoadSiteList(filepath: string) {
-  const store = openDocumentStore();
+export default async function cmdLoadSiteList(options: {
+  pathOrUrl: string | URL;
+}) {
+  let { pathOrUrl } = options;
+  let filename: string;
+  if (URL.canParse(pathOrUrl)) {
+    pathOrUrl = new URL(pathOrUrl);
+    filename = String(pathOrUrl);
+  } else {
+    pathOrUrl = path.resolve(pathOrUrl as string);
+    filename = path.basename(pathOrUrl);
+  }
 
-  filepath = path.resolve(filepath);
-  const filename = path.basename(filepath);
+  const downloadReadable = await download(pathOrUrl);
+
+  const credentialProvider: CredentialProvider =
+    new BugmenotCredentialProvider();
+
+  const store = openDocumentStore();
 
   const sitesCollection = store.createCollection(null, filename, {
     type: SITES_COLL_TYPE,
@@ -25,14 +41,14 @@ export default async function cmdLoadSiteList(filepath: string) {
 
   const buffer: { name: string; data: SiteEntry }[] = [];
   await pipeline(
-    createReadStream(filepath),
+    downloadReadable,
     parser(),
     streamArray(),
     new Transform({
       objectMode: true,
-      transform({ value: data }, _, callback) {
+      async transform({ value: data }, _, callback) {
         try {
-          const siteEntry = createSiteEntry(data);
+          const siteEntry = await createSiteEntry(data, { credentialProvider });
           if (siteEntry) {
             callback(null, siteEntry);
           } else {
@@ -47,10 +63,10 @@ export default async function cmdLoadSiteList(filepath: string) {
     }),
     new Writable({
       objectMode: true,
-      write(siteEntry, _, callback) {
-        if (buffer.length < BUFFER_SIZE) {
-          buffer.push({ name: siteEntry.name, data: siteEntry });
-        } else {
+      write(siteEntry: SiteEntry, _, callback) {
+        console.log(`${siteEntry.name} [${siteEntry.rank}]`);
+        buffer.push({ name: siteEntry.name, data: siteEntry });
+        if (buffer.length >= BUFFER_SIZE) {
           store.bulkInsertDocuments(sitesCollection.id, buffer);
           buffer.length = 0;
         }
@@ -69,13 +85,24 @@ export default async function cmdLoadSiteList(filepath: string) {
   process.exit(0);
 }
 
-function createSiteEntry(data: any): SiteEntry | undefined {
+async function createSiteEntry(
+  data: any,
+  options: {
+    credentialProvider: CredentialProvider;
+  }
+): Promise<SiteEntry | undefined> {
+  const { credentialProvider } = options;
+
   if (!data.resolved?.reachable) return undefined;
+
+  const credentials = await credentialProvider.get(data.resolved.url);
+
   return {
     name: data.domain,
     rank: data.rank,
     loginPageCandidates: data.login_page_candidates.map(
       (x: any) => x.login_page_candidate
     ),
+    credentials,
   };
 }
