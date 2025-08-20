@@ -32,7 +32,7 @@ export function digestTaintReport(
   taintReport: TaintReport,
   fnSource: TaintOperationPredicate,
   fnSink: TaintOperationPredicate
-): any[] {
+) {
   const { taint, ...rest } = taintReport;
   if (!hasSink(taintReport, fnSink)) {
     return [];
