@@ -10,7 +10,7 @@ export function hasSink(
   taintReport: TaintReport,
   fn: TaintOperationPredicate
 ): boolean {
-  const op = taintReport.taint[0].flow[1];
+  const op = taintReport.taint[0]?.flow[1];
   if (op) {
     return fn(op, taintReport);
   } else {
