@@ -16,9 +16,10 @@ export default async function simulateLogin(
   options: {
     loginPageCandidate: string;
     credential: Credential;
+    screenshotPath?: string;
   }
 ): Promise<SimulateLoginResult> {
-  const { loginPageCandidate, credential } = options;
+  const { loginPageCandidate, credential, screenshotPath } = options;
   const { username, password } = credential;
 
   const page = await browser.newPage();
@@ -47,6 +48,13 @@ export default async function simulateLogin(
   await submitButton.click();
   await timeout(LOGIN_EXTRA_TIMEOUT_MS);
   await page.waitForLoadState();
+
+  // take screenshot
+  if (screenshotPath) {
+    await page.screenshot({
+      path: screenshotPath,
+    });
+  }
 
   // validate login
   // We do not solve CAPTCHAs, but the absence of a detected login form is a strong signal that the credential are valid.

@@ -20,6 +20,8 @@ import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
 import { TaintReport } from "../foxhound/types";
 import execOnChildProcess from "../multiprocessing/execOnChildProcess";
+import path from "path";
+import { rootDir } from "../env";
 
 export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
@@ -77,12 +79,19 @@ export default async function cmdAnalyze(
     { maxTasks: args.maxTasks },
     (siteEntry, queueIndex) => async () => {
       const { name: siteName } = siteEntry;
+      const screenshotPath = path.resolve(
+        rootDir,
+        "output",
+        outputCollection.name,
+        `${siteEntry.name}.png`
+      );
       console.log(`begin analysis ${siteName} [${queueIndex}]`);
       const result = await toFlatCompletion(() =>
         execOnChildProcess(runAnalyze, [
           siteEntry,
           {
             headlessBrowser: !args.noHeadlessBrowser,
+            screenshotPath,
           },
         ])
       );
@@ -98,11 +107,11 @@ export async function runAnalyze(
   siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
+    screenshotPath?: string;
   }
 ): Promise<AnalysisLogEntry> {
   const { loginPageCandidates, credentials } = siteEntry;
-  const { headlessBrowser } = options;
-
+  const { headlessBrowser, screenshotPath } = options;
 
   return toCompletion(async () => {
     const ltaResults: LTAResult[] = [];
@@ -112,7 +121,11 @@ export async function runAnalyze(
         const ltaResult = await useFoxhound(
           { headless: headlessBrowser },
           async (browser) =>
-            runLoginTaintAnalysis(browser, loginPageCandidate, credential)
+            runLoginTaintAnalysis(browser, {
+              loginPageCandidate,
+              credential,
+              screenshotPath,
+            })
         );
         ltaResults.push(ltaResult);
 
@@ -136,11 +149,16 @@ export async function runAnalyze(
   });
 }
 
-async function runLoginTaintAnalysis(
+export async function runLoginTaintAnalysis(
   browser: BrowserContext,
-  loginPageCandidate: string,
-  credential: Credential
+  options: {
+    loginPageCandidate: string;
+    credential: Credential;
+    screenshotPath?: string;
+  }
 ): Promise<LTAResult> {
+  const { loginPageCandidate, credential, screenshotPath } = options;
+
   // capture taint reports
   const taintReports: TaintReport[] = [];
   await installFoxhoundTaintReporter(browser, {
@@ -157,6 +175,7 @@ async function runLoginTaintAnalysis(
           simulateLogin(browser, {
             loginPageCandidate,
             credential,
+            screenshotPath,
           }),
         ANALYSIS_TIMEOUT_MS
       ),
