@@ -116,7 +116,7 @@ export async function runAnalyze(
   return toCompletion(async () => {
     const ltaResults: LTAResult[] = [];
 
-    outerLoop: for (const loginPageCandidate of loginPageCandidates) {
+    outerLoop: for (const loginPageCandidate of _.uniq(loginPageCandidates)) {
       for (const credential of credentials) {
         const ltaResult = await useFoxhound(
           { headless: headlessBrowser },
