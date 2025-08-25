@@ -9,7 +9,7 @@ export type SimulateLoginResult = {
 };
 
 const NAVIGATE_EXTRA_TIMEOUT_MS: number = 10 * 1000; // 10 seconds
-const LOGIN_EXTRA_TIMEOUT_MS: number = 5 * 1000; // 5 seconds
+const LOGIN_EXTRA_TIMEOUT_MS: number = 15 * 1000; // 15 seconds
 
 export default async function simulateLogin(
   browser: BrowserContext,

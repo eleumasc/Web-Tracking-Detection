@@ -10,7 +10,7 @@ export async function download(pathOrUrl: string | URL): Promise<Readable> {
         const response = await fetch(pathOrUrl);
         if (!response.body) {
           throw new Error(
-            `Cannot get resource (status ${response.status}): ${pathOrUrl}`
+            `Cannot download (status ${response.status}): ${pathOrUrl}`
           );
         }
         // @ts-ignore
