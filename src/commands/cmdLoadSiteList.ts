@@ -6,8 +6,7 @@ import { SiteEntry } from "../core/SiteEntry";
 import { streamArray } from "stream-json/streamers/StreamArray";
 import { Transform, Writable } from "stream";
 import { download } from "../util/download";
-import { CredentialProvider } from "../core/credential/CredentialProvider";
-import BugmenotCredentialProvider from "../core/credential/BugmenotCredentialProvider";
+import _ from "lodash";
 
 export const SITES_COLL_TYPE = "sites";
 
@@ -28,9 +27,6 @@ export default async function cmdLoadSiteList(options: {
 
   const downloadReadable = await download(pathOrUrl);
 
-  const credentialProvider: CredentialProvider =
-    new BugmenotCredentialProvider();
-
   const store = openDocumentStore();
 
   const sitesCollection = store.createCollection(null, filename, {
@@ -48,7 +44,7 @@ export default async function cmdLoadSiteList(options: {
       objectMode: true,
       async transform({ value: data }, _, callback) {
         try {
-          const siteEntry = await createSiteEntry(data, { credentialProvider });
+          const siteEntry = createSiteEntry(data);
           if (siteEntry) {
             callback(null, siteEntry);
           } else {
@@ -85,24 +81,15 @@ export default async function cmdLoadSiteList(options: {
   process.exit(0);
 }
 
-async function createSiteEntry(
-  data: any,
-  options: {
-    credentialProvider: CredentialProvider;
-  }
-): Promise<SiteEntry | undefined> {
-  const { credentialProvider } = options;
-
+function createSiteEntry(data: any): SiteEntry | undefined {
   if (!data.resolved?.reachable) return undefined;
-
-  const credentials = await credentialProvider.get(data.resolved.url);
 
   return {
     name: data.domain,
     rank: data.rank,
-    loginPageCandidates: data.login_page_candidates.map(
-      (x: any) => x.login_page_candidate
+    landingPage: data.resolved.url,
+    loginPageCandidates: _.uniq(
+      data.login_page_candidates.map((x: any) => x.login_page_candidate)
     ),
-    credentials,
   };
 }

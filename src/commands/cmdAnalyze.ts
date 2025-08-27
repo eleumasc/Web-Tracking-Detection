@@ -62,8 +62,12 @@ export default async function cmdAnalyze(
   const tbdSites = _.differenceWith(
     // all sites
     store
-      .getDocumentsWithDataByCollection(sitesCollectionId)
-      .map(({ data }): SiteEntry => data),
+      .getDocumentsWithDataByCollection<SiteEntry>(sitesCollectionId)
+      .map(({ data }) => data)
+      .filter(
+        ({ loginPageCandidates, credentials }) =>
+          Boolean(loginPageCandidates.length) && Boolean(credentials?.length)
+      ),
     // processed sites
     store
       .getDocumentsByCollection(outputCollection.id)
@@ -116,8 +120,8 @@ export async function runAnalyze(
   return toCompletion(async () => {
     const ltaResults: LTAResult[] = [];
 
-    outerLoop: for (const loginPageCandidate of _.uniq(loginPageCandidates)) {
-      for (const credential of credentials) {
+    outerLoop: for (const loginPageCandidate of loginPageCandidates) {
+      for (const credential of credentials ?? []) {
         const ltaResult = await useFoxhound(
           { headless: headlessBrowser },
           async (browser) =>

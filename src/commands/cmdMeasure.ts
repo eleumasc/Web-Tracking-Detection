@@ -10,12 +10,14 @@ import {
   digestTaintReport,
   isLocSink,
   isLocSource,
+  isMultiOriginNetworkTaint,
   isNetworkSink,
   isNetworkSource,
   isPasswordSource,
   isStorageSink,
   isStorageSource,
   TaintOperationPredicate,
+  TaintPredicate,
 } from "../foxhound/taint";
 
 export default function cmdMeasure(args: {
@@ -34,9 +36,15 @@ export default function cmdMeasure(args: {
     ["Stg", () => isStorageSource()],
     ["Net", () => isNetworkSource()],
     ["XSNet", () => isNetworkSource({ crossSiteRequest: true })],
+    ["MultiNet", () => isNetworkSource()],
     ["Loc", () => isLocSource()],
   ]).get(srcKey);
   assert(srcPredicateFactory, `Invalid source: ${srcKey}`);
+
+  const taintPredicateFactory = new Map<
+    string,
+    (ltaResult: LTAResult) => TaintPredicate
+  >([["MultiNet", () => isMultiOriginNetworkTaint()]]).get(srcKey);
 
   const snkPredicateFactory = new Map<
     string,
@@ -61,9 +69,9 @@ export default function cmdMeasure(args: {
     const site = analysisDocument.name;
     console.log(site);
 
-    const analysisLogEntry = store.getDocumentData(
+    const analysisLogEntry = store.getDocumentData<AnalysisLogEntry>(
       analysisDocument.id
-    ) as AnalysisLogEntry;
+    );
 
     if (isFailure(analysisLogEntry)) continue;
     const { value: ltaResults } = analysisLogEntry;
@@ -77,8 +85,10 @@ export default function cmdMeasure(args: {
 
     const srcPredicate = srcPredicateFactory(ltaResult);
     const snkPredicate = snkPredicateFactory(ltaResult);
+    const taintPredicate =
+      taintPredicateFactory && taintPredicateFactory(ltaResult);
     const relevantTaintReports = taintReports.flatMap((taintReport) =>
-      digestTaintReport(taintReport, srcPredicate, snkPredicate)
+      digestTaintReport(taintReport, srcPredicate, snkPredicate, taintPredicate)
     );
     if (relevantTaintReports.length > 0) {
       relevantSites.push({ site, relevantTaintReports });

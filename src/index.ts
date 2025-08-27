@@ -1,4 +1,5 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
+import cmdFetchCredentials from "./commands/cmdFetchCredentials";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
@@ -18,6 +19,23 @@ async function main() {
           demandOption: true,
         }),
       (args) => cmdLoadSiteList(args)
+    )
+
+    .command(
+      "fetch-credentials <sites-id>",
+      "Fetch credentials for site list",
+      (yargs) =>
+        yargs
+          .positional("sites-id", {
+            describe: "ID of the sites collection",
+            type: "number",
+            demandOption: true,
+          })
+          .option("max-tasks", {
+            type: "number",
+            default: 1,
+          }),
+      (args) => cmdFetchCredentials(args)
     )
 
     .command(

@@ -1,8 +1,14 @@
+import _ from "lodash";
 import { getSiteByUrl } from "../util/site";
 import { Taint, TaintOperation, TaintReport } from "./types";
 
 export type TaintOperationPredicate = (
   op: TaintOperation,
+  taintReport: TaintReport
+) => boolean;
+
+export type TaintPredicate = (
+  taint: Taint,
   taintReport: TaintReport
 ) => boolean;
 
@@ -14,7 +20,7 @@ export function hasSink(
   if (op) {
     return fn(op, taintReport);
   } else {
-    // WTF // data.value.taintReports.find(x => !x.taint[0].flow[1])
+    // WTF // data.value.taintReports.find(x => !x.taint[0]?.flow[1])
     return false;
   }
 }
@@ -30,11 +36,12 @@ export function hasSource(
 
 export function digestTaintReport(
   taintReport: TaintReport,
-  fnSource: TaintOperationPredicate,
-  fnSink: TaintOperationPredicate
+  srcPredicate: TaintOperationPredicate,
+  snkPredicate: TaintOperationPredicate,
+  taintPredicate?: TaintPredicate
 ) {
   const { taint, ...rest } = taintReport;
-  if (!hasSink(taintReport, fnSink)) {
+  if (!hasSink(taintReport, snkPredicate)) {
     return [];
   }
   const digestedSink = taint[0].flow[1];
@@ -42,9 +49,12 @@ export function digestTaintReport(
     const { flow, ...rest } = range;
     const digestedFlow = range.flow
       .slice(2)
-      .filter((op) => fnSource(op, taintReport));
+      .filter((op) => srcPredicate(op, taintReport));
     return digestedFlow.length !== 0 ? [{ ...rest, flow: digestedFlow }] : [];
   });
+  if (taintPredicate && !taintPredicate(digestedTaint, taintReport)) {
+    return [];
+  }
   return digestedTaint.length !== 0
     ? [{ ...rest, sink: digestedSink, taint: digestedTaint }]
     : [];
@@ -99,36 +109,28 @@ export function isNetworkSink(
     const check = (requestUrl: string): boolean => {
       if (options.crossSiteRequest) {
         const documentUrl = taintReport.loc;
-        return (
-          getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl, documentUrl)
-        );
+        return getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl);
       }
-
       return true;
     };
 
     switch (op.operation) {
       // XMLHttpRequest
       case "XMLHttpRequest.open(url)":
-        return check(taintReport.str); // foxhound-fixed (complete URL)
       case "XMLHttpRequest.send":
       case "XMLHttpRequest.setRequestHeader(value)":
-        return check(op.arguments[0]);
       // fetch
       case "fetch.url":
-        return check(taintReport.str);
       case "fetch.body":
-        return check(op.arguments[0]);
       case "fetch.header(value)":
-        return check(op.arguments[0]); // foxhound-fixed
       // sendBeacon
       case "navigator.sendBeacon":
-        return check(op.arguments[0]);
       // WebSocket
       case "WebSocket":
-        return check(op.arguments[0]); // foxhound-fixed (complete URL)
       case "WebSocket.send":
-        return check(op.arguments[0]);
+        return check(
+          getNetworkTaintOperationRequestURLArgument(op, taintReport.str)
+        );
       // // postMessage
       // case "window.postMessage":
       //   return true;
@@ -149,25 +151,22 @@ export function isNetworkSource(
     const check = (requestUrl: string): boolean => {
       if (options.crossSiteRequest) {
         const documentUrl = taintReport.loc;
-        return (
-          getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl, documentUrl)
-        );
+        return getSiteByUrl(documentUrl) !== getSiteByUrl(requestUrl);
       }
-
       return true;
     };
 
     switch (op.operation) {
       // XMLHttpRequest
       case "XMLHttpRequest.response":
-        return check(op.arguments[0]);
       // fetch
       case "fetch.json()":
       case "fetch.text()":
-        return check(op.arguments[0]); // foxhound-fixed
       // WebSocket
       case "WebSocket.MessageEvent.data":
-        return check(op.arguments[0]); // foxhound-fixed
+        return check(
+          getNetworkTaintOperationRequestURLArgument(op, taintReport.str)
+        );
       // // postMessage
       // case "MessageEvent":
       //   return true;
@@ -175,6 +174,68 @@ export function isNetworkSource(
         return false;
     }
   };
+}
+
+export function isMultiOriginNetworkTaint(): TaintPredicate {
+  return (taint, taintReport) => {
+    const uniqueDomains = _.uniq(
+      taint.flatMap(({ flow }) => {
+        const requestUrl = getNetworkTaintOperationRequestURLArgument(
+          flow[0],
+          taintReport.str
+        );
+        return URL.canParse(requestUrl) ? [new URL(requestUrl).hostname] : [];
+      })
+    );
+    return uniqueDomains.length >= 2;
+  };
+}
+
+export function getNetworkTaintOperationRequestURLArgument(
+  op: TaintOperation,
+  taintStr: string
+): string {
+  switch (op.operation) {
+    // SINKS
+    //
+    // XMLHttpRequest
+    case "XMLHttpRequest.open(url)":
+      return taintStr; // foxhound-fixed (complete URL)
+    case "XMLHttpRequest.send":
+    case "XMLHttpRequest.setRequestHeader(value)":
+      return op.arguments[0];
+    // fetch
+    case "fetch.url":
+      return taintStr;
+    case "fetch.body":
+      return op.arguments[0];
+    case "fetch.header(value)":
+      return op.arguments[0]; // foxhound-fixed
+    // sendBeacon
+    case "navigator.sendBeacon":
+      return op.arguments[0];
+    // WebSocket
+    case "WebSocket":
+      return op.arguments[0]; // foxhound-fixed (complete URL)
+    case "WebSocket.send":
+      return op.arguments[0];
+    //
+    // SOURCES
+    //
+    // XMLHttpRequest
+    case "XMLHttpRequest.response":
+      return op.arguments[0];
+    // fetch
+    case "fetch.json()":
+    case "fetch.text()":
+      return op.arguments[0]; // foxhound-fixed
+    // WebSocket
+    case "WebSocket.MessageEvent.data":
+      return op.arguments[0]; // foxhound-fixed
+    //
+    default:
+      throw new Error(`Not a network taint operation: ${op.operation}`);
+  }
 }
 
 // Loc

@@ -14,7 +14,7 @@ async function main(args: { sitesId: number; siteName: string }) {
     sitesCollection.id,
     args.siteName
   );
-  const siteEntry = store.getDocumentData(siteDocument.id) as SiteEntry;
+  const siteEntry = store.getDocumentData<SiteEntry>(siteDocument.id);
 
   const result = await runAnalyze(siteEntry, {
     headlessBrowser: false,

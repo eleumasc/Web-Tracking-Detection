@@ -46,21 +46,6 @@ export default class DocumentStore {
     return this.getCollectionById(id);
   }
 
-  importCollection(src: Collection): Collection {
-    const { id, parentId, name, meta } = src;
-    const { db } = this;
-    const stmt = db.prepare(
-      "INSERT INTO collections (id, parent, name, meta) VALUES (?, ?, ?, ?)"
-    );
-    const insertedId = stmt.run([
-      id,
-      parentId,
-      name,
-      meta ? JSON.stringify(meta) : null,
-    ]).lastInsertRowid as number;
-    return this.getCollectionById(insertedId);
-  }
-
   getCollectionById(id: number): Collection {
     const { db } = this;
     const stmt = db.prepare("SELECT * FROM collections WHERE id = ?");
@@ -151,18 +136,7 @@ export default class DocumentStore {
     );
   }
 
-  importDocument(src: Document, data: any): Document {
-    const { id, collectionId, name } = src;
-    const { db } = this;
-    const stmt = db.prepare(
-      "INSERT INTO documents (id, collection, name, data) VALUES (?, ?, ?, ?)"
-    );
-    const insertedId = stmt.run([id, collectionId, name, JSON.stringify(data)])
-      .lastInsertRowid as number;
-    return this.getDocumentById(insertedId);
-  }
-
-  getDocumentData(documentId: number): any {
+  getDocumentData<T = any>(documentId: number): T {
     const { db } = this;
     const stmt = db.prepare("SELECT data FROM documents WHERE id = ?");
     const row = stmt.get([documentId]);
@@ -171,6 +145,12 @@ export default class DocumentStore {
     }
     const { data } = row as any;
     return JSON.parse(data);
+  }
+
+  updateDocumentData(documentId: number, data: any): void {
+    const { db } = this;
+    const stmt = db.prepare("UPDATE documents SET data = ? WHERE id = ?");
+    stmt.run([JSON.stringify(data), documentId]);
   }
 
   getDocumentById(id: number): Document {
@@ -224,9 +204,9 @@ export default class DocumentStore {
     return rows.map((row) => _toDocument(row));
   }
 
-  getDocumentsWithDataByCollection(
+  getDocumentsWithDataByCollection<T = any>(
     collectionId: number
-  ): { document: Document; data: any }[] {
+  ): DocumentDataEntry<T>[] {
     const { db } = this;
     const stmt = db.prepare(
       "SELECT id, collection, name, data FROM documents WHERE collection = ? ORDER BY id"
@@ -270,4 +250,9 @@ function _toDocument(row: any): Document {
   assert(typeof collectionId === "number");
   assert(typeof name === "string");
   return { id, collectionId, name };
+}
+
+export interface DocumentDataEntry<T> {
+  document: Document;
+  data: T;
 }
