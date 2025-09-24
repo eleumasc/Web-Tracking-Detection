@@ -2,7 +2,7 @@
   "name": "login-taint-analysis",
   "version": "1.0.0",
   "scripts": {
-    "init": "npx playwright install-deps && (curl -L https://foxhound.ias.tu-bs.de/archives/foxhound_linux_v1.49.1_d17e86ff5201b144247e83051e488159ed698ee2.zip -o foxhound.zip && unzip foxhound.zip && rm foxhound.zip)",
+    "init": "npx playwright install-deps",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node src/index",
     "build": "tsc",

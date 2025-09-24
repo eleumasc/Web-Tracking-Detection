@@ -1,27 +1,20 @@
 import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
+import execOnChildProcess from "../multiprocessing/execOnChildProcess";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import openDocumentStore from "../data/openDocumentStore";
-import simulateLogin, { SimulateLoginError } from "../core/simulateLogin";
+import path from "path";
+import simulateConnect from "../core/simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
-import { AnalysisLogEntry, LTAResult } from "../core/AnalysisLogEntry";
+import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
-import { BrowserContext } from "playwright";
-import { Credential } from "../core/credential/Credential";
-import {
-  isFailure,
-  isSuccess,
-  toCompletion,
-  toFlatCompletion,
-} from "../util/Completion";
+import { getOutputPath } from "../data/outputDir";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
 import { TaintReport } from "../foxhound/types";
-import execOnChildProcess from "../multiprocessing/execOnChildProcess";
-import path from "path";
-import { rootDir } from "../env";
+import { toCompletion, toFlatCompletion } from "../util/Completion";
 
 export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
@@ -63,11 +56,7 @@ export default async function cmdAnalyze(
     // all sites
     store
       .getDocumentsWithDataByCollection<SiteEntry>(sitesCollectionId)
-      .map(({ data }) => data)
-      .filter(
-        ({ loginPageCandidates, credentials }) =>
-          Boolean(loginPageCandidates.length) && Boolean(credentials?.length)
-      ),
+      .map(({ data }) => data),
     // processed sites
     store
       .getDocumentsByCollection(outputCollection.id)
@@ -83,19 +72,14 @@ export default async function cmdAnalyze(
     { maxTasks: args.maxTasks },
     (siteEntry, queueIndex) => async () => {
       const { name: siteName } = siteEntry;
-      const screenshotPath = path.resolve(
-        rootDir,
-        "output",
-        outputCollection.name,
-        `${siteEntry.name}.png`
-      );
+      const outputPath = getOutputPath(outputCollection.name);
       console.log(`begin analysis ${siteName} [${queueIndex}]`);
       const result = await toFlatCompletion(() =>
         execOnChildProcess(runAnalyze, [
           siteEntry,
           {
             headlessBrowser: !args.noHeadlessBrowser,
-            screenshotPath,
+            outputPath,
           },
         ])
       );
@@ -111,99 +95,49 @@ export async function runAnalyze(
   siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
-    screenshotPath?: string;
+    outputPath: string;
   }
 ): Promise<AnalysisLogEntry> {
-  const { loginPageCandidates, credentials } = siteEntry;
-  const { headlessBrowser, screenshotPath } = options;
+  const { name: site } = siteEntry;
+  const { headlessBrowser, outputPath } = options;
 
-  return toCompletion(async () => {
-    const ltaResults: LTAResult[] = [];
+  const harFile = `${site}.zip`;
+  const harPath = path.join(outputPath, harFile);
 
-    outerLoop: for (const loginPageCandidate of loginPageCandidates) {
-      for (const credential of credentials ?? []) {
-        const ltaResult = await useFoxhound(
-          { headless: headlessBrowser },
-          async (browser) =>
-            runLoginTaintAnalysis(browser, {
-              loginPageCandidate,
-              credential,
-              screenshotPath,
-            })
+  return toCompletion(async () =>
+    useFoxhound(
+      {
+        headless: headlessBrowser,
+        harPath,
+      },
+      async (browser) => {
+        // capture taint reports
+        const taintReports: TaintReport[] = [];
+        await installFoxhoundTaintReporter(browser, {
+          onTaintReport: (taintReport) => {
+            taintReports.push(taintReport);
+          },
+          delayNavigationRequests: true,
+        });
+
+        const connectResult = await bomb(
+          () =>
+            simulateConnect(browser, {
+              site,
+              screenshotPath: path.join(outputPath, `${site}.png`),
+            }),
+          ANALYSIS_TIMEOUT_MS
         );
-        ltaResults.push(ltaResult);
 
-        const { loginCompletion } = ltaResult;
-        // If loginCompletion is a failure of type SimulateLoginError, stop analyzing this login page candidate.
-        if (isFailure(loginCompletion)) {
-          continue outerLoop;
-        }
-        const {
-          value: { credentialValid },
-        } = loginCompletion;
-        // If the credentials are valid, stop analyzing this site.
-        if (credentialValid) {
-          return ltaResults;
-        }
+        const storageState = await browser.storageState();
+
+        return {
+          connectResult,
+          taintReports,
+          storageState,
+          harFile,
+        };
       }
-    }
-
-    // Return the analysis log reporting all login attempts on this site.
-    return ltaResults;
-  });
-}
-
-export async function runLoginTaintAnalysis(
-  browser: BrowserContext,
-  options: {
-    loginPageCandidate: string;
-    credential: Credential;
-    screenshotPath?: string;
-  }
-): Promise<LTAResult> {
-  const { loginPageCandidate, credential, screenshotPath } = options;
-
-  // capture taint reports
-  const taintReports: TaintReport[] = [];
-  await installFoxhoundTaintReporter(browser, {
-    onTaintReport: (taintReport) => {
-      taintReports.push(taintReport);
-    },
-    delayNavigationRequests: true,
-  });
-
-  const loginCompletion = await toCompletion(
-    () =>
-      bomb(
-        () =>
-          simulateLogin(browser, {
-            loginPageCandidate,
-            credential,
-            screenshotPath,
-          }),
-        ANALYSIS_TIMEOUT_MS
-      ),
-    {
-      failureOnlyIf: (e) => e instanceof SimulateLoginError,
-    }
+    )
   );
-
-  const credentialValid =
-    isSuccess(loginCompletion) && loginCompletion.value.credentialValid;
-
-  let credentialValidExtra = {};
-  if (credentialValid) {
-    const storageState = await browser.storageState();
-    credentialValidExtra = {
-      taintReports,
-      storageState,
-    };
-  }
-
-  return {
-    loginPageCandidate,
-    credential,
-    loginCompletion,
-    ...credentialValidExtra,
-  };
 }

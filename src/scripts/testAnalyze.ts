@@ -1,8 +1,12 @@
 import assert from "assert";
-import { runAnalyze } from "../commands/cmdAnalyze";
+import currentTime from "../util/currentTime";
 import openDocumentStore from "../data/openDocumentStore";
-import { SITES_COLL_TYPE } from "../commands/cmdLoadSiteList";
+import path from "path";
+import { getOutputPath } from "../data/outputDir";
+import { rootDir } from "../env";
+import { runAnalyze } from "../commands/cmdAnalyze";
 import { SiteEntry } from "../core/SiteEntry";
+import { SITES_COLL_TYPE } from "../commands/cmdLoadSiteList";
 
 async function main(args: { sitesId: number; siteName: string }) {
   const store = openDocumentStore();
@@ -18,6 +22,7 @@ async function main(args: { sitesId: number; siteName: string }) {
 
   const result = await runAnalyze(siteEntry, {
     headlessBrowser: false,
+    outputPath: getOutputPath(`runAnalyze-${currentTime()}`),
   });
 
   console.log(result);

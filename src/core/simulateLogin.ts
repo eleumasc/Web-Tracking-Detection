@@ -53,6 +53,7 @@ export default async function simulateLogin(
   if (screenshotPath) {
     await page.screenshot({
       path: screenshotPath,
+      fullPage: true,
     });
   }
 

@@ -1,5 +1,4 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
-import cmdFetchCredentials from "./commands/cmdFetchCredentials";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
@@ -11,10 +10,10 @@ async function main() {
   yargs(hideBin(process.argv))
     .command(
       "load-site-list <pathOrUrl>",
-      "Load site list from a Tranco+SSO file",
+      "Load site list from a Tranco site list",
       (yargs) =>
         yargs.positional("pathOrUrl", {
-          describe: "Path or URL to a Tranco+SSO file",
+          describe: "Path or URL to a Tranco site list",
           type: "string",
           demandOption: true,
         }),
@@ -22,57 +21,40 @@ async function main() {
     )
 
     .command(
-      "fetch-credentials <sites-id>",
-      "Fetch credentials for site list",
+      "analyze <sitesId>",
+      "Create a new analysis",
       (yargs) =>
         yargs
-          .positional("sites-id", {
+          .positional("sitesId", {
             describe: "ID of the sites collection",
             type: "number",
             demandOption: true,
           })
-          .option("max-tasks", {
-            type: "number",
-            default: 1,
-          }),
-      (args) => cmdFetchCredentials(args)
-    )
-
-    .command(
-      "analyze <sites-id>",
-      "Create a new login taint analysis",
-      (yargs) =>
-        yargs
-          .positional("sites-id", {
-            describe: "ID of the sites collection",
-            type: "number",
-            demandOption: true,
-          })
-          .option("max-tasks", {
+          .option("maxTasks", {
             type: "number",
             default: 1,
           })
-          .option("no-headless-browser", {
+          .option("noHeadlessBrowser", {
             type: "boolean",
             default: false,
           }),
       (args) => cmdAnalyze({ action: "create", ...args })
     )
     .command(
-      "analyze:resume <output-id>",
-      "Resume an existing login taint analysis",
+      "analyze:resume <outputId>",
+      "Resume an existing analysis",
       (yargs) =>
         yargs
-          .positional("output-id", {
+          .positional("outputId", {
             describe: "ID of the analysis to resume",
             type: "number",
             demandOption: true,
           })
-          .option("max-tasks", {
+          .option("maxTasks", {
             type: "number",
             default: 1,
           })
-          .option("no-headless-browser", {
+          .option("noHeadlessBrowser", {
             type: "boolean",
             default: false,
           }),
@@ -80,24 +62,16 @@ async function main() {
     )
 
     .command(
-      "measure <analysis-id> <src-key> <snk-key>",
-      "Perform data processing from a login taint analysis",
+      "measure <analysisId>",
+      "Perform data processing from an analysis",
       (yargs) =>
         yargs
-          .positional("analysis-id", {
+          .positional("analysisId", {
             type: "number",
-            describe: "ID of the login taint analysis collection",
+            describe: "ID of the analysis collection",
             demandOption: true,
           })
-          .positional("src-key", {
-            type: "string",
-            demandOption: true,
-          })
-          .positional("snk-key", {
-            type: "string",
-            demandOption: true,
-          })
-          .option("db-filepath", {
+          .option("dbPath", {
             type: "string",
           }),
       (args) => cmdMeasure(args)

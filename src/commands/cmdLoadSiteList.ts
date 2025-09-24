@@ -1,12 +1,12 @@
+import _ from "lodash";
+import assert from "assert";
+import lineSplitter from "../util/lineSplitter";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import { parser } from "stream-json";
+import { download } from "../util/download";
 import { pipeline } from "stream/promises";
 import { SiteEntry } from "../core/SiteEntry";
-import { streamArray } from "stream-json/streamers/StreamArray";
 import { Transform, Writable } from "stream";
-import { download } from "../util/download";
-import _ from "lodash";
 
 export const SITES_COLL_TYPE = "sites";
 
@@ -38,19 +38,13 @@ export default async function cmdLoadSiteList(options: {
   const buffer: { name: string; data: SiteEntry }[] = [];
   await pipeline(
     downloadReadable,
-    parser(),
-    streamArray(),
+    lineSplitter(),
     new Transform({
       objectMode: true,
-      async transform({ value: data }, _, callback) {
+      async transform(data, _, callback) {
         try {
           const siteEntry = createSiteEntry(data);
-          if (siteEntry) {
-            callback(null, siteEntry);
-          } else {
-            // not resolved
-            callback();
-          }
+          callback(null, siteEntry);
         } catch (e) {
           console.error(e);
           callback();
@@ -81,15 +75,12 @@ export default async function cmdLoadSiteList(options: {
   process.exit(0);
 }
 
-function createSiteEntry(data: any): SiteEntry | undefined {
-  if (!data.resolved?.reachable) return undefined;
-
-  return {
-    name: data.domain,
-    rank: data.rank,
-    landingPage: data.resolved.url,
-    loginPageCandidates: _.uniq(
-      data.login_page_candidates.map((x: any) => x.login_page_candidate)
-    ),
-  };
+function createSiteEntry(data: any): SiteEntry {
+  assert(typeof data === "string");
+  const parts = data.split(",");
+  assert(parts.length === 2);
+  const [rankString, name] = parts;
+  const rank = parseInt(rankString);
+  assert(!isNaN(rank));
+  return { name, rank };
 }

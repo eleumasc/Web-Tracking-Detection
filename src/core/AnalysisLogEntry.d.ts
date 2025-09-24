@@ -1,15 +1,13 @@
 import { Completion } from "../util/Completion";
-import { Credential } from "./credential/Credential";
-import { SimulateLoginResult } from "./simulateLogin";
+import { SimulateConnectResult } from "./simulateConnect";
 import { StorageState } from "./StorageState";
 import { TaintReport } from "../foxhound/types";
 
-export type AnalysisLogEntry = Completion<LTAResult[]>;
+export type AnalysisLogEntry = Completion<CTAResult>;
 
-export type LTAResult = {
-  loginPageCandidate: string;
-  credential: Credential;
-  loginCompletion: Completion<SimulateLoginResult>;
-  taintReports?: TaintReport[];
-  storageState?: StorageState;
+export type CTAResult = {
+  connectResult: SimulateConnectResult;
+  taintReports: TaintReport[];
+  storageState: StorageState;
+  harFile: string;
 };
