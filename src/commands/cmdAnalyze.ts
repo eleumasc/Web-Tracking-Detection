@@ -10,11 +10,11 @@ import useFoxhound from "../foxhound/useFoxhound";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { getOutputPath } from "../data/outputDir";
+import { isSuccess, toCompletion, toFlatCompletion } from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
 import { TaintReport } from "../foxhound/types";
-import { toCompletion, toFlatCompletion } from "../util/Completion";
 
 export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
@@ -81,7 +81,7 @@ export default async function cmdAnalyze(
     (siteEntry, queueIndex) => async () => {
       const { name: siteName } = siteEntry;
       console.log(`begin analysis ${siteName} [${queueIndex}]`);
-      const result = await toFlatCompletion(() =>
+      const completion = await toFlatCompletion(() =>
         execWorker(runAnalyze, [
           siteEntry,
           {
@@ -91,7 +91,25 @@ export default async function cmdAnalyze(
         ])
       );
       console.log(`end analysis ${siteName} [${queueIndex}]`);
-      store.createDocument(outputCollection.id, siteName, result);
+
+      if (isSuccess(completion)) {
+        const {
+          value: { taintReports },
+        } = completion;
+        completion.value.taintReports = [];
+        const taintReportsCollection = store.createCollection(
+          outputCollection.id,
+          `taintReports:${siteEntry.name}`
+        );
+        store.bulkInsertDocuments(
+          taintReportsCollection.id,
+          taintReports.map((taintReport, index) => ({
+            name: `${index}`,
+            data: taintReport,
+          }))
+        );
+      }
+      store.createDocument(outputCollection.id, siteName, completion);
     }
   );
 
