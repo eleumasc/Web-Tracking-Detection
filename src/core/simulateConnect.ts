@@ -5,6 +5,8 @@ export type SimulateConnectResult = {
   landingPageUrl: string;
 };
 
+const NAVIGATE_TIMEOUT_MS: number = 60 * 1000; // 60 seconds
+
 const NAVIGATE_EXTRA_TIMEOUT_MS: number = 10 * 1000; // 10 seconds
 
 export default async function simulateConnect(
@@ -20,7 +22,9 @@ export default async function simulateConnect(
 
   // navigate to landing page
   try {
-    await page.goto(`http://${site}/`);
+    await page.goto(`http://${site}/`, {
+      timeout: NAVIGATE_TIMEOUT_MS,
+    });
   } catch (e) {
     throw new SimulateConnectError(String(e));
   }

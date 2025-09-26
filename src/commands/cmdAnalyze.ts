@@ -1,7 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
-import execOnChildProcess from "../multiprocessing/execOnChildProcess";
+import execWorker from "../worker/execWorker";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
@@ -67,19 +67,26 @@ export default async function cmdAnalyze(
   console.log(`Output ID: ${outputCollection.id}`);
   console.log(`${tbdSites.length} sites remaining`);
 
+  const abortController = new AbortController();
+  process.addListener("SIGINT", () => {
+    abortController.abort();
+  });
+
   await processTaskQueue(
     tbdSites,
-    { maxTasks: args.maxTasks },
+    {
+      maxTasks: args.maxTasks,
+      abortSignal: abortController.signal,
+    },
     (siteEntry, queueIndex) => async () => {
       const { name: siteName } = siteEntry;
-      const outputPath = getOutputPath(outputCollection.name);
       console.log(`begin analysis ${siteName} [${queueIndex}]`);
       const result = await toFlatCompletion(() =>
-        execOnChildProcess(runAnalyze, [
+        execWorker(runAnalyze, [
           siteEntry,
           {
             headlessBrowser: !args.noHeadlessBrowser,
-            outputPath,
+            outputName: outputCollection.name,
           },
         ])
       );
@@ -95,11 +102,13 @@ export async function runAnalyze(
   siteEntry: SiteEntry,
   options: {
     headlessBrowser: boolean;
-    outputPath: string;
+    outputName: string;
   }
 ): Promise<AnalysisLogEntry> {
   const { name: site } = siteEntry;
-  const { headlessBrowser, outputPath } = options;
+  const { headlessBrowser, outputName } = options;
+
+  const outputPath = getOutputPath(outputName);
 
   const harFile = `${site}.zip`;
   const harPath = path.join(outputPath, harFile);

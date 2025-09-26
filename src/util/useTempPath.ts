@@ -1,39 +1,36 @@
 import _ from "lodash";
 import path from "path";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync } from "fs";
+import { rootDir } from "../env";
 import { tmpdir } from "os";
 
 export default async function useTempPath<T>(
-  options: {
-    removeAtEnd?: boolean;
-  },
+  options:
+    | {
+        localTmpDir?: boolean;
+      }
+    | undefined,
   use: (tempPath: string) => Promise<T>
 ): Promise<T> {
   options = _.defaults(
     { ...options },
     {
-      removeAtEnd: true,
+      localTmpDir: false,
     }
   );
 
-  const tempPath = mkdtempSync(path.join(tmpdir(), "node-"));
-  const removeTempPath = () => {
-    rmSync(tempPath, { force: true, recursive: true });
-  };
-
-  const exitHandler = () => {
-    removeTempPath();
-  };
-  if (options.removeAtEnd) {
-    process.addListener("exit", exitHandler);
+  let tmpDir: string;
+  if (options.localTmpDir) {
+    tmpDir = path.join(rootDir, "tmp");
+    mkdirSync(tmpDir, { recursive: true });
+  } else {
+    tmpDir = tmpdir();
   }
 
+  const tempPath = mkdtempSync(path.join(tmpDir, "node-"));
   try {
     return await use(tempPath);
   } finally {
-    if (options.removeAtEnd) {
-      process.removeListener("exit", exitHandler);
-      removeTempPath();
-    }
+    rmSync(tempPath, { force: true, recursive: true });
   }
 }

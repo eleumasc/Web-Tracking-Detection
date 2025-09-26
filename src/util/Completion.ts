@@ -25,7 +25,7 @@ export const Failure = (error?: Failure["error"]): Failure => {
 Failure.from = (e: any): Failure => {
   return Failure(
     e instanceof Error
-      ? { type: e.name, message: String(e) }
+      ? { type: e.name, message: String(e.stack) }
       : { type: "string", message: String(e) }
   );
 };

@@ -2,6 +2,8 @@ import path from "path";
 import { mkdirSync, writeFileSync } from "fs";
 import { rootDir } from "../env";
 
+export const outputDir = path.join(rootDir, "output");
+
 export function writeOutputFileSync(
   filename: string,
   data: string | NodeJS.ArrayBufferView
@@ -12,7 +14,7 @@ export function writeOutputFileSync(
 }
 
 export function getOutputPath(name: string): string {
-  const outputPath = path.join(rootDir, "output", name);
+  const outputPath = path.join(outputDir, name);
 
   mkdirSync(path.dirname(outputPath), { recursive: true });
 

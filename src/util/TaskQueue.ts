@@ -1,3 +1,4 @@
+import _ from "lodash";
 import { queue, QueueObject } from "async";
 
 export type Task = () => Promise<void>;
@@ -8,10 +9,17 @@ export async function useTaskQueue<T>(
   options:
     | {
         maxTasks?: number;
+        abortSignal?: AbortSignal;
       }
     | undefined,
   use: (taskQueue: TaskQueue) => Promise<T>
 ): Promise<T> {
+  options = _.defaults(
+    { ...options },
+    {
+      maxTasks: 1,
+    }
+  );
   const taskQueue = queue<Task, unknown>(async (task, callback) => {
     try {
       await task();
@@ -19,7 +27,14 @@ export async function useTaskQueue<T>(
     } catch (error) {
       callback(error);
     }
-  }, options?.maxTasks ?? 1);
+  }, options.maxTasks);
+  const { abortSignal } = options;
+  if (abortSignal) {
+    abortSignal.addEventListener("abort", () => {
+      taskQueue.remove(() => true);
+      console.error("Aborted, waiting for running tasks to terminate...");
+    });
+  }
   try {
     return await use(taskQueue);
   } finally {
