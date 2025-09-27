@@ -15,8 +15,7 @@ A tool for automated taint analysis of login pages.
 3. Run the init script: `npm run init`
 4. Copy `.env.example` to `.env`, then edit `.env` by setting the correct values
 5. Build: `npm run build`
-6. Load Project Foxhound (zip package) into project root as foxhound.zip
-7. Build worker Docker image: `docker build -t lta-worker .`
+6. Build worker Docker image: `docker build -t lta-worker .`
 
 ## How to use
 
