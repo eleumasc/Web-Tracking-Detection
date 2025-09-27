@@ -5,7 +5,7 @@ RUN apt install unzip
 
 WORKDIR /app
 
-COPY ./foxhound.zip ./foxhound.zip
+COPY ./foxhound-fixed.zip ./foxhound.zip
 RUN unzip foxhound.zip
 
 COPY ./package.json ./package.json
