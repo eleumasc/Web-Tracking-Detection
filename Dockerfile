@@ -15,7 +15,7 @@ RUN npm i
 RUN npm run init
 
 COPY ./tsconfig.json ./tsconfig.json
-COPY ./inbrowser ./inbrowser
+COPY ./setup ./setup
 COPY ./src ./src
 
 RUN npm run build

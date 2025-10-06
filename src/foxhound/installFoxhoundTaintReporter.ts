@@ -16,7 +16,7 @@ export default async function installFoxhoundTaintReporter(
   const { onTaintReport, delayNavigationRequests } = options;
 
   await context.addInitScript({
-    path: path.resolve(rootDir, "inbrowser", "foxhoundTaintReporter.js"),
+    path: path.resolve(rootDir, "setup", "foxhoundTaintReporter.js"),
   });
 
   await context.exposeBinding(
