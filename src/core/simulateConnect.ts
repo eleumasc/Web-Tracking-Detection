@@ -34,10 +34,7 @@ export default async function simulateConnect(
 
   // take screenshot
   if (screenshotPath) {
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-    });
+    await page.screenshot({ path: screenshotPath });
   }
 
   return { landingPageUrl };

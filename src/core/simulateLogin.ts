@@ -51,10 +51,7 @@ export default async function simulateLogin(
 
   // take screenshot
   if (screenshotPath) {
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-    });
+    await page.screenshot({ path: screenshotPath });
   }
 
   // validate login

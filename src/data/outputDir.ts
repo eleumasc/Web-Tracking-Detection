@@ -8,15 +8,19 @@ export function writeOutputFileSync(
   filename: string,
   data: string | NodeJS.ArrayBufferView
 ): void {
-  const filepath = getOutputPath(filename);
+  createOutputDir(path.dirname(filename));
 
-  writeFileSync(filepath, data);
+  writeFileSync(getOutputPath(filename), data);
+}
+
+export function createOutputDir(name: string): string {
+  const outputPath = path.join(outputDir, name);
+
+  mkdirSync(outputPath, { recursive: true });
+
+  return outputPath;
 }
 
 export function getOutputPath(name: string): string {
-  const outputPath = path.join(outputDir, name);
-
-  mkdirSync(path.dirname(outputPath), { recursive: true });
-
-  return outputPath;
+  return path.join(outputDir, name);
 }

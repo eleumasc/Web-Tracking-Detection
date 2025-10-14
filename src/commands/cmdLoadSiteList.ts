@@ -54,7 +54,6 @@ export default async function cmdLoadSiteList(options: {
     new Writable({
       objectMode: true,
       write(siteEntry: SiteEntry, _, callback) {
-        console.log(`${siteEntry.name} [${siteEntry.rank}]`);
         buffer.push({ name: siteEntry.name, data: siteEntry });
         if (buffer.length >= BUFFER_SIZE) {
           store.bulkInsertDocuments(sitesCollection.id, buffer);

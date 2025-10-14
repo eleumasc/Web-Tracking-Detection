@@ -9,7 +9,7 @@ import simulateConnect from "../core/simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
-import { getOutputPath } from "../data/outputDir";
+import { createOutputDir } from "../data/outputDir";
 import { isSuccess, toCompletion, toFlatCompletion } from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
@@ -45,17 +45,17 @@ export default async function cmdAnalyze(
             assert(sitesCollection.meta.type === SITES_COLL_TYPE);
             return sitesCollection.id;
           })(),
-          currentTime().toString(),
+          `${currentTime()}-Analyze-${args.sitesId}`,
           { type: ANALYSIS_LOGS_COLL_TYPE }
         )
       : store.getCollectionById(args.outputId);
   assert(outputCollection.meta.type === ANALYSIS_LOGS_COLL_TYPE);
-  const sitesCollectionId = outputCollection.parentId!;
+  const sitesId = outputCollection.parentId!;
 
   const tbdSites = _.differenceWith(
     // all sites
     store
-      .getDocumentsWithDataByCollection<SiteEntry>(sitesCollectionId)
+      .getDocumentsWithDataByCollection<SiteEntry>(sitesId)
       .map(({ data }) => data),
     // processed sites
     store
@@ -126,7 +126,7 @@ export async function runAnalyze(
   const { name: site } = siteEntry;
   const { headlessBrowser, outputName } = options;
 
-  const outputPath = getOutputPath(outputName);
+  const outputPath = createOutputDir(outputName);
 
   const harFile = `${site}.zip`;
   const harPath = path.join(outputPath, harFile);
@@ -144,7 +144,6 @@ export async function runAnalyze(
           onTaintReport: (taintReport) => {
             taintReports.push(taintReport);
           },
-          delayNavigationRequests: true,
         });
 
         const connectResult = await bomb(

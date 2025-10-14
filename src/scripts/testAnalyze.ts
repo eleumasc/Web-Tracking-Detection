@@ -19,7 +19,7 @@ async function main(args: { sitesId: number; siteName: string }) {
 
   const result = await runAnalyze(siteEntry, {
     headlessBrowser: false,
-    outputName: `testAnalyze-${currentTime()}`,
+    outputName: `${currentTime()}-testAnalyze`,
   });
 
   console.log(result);

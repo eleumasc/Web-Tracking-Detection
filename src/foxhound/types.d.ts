@@ -1,14 +1,10 @@
-export interface TaintReport extends TaintReportWithoutTaint {
-  taint: Taint;
-}
-
-export interface TaintReportWithoutTaint {
-  loc: string;
-  parentloc: string;
-  referrer: string;
-  sink: string;
-  str: string;
+export interface TaintReport {
   subframe: boolean;
+  loc: string;
+  baseURI: string;
+  sink: TaintOperation;
+  str: string;
+  taint: Taint;
   stack: any;
   timestamp: number;
 }
@@ -18,8 +14,10 @@ export type Taint = TaintRange[];
 export interface TaintRange {
   begin: number;
   end: number;
-  flow: TaintOperation[];
+  flow: TaintFlow;
 }
+
+export type TaintFlow = TaintOperation;
 
 export interface TaintOperation {
   arguments: string[];

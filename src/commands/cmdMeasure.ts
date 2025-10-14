@@ -2,27 +2,43 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import openDocumentStore from "../data/openDocumentStore";
+import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
+import { enumerate } from "iter-tools";
+import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
+import { getStorageOperationsFromTaintReports } from "../core/AbstractFlow";
+import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
-import { writeOutputFileSync } from "../data/outputDir";
+import { TaintReport } from "../foxhound/types";
+import {
+  getSyntacticStorageFlowHistory,
+  getTaintStorageFlowHistory,
+  StorageFlowHistory,
+} from "../core/StorageFlowHistory";
 
-export default function cmdMeasure(args: {
-  analysisId: number;
-  dbPath: string | undefined;
-}) {
+export default function cmdMeasure(args: { analysisId: number }) {
   const { analysisId } = args;
 
-  const store = openDocumentStore(args.dbPath);
+  const store = openDocumentStore();
 
   const analysisCollection = store.getCollectionById(analysisId);
   assert(analysisCollection, ANALYSIS_LOGS_COLL_TYPE);
 
-  for (const analysisDocument of store.getDocumentsByCollection(
-    analysisCollection.id
+  const outputName = `${currentTime()}-Measure-${analysisId}`;
+
+  let totalSitesCount = 0;
+  let successSitesCount = 0;
+  let syntacticFlowsCount = 0;
+  let onlyTaintFlowsCount = 0;
+
+  for (const [documentIndex, analysisDocument] of enumerate(
+    store.getDocumentsByCollection(analysisCollection.id)
   )) {
     const site = analysisDocument.name;
-    console.log(site);
+    console.log(site, documentIndex);
+
+    totalSitesCount += 1;
 
     const analysisLogEntry = store.getDocumentData<AnalysisLogEntry>(
       analysisDocument.id
@@ -30,12 +46,132 @@ export default function cmdMeasure(args: {
 
     if (isFailure(analysisLogEntry)) continue;
 
-    // TODO: implement
+    successSitesCount += 1;
+
+    const taintReports = (() => {
+      const taintReportsCollection = store.getCollectionByName(
+        analysisCollection.id,
+        `taintReports:${site}`
+      );
+      return store
+        .getDocumentsWithDataByCollection<TaintReport>(
+          taintReportsCollection.id
+        )
+        .map(({ data }) => data);
+    })();
+    analysisLogEntry.value.taintReports = taintReports;
+
+    const storageOperations =
+      getStorageOperationsFromTaintReports(taintReports);
+    const harController = new HarController(
+      path.join(
+        getOutputPath(analysisCollection.name),
+        analysisLogEntry.value.harFile
+      )
+    );
+
+    // TaintStorageFlowHistory
+    const taintHistory = getTaintStorageFlowHistory(taintReports);
+
+    // SyntacticStorageFlowHistory
+    const syntacticHistory = getSyntacticStorageFlowHistory(
+      storageOperations,
+      harController.entries(),
+      harController
+    );
+
+    const digestHistory = (history: StorageFlowHistory) =>
+      _.values(_.groupBy(history, (x) => x.itemId)).filter((group) =>
+        group.some(({ type }) => type === "Send")
+      );
+
+    const digestedTaintHistory = digestHistory(taintHistory);
+    if (digestedTaintHistory.length !== 0) {
+      writeOutputFileSync(
+        path.join(outputName, `${site}.Td.json`),
+        JSON.stringify({ site, taintHistory: digestedTaintHistory })
+      );
+    }
+    const digestedSyntacticHistory = digestHistory(syntacticHistory);
+    if (digestedSyntacticHistory.length !== 0) {
+      writeOutputFileSync(
+        path.join(outputName, `${site}.Sd.json`),
+        JSON.stringify({ site, syntacticHistory: digestedSyntacticHistory })
+      );
+    }
+
+    const toUniqFlows = (history: StorageFlowHistory) =>
+      _.uniqBy(
+        history.flatMap((flow): any[] => {
+          const { type, itemId, value } = flow;
+          if (type === "Create") {
+            const { creatorOrigin } = flow;
+            return [
+              {
+                type,
+                itemId,
+                value,
+                creatorOrigin,
+              },
+            ];
+          } else {
+            const { senderOrigin, receiverOrigin } = flow;
+            return [
+              {
+                type,
+                itemId,
+                value,
+                senderOrigin,
+                receiverOrigin,
+              },
+            ];
+          }
+        }),
+        (x) => JSON.stringify(x)
+      );
+
+    const uniqTaintFlows = toUniqFlows(taintHistory);
+    const uniqSyntacticFlows = toUniqFlows(syntacticHistory);
+
+    const intersectFlows = _.intersectionWith(
+      uniqTaintFlows,
+      uniqSyntacticFlows,
+      _.isEqual
+    );
+    const onlyTaintFlows = _.differenceWith(
+      uniqTaintFlows,
+      uniqSyntacticFlows,
+      _.isEqual
+    );
+    const onlySyntacticFlows = _.differenceWith(
+      uniqSyntacticFlows,
+      uniqTaintFlows,
+      _.isEqual
+    );
+    writeOutputFileSync(
+      path.join(outputName, `${site}.json`),
+      JSON.stringify({
+        site,
+        intersectFlows,
+        onlyTaintFlows,
+        onlySyntacticFlows,
+      })
+    );
+
+    syntacticFlowsCount += uniqSyntacticFlows.length;
+    onlyTaintFlowsCount += onlyTaintFlows.length;
   }
 
-  const report = {};
+  const report = {
+    totalSitesCount,
+    successSitesCount,
+    syntacticFlowsCount,
+    onlyTaintFlowsCount,
+    taintEnhancement: onlyTaintFlowsCount / syntacticFlowsCount,
+  };
+  console.log(report);
   writeOutputFileSync(
-    `Measure-${currentTime()}-${analysisId}.json`,
+    path.join(outputName, "report.json"),
     JSON.stringify(report)
   );
 
