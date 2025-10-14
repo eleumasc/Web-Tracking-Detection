@@ -1,0 +1,18 @@
+//
+// Extra prefs for playwright.cfg
+
+// Custom: Disable ETP
+pref("browser.contentblocking.category", "custom");
+pref("network.cookie.cookieBehavior", 0);
+pref("privacy.trackingprotection.pbmode.enabled", false);
+pref("privacy.trackingprotection.enabled", false);
+pref("privacy.trackingprotection.emailtracking.pbmode.enabled", false);
+pref("privacy.trackingprotection.emailtracking.enabled", false);
+pref("privacy.trackingprotection.enabled", false);
+pref("privacy.trackingprotection.cryptomining.enabled", false);
+pref("privacy.trackingprotection.fingerprinting.enabled", false);
+pref("privacy.fingerprintingProtection.pbmode", false);
+pref("privacy.fingerprintingProtection", false);
+
+// Custom: Disable source pragmas
+pref("javascript.options.source_pragmas", false);
