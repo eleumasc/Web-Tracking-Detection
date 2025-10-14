@@ -85,11 +85,6 @@ export function getSyntacticStorageFlowHistory(
   } of harEntries) {
     const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
     if (!initiator) continue;
-    if (!URL.canParse(initiator)) {
-      // TODO: set pref javascript.options.source_pragmas to false
-      console.error(`Cannot parse initiator: ${initiator}`);
-      continue;
-    }
     const senderOrigin = originFromUrl(initiator);
     const receiverOrigin = originFromUrl(url);
     // add all storage items whose value syntactically matches the URL
