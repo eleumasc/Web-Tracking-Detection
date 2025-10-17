@@ -14,6 +14,7 @@ import { TaintReport } from "../foxhound/types";
 import {
   getSyntacticStorageFlowHistory,
   getTaintStorageFlowHistory,
+  StorageFlow,
   StorageFlowHistory,
 } from "../core/StorageFlowHistory";
 
@@ -103,8 +104,14 @@ export default function cmdMeasure(args: { analysisId: number }) {
     const toUniqStorageFlows = (history: StorageFlowHistory) =>
       _.uniqBy(history, (x) => JSON.stringify(x));
 
-    const taintFlows = toUniqStorageFlows(taintHistory);
-    const syntacticFlows = toUniqStorageFlows(syntacticHistory);
+    const prefilterStorageFlows = (
+      storageFlows: StorageFlow[]
+    ): StorageFlow[] => storageFlows.filter(({ value }) => value.length >= 8);
+
+    const taintFlows = prefilterStorageFlows(toUniqStorageFlows(taintHistory));
+    const syntacticFlows = prefilterStorageFlows(
+      toUniqStorageFlows(syntacticHistory)
+    );
 
     const intersectFlows = _.intersectionWith(
       taintFlows,
