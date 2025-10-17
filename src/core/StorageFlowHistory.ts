@@ -81,13 +81,13 @@ export function getSyntacticStorageFlowHistory(
   // Send
   for (const {
     startedDateTime: requestDateTime,
-    request: { url, postData, headers },
+    request: { url, postData: postDataObj, headers },
   } of harEntries) {
     const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
     if (!initiator) continue;
+    const postData = postDataObj && harController.readPostData(postDataObj);
     const senderOrigin = originFromUrl(initiator);
     const receiverOrigin = originFromUrl(url);
-    // add all storage items whose value syntactically matches the URL
     const candidateStorageReads = _.toPairs(
       _.mapValues(
         _.groupBy(
@@ -106,11 +106,10 @@ export function getSyntacticStorageFlowHistory(
       )
     ); // .filter(([value]) => zxcvbn(value).guesses_log10 >= 9); // filter storage items à la Journey
     for (const [value, valueGroup] of candidateStorageReads) {
-      if (!syntacticMatchUrl(value, url)) continue;
-      if (postData) {
-        if (!syntacticMatch(value, harController.readPostData(postData)))
-          continue;
-      }
+      const syntacticMatches =
+        syntacticMatchUrl(value, url) ||
+        (postData && syntacticMatch(value, postData));
+      if (!syntacticMatches) continue;
       for (const { itemId, value } of valueGroup) {
         history.push({
           type: "Send",
