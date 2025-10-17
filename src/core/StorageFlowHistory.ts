@@ -12,17 +12,9 @@ export type StorageFlowHistory = StorageFlow[];
 export type StorageFlow = {
   itemId: string;
   value: string;
-} & (
-  | {
-      type: "Create";
-      creatorOrigin: string;
-    }
-  | {
-      type: "Send";
-      senderOrigin: string;
-      receiverOrigin: string;
-    }
-);
+  senderOrigin: string;
+  receiverOrigin: string;
+};
 
 export function getTaintStorageFlowHistory(
   taintReports: TaintReport[]
@@ -31,15 +23,7 @@ export function getTaintStorageFlowHistory(
   for (const flow of getAbstractFlowsFromTaintReports(taintReports)) {
     const { sources, sink } = flow;
     const { type: sinkType } = sink;
-    if (sinkType === "Storage") {
-      const { location, itemId, value } = sink;
-      history.push({
-        type: "Create",
-        itemId,
-        value,
-        creatorOrigin: originFromUrl(location),
-      });
-    } else if (sinkType === "Network") {
+    if (sinkType === "Network") {
       const { location, requestUrl } = sink;
       const senderOrigin = originFromUrl(location);
       const receiverOrigin = originFromUrl(requestUrl);
@@ -47,7 +31,6 @@ export function getTaintStorageFlowHistory(
         (source) => source.type === "Storage"
       )) {
         history.push({
-          type: "Send",
           itemId,
           value,
           senderOrigin,
@@ -65,20 +48,6 @@ export function getSyntacticStorageFlowHistory(
   harController: HarController
 ): StorageFlowHistory {
   const history: StorageFlowHistory = [];
-
-  // Create
-  for (const { location, itemId, value } of storageOperations.filter(
-    ({ type }) => type === "Write"
-  )) {
-    history.push({
-      type: "Create",
-      itemId,
-      value,
-      creatorOrigin: originFromUrl(location),
-    });
-  }
-
-  // Send
   for (const {
     startedDateTime: requestDateTime,
     request: { url, postData: postDataObj, headers },
@@ -88,7 +57,7 @@ export function getSyntacticStorageFlowHistory(
     const postData = postDataObj && harController.readPostData(postDataObj);
     const senderOrigin = originFromUrl(initiator);
     const receiverOrigin = originFromUrl(url);
-    const candidateStorageReads = _.toPairs(
+    const candidates = _.toPairs(
       _.mapValues(
         _.groupBy(
           storageOperations
@@ -105,14 +74,13 @@ export function getSyntacticStorageFlowHistory(
           )
       )
     ); // .filter(([value]) => zxcvbn(value).guesses_log10 >= 9); // filter storage items à la Journey
-    for (const [value, valueGroup] of candidateStorageReads) {
+    for (const [value, valueGroup] of candidates) {
       const syntacticMatches =
         syntacticMatchUrl(value, url) ||
         (postData && syntacticMatch(value, postData));
       if (!syntacticMatches) continue;
       for (const { itemId, value } of valueGroup) {
         history.push({
-          type: "Send",
           itemId,
           value,
           senderOrigin,
@@ -121,7 +89,6 @@ export function getSyntacticStorageFlowHistory(
       }
     }
   }
-
   return history;
 }
 

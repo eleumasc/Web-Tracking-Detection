@@ -70,10 +70,12 @@ export default function cmdMeasure(args: { analysisId: number }) {
       )
     );
 
-    // TaintStorageFlowHistory
+    const storageWrites = storageOperations.filter(
+      ({ type }) => type === "Write"
+    );
+
     const taintHistory = getTaintStorageFlowHistory(taintReports);
 
-    // SyntacticStorageFlowHistory
     const syntacticHistory = getSyntacticStorageFlowHistory(
       storageOperations,
       harController.entries(),
@@ -81,9 +83,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
     );
 
     const digestHistory = (history: StorageFlowHistory) =>
-      _.values(_.groupBy(history, (x) => x.itemId)).filter((group) =>
-        group.some(({ type }) => type === "Send")
-      );
+      _.values(_.groupBy(history, (x) => x.itemId));
 
     const digestedTaintHistory = digestHistory(taintHistory);
     if (digestedTaintHistory.length !== 0) {
@@ -100,65 +100,39 @@ export default function cmdMeasure(args: { analysisId: number }) {
       );
     }
 
-    const toUniqFlows = (history: StorageFlowHistory) =>
-      _.uniqBy(
-        history.flatMap((flow): any[] => {
-          const { type, itemId, value } = flow;
-          if (type === "Create") {
-            const { creatorOrigin } = flow;
-            return [
-              {
-                type,
-                itemId,
-                value,
-                creatorOrigin,
-              },
-            ];
-          } else {
-            const { senderOrigin, receiverOrigin } = flow;
-            return [
-              {
-                type,
-                itemId,
-                value,
-                senderOrigin,
-                receiverOrigin,
-              },
-            ];
-          }
-        }),
-        (x) => JSON.stringify(x)
-      );
+    const toUniqStorageFlows = (history: StorageFlowHistory) =>
+      _.uniqBy(history, (x) => JSON.stringify(x));
 
-    const uniqTaintFlows = toUniqFlows(taintHistory);
-    const uniqSyntacticFlows = toUniqFlows(syntacticHistory);
+    const taintFlows = toUniqStorageFlows(taintHistory);
+    const syntacticFlows = toUniqStorageFlows(syntacticHistory);
 
     const intersectFlows = _.intersectionWith(
-      uniqTaintFlows,
-      uniqSyntacticFlows,
+      taintFlows,
+      syntacticFlows,
       _.isEqual
     );
     const onlyTaintFlows = _.differenceWith(
-      uniqTaintFlows,
-      uniqSyntacticFlows,
+      taintFlows,
+      syntacticFlows,
       _.isEqual
     );
     const onlySyntacticFlows = _.differenceWith(
-      uniqSyntacticFlows,
-      uniqTaintFlows,
+      syntacticFlows,
+      taintFlows,
       _.isEqual
     );
     writeOutputFileSync(
       path.join(outputName, `${site}.json`),
       JSON.stringify({
         site,
+        storageWrites,
         intersectFlows,
         onlyTaintFlows,
         onlySyntacticFlows,
       })
     );
 
-    syntacticFlowsCount += uniqSyntacticFlows.length;
+    syntacticFlowsCount += syntacticFlows.length;
     onlyTaintFlowsCount += onlyTaintFlows.length;
   }
 
