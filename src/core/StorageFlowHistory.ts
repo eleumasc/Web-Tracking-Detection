@@ -12,9 +12,13 @@ export type StorageFlowHistory = StorageFlow[];
 export type StorageFlow = {
   itemId: string;
   value: string;
-  senderOrigin: string;
+  // senderOrigin: string;
   receiverOrigin: string;
 };
+
+function originFromUrl(url: string): string {
+  return new URL(url).hostname;
+}
 
 export function getTaintStorageFlowHistory(
   taintReports: TaintReport[]
@@ -25,7 +29,7 @@ export function getTaintStorageFlowHistory(
     const { type: sinkType } = sink;
     if (sinkType === "Network") {
       const { location, requestUrl } = sink;
-      const senderOrigin = originFromUrl(location);
+      // const senderOrigin = originFromUrl(location);
       const receiverOrigin = originFromUrl(requestUrl);
       for (const { itemId, value } of sources.filter(
         (source) => source.type === "Storage"
@@ -33,7 +37,7 @@ export function getTaintStorageFlowHistory(
         history.push({
           itemId,
           value,
-          senderOrigin,
+          // senderOrigin,
           receiverOrigin,
         });
       }
@@ -48,42 +52,40 @@ export function getSyntacticStorageFlowHistory(
   harController: HarController
 ): StorageFlowHistory {
   const history: StorageFlowHistory = [];
+  const storageReadGroups = _.toPairs(
+    _.mapValues(
+      _.groupBy(
+        storageOperations.filter(({ type }) => type === "Read"),
+        ({ value }) => value
+      ),
+      (valueGroup) =>
+        _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
+          // minBy because we consider the first moment when value is assigned to that storage item
+          (itemIdGroup) => _.minBy(itemIdGroup, ({ timestamp }) => timestamp)!
+        )
+    )
+  );
   for (const {
     startedDateTime: requestDateTime,
     request: { url, postData: postDataObj, headers },
   } of harEntries) {
-    const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
-    if (!initiator) continue;
+    const requestTime = Date.parse(requestDateTime);
+    // const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
+    // if (!initiator) continue;
     const postData = postDataObj && harController.readPostData(postDataObj);
-    const senderOrigin = originFromUrl(initiator);
+    // const senderOrigin = originFromUrl(initiator);
     const receiverOrigin = originFromUrl(url);
-    const candidates = _.toPairs(
-      _.mapValues(
-        _.groupBy(
-          storageOperations
-            .filter(({ type }) => type === "Read")
-            .filter(
-              ({ timestamp: storageOperationTime }) =>
-                storageOperationTime < Date.parse(requestDateTime)
-            ),
-          ({ value }) => value
-        ),
-        (valueGroup) =>
-          _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
-            (iidGroup) => _.maxBy(iidGroup, ({ timestamp }) => timestamp)!
-          )
-      )
-    ); // .filter(([value]) => zxcvbn(value).guesses_log10 >= 9); // filter storage items à la Journey
-    for (const [value, valueGroup] of candidates) {
+    for (const [value, valueGroup] of storageReadGroups) {
       const syntacticMatches =
         syntacticMatchUrl(value, url) ||
         (postData && syntacticMatch(value, postData));
       if (!syntacticMatches) continue;
-      for (const { itemId, value } of valueGroup) {
+      for (const { itemId, value, timestamp: storageReadTime } of valueGroup) {
+        if (!(storageReadTime < requestTime)) continue;
         history.push({
           itemId,
           value,
-          senderOrigin,
+          // senderOrigin,
           receiverOrigin,
         });
       }
@@ -112,8 +114,4 @@ function syntacticMatch(storageValue: string, str: string): boolean {
   }
 
   return false;
-}
-
-function originFromUrl(url: string): string {
-  return new URL(url).hostname;
 }

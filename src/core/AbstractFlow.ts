@@ -82,19 +82,11 @@ function toAbstractNetworkOperation(
     case "XMLHttpRequest.send":
       requestUrl = taintOperation.arguments[0];
       break;
-    case "XMLHttpRequest.setRequestHeader(name)":
-    case "XMLHttpRequest.setRequestHeader(value)":
-      requestUrl = taintOperation.arguments[0];
-      break;
     // fetch
     case "fetch.url":
       requestUrl = str;
       break;
     case "fetch.body":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    case "fetch.header(key)":
-    case "fetch.header(value)":
       requestUrl = taintOperation.arguments[0];
       break;
     // sendBeacon

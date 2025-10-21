@@ -1,6 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
+import isLoEqual from "../util/isLoEqual";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
@@ -76,63 +77,66 @@ export default function cmdMeasure(args: { analysisId: number }) {
     );
 
     const taintHistory = getTaintStorageFlowHistory(taintReports);
-
     const syntacticHistory = getSyntacticStorageFlowHistory(
       storageOperations,
       harController.entries(),
       harController
     );
 
-    const digestHistory = (history: StorageFlowHistory) =>
-      _.values(_.groupBy(history, (x) => x.itemId));
+    type AggregateStorageFlow = {
+      itemId: string;
+      receiverOrigin: string;
+      _values: string[]; // list of possible values that flowed from storage source to network sink
+    };
 
-    const digestedTaintHistory = digestHistory(taintHistory);
-    if (digestedTaintHistory.length !== 0) {
-      writeOutputFileSync(
-        path.join(outputName, `${site}.Td.json`),
-        JSON.stringify({ site, taintHistory: digestedTaintHistory })
-      );
-    }
-    const digestedSyntacticHistory = digestHistory(syntacticHistory);
-    if (digestedSyntacticHistory.length !== 0) {
-      writeOutputFileSync(
-        path.join(outputName, `${site}.Sd.json`),
-        JSON.stringify({ site, syntacticHistory: digestedSyntacticHistory })
-      );
-    }
-
-    const toUniqStorageFlows = (history: StorageFlowHistory) =>
-      _.uniqBy(history, (x) => JSON.stringify(x));
+    const toAggregateStorageFlows = (
+      storageFlows: StorageFlow[]
+    ): AggregateStorageFlow[] =>
+      _.values(
+        _.groupBy(storageFlows, ({ itemId, receiverOrigin }) =>
+          JSON.stringify({ itemId, receiverOrigin })
+        )
+      ).map((keyGroup) => {
+        const { itemId, receiverOrigin } = keyGroup[0];
+        return {
+          itemId,
+          receiverOrigin,
+          _values: _.uniq(keyGroup.map(({ value }) => value)),
+        };
+      });
 
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
     ): StorageFlow[] => storageFlows.filter(({ value }) => value.length >= 8);
 
-    const taintFlows = prefilterStorageFlows(toUniqStorageFlows(taintHistory));
-    const syntacticFlows = prefilterStorageFlows(
-      toUniqStorageFlows(syntacticHistory)
+    const taintFlows = toAggregateStorageFlows(
+      prefilterStorageFlows(taintHistory)
+    );
+    const syntacticFlows = toAggregateStorageFlows(
+      prefilterStorageFlows(syntacticHistory)
     );
 
     const intersectFlows = _.intersectionWith(
       taintFlows,
       syntacticFlows,
-      _.isEqual
+      isLoEqual
     );
     const onlyTaintFlows = _.differenceWith(
       taintFlows,
       syntacticFlows,
-      _.isEqual
+      isLoEqual
     );
     const onlySyntacticFlows = _.differenceWith(
       syntacticFlows,
       taintFlows,
-      _.isEqual
+      isLoEqual
     );
+
     writeOutputFileSync(
       path.join(outputName, `${site}.json`),
       JSON.stringify({
         site,
-        storageWrites,
+        // storageWrites,
         intersectFlows,
         onlyTaintFlows,
         onlySyntacticFlows,
