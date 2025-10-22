@@ -71,9 +71,10 @@ export function getSyntacticStorageFlowHistory(
   for (const harEntry of harEntries) {
     const {
       startedDateTime: requestDateTime,
-      request: { url: requestUrl },
+      request: { url: requestUrl, postData },
     } = harEntry;
     const requestTime = Date.parse(requestDateTime);
+    const requestURL = new URL(requestUrl);
 
     // const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
     // if (!initiator) continue;
@@ -81,10 +82,17 @@ export function getSyntacticStorageFlowHistory(
     // const senderOrigin = originFromUrl(initiator);
     const receiverOrigin = originFromUrl(requestUrl);
 
-    const syntacticMatch = syntacticMatchCookieguard(harEntry, harController);
+    const syntacticMatch = syntacticMatchJourney; // syntacticMatchJourney or syntacticMatchCookieguard
+    const matchers = [
+      syntacticMatch(requestURL.pathname),
+      syntacticMatch(requestURL.search),
+      ...(postData
+        ? [syntacticMatch(harController.readPostData(postData))]
+        : []),
+    ];
 
     for (const [storageValue, storageValueGroup] of storageReadGroups) {
-      if (!syntacticMatch(storageValue)) continue;
+      if (!matchers.some((match) => match(storageValue))) continue;
       for (const {
         itemId,
         value,
@@ -103,10 +111,7 @@ export function getSyntacticStorageFlowHistory(
   return history;
 }
 
-function syntacticMatchJourney(
-  harEntry: HarEntry,
-  harController: HarController
-) {
+function syntacticMatchJourney(requestValue: string) {
   type Decoder = (value: string) => string[];
 
   const decodeURLEncoding: Decoder = (value) => {
@@ -173,10 +178,10 @@ function syntacticMatchJourney(
       .filter((value) => value.length !== 0);
   };
   function* generateCandidateRequestValues(
-    initialValues: string[]
+    initialValue: string
   ): Generator<string> {
     const MAX_ITERATION: number = 1000;
-    const queue: string[] = [...initialValues];
+    const queue: string[] = [initialValue];
     let value: string | undefined;
     let iteration: number = 0;
     while (
@@ -200,19 +205,7 @@ function syntacticMatchJourney(
     }
   }
 
-  function* extractInitialRequestValues(): Generator<string> {
-    const {
-      request: { url, postData: postDataObj },
-    } = harEntry;
-    yield new URL(url).search; // query
-    if (postDataObj) {
-      yield harController.readPostData(postDataObj); // POST data
-    }
-  }
-
-  const requestValues = [
-    ...generateCandidateRequestValues([...extractInitialRequestValues()]),
-  ];
+  const requestValues = [...generateCandidateRequestValues(requestValue)];
 
   return function (storageValue: string): boolean {
     for (const requestValue of requestValues) {
@@ -227,16 +220,7 @@ function syntacticMatchJourney(
   };
 }
 
-function syntacticMatchCookieguard(
-  harEntry: HarEntry,
-  harController: HarController
-) {
-  const {
-    request: { url: requestUrl },
-  } = harEntry;
-
-  const query = new URL(requestUrl).search; // query
-
+function syntacticMatchCookieguard(requestValue: string) {
   return function (storageValue: string): boolean {
     const tokens = storageValue
       .split(/[^A-Za-z0-9]/)
@@ -244,7 +228,8 @@ function syntacticMatchCookieguard(
 
     const doesQueryIncludeSomeToken = (
       encoder?: (value: string) => string
-    ): boolean => tokens.some((t) => query.includes(encoder ? encoder(t) : t));
+    ): boolean =>
+      tokens.some((t) => requestValue.includes(encoder ? encoder(t) : t));
 
     return (
       doesQueryIncludeSomeToken() ||
