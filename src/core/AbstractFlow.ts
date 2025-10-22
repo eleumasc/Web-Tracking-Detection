@@ -286,7 +286,12 @@ export function getStorageOperationsFromTaintReports(
   };
   const storageOperations: StorageOperation[] = [];
   for (const taintReport of taintReports) {
-    const { sink: taintSink, taint, timestamp } = taintReport;
+    const { sink: taintSink, taint, timestamp: unsafeTimestamp } = taintReport;
+    const timestamp =
+      typeof unsafeTimestamp === "number"
+        ? unsafeTimestamp
+        : Date.parse(unsafeTimestamp);
+    assert(!isNaN(timestamp));
     if (taintSink.operation === "StorageRead") {
       for (const { begin, end, flow: taintSource } of taint) {
         const source = toAbstractStorageOperation(cx, taintSource, taintReport);
