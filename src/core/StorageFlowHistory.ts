@@ -1,6 +1,9 @@
 import _ from "lodash";
+import { createHash } from "crypto";
 import { Entry as HarEntry } from "har-format";
+import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
+import { parse as parseSearchParams } from "querystring";
 import { TaintReport } from "../foxhound/types";
 import {
   getAbstractFlowsFromTaintReports,
@@ -65,22 +68,28 @@ export function getSyntacticStorageFlowHistory(
         )
     )
   );
-  for (const {
-    startedDateTime: requestDateTime,
-    request: { url, postData: postDataObj, headers },
-  } of harEntries) {
+  for (const harEntry of harEntries) {
+    const {
+      startedDateTime: requestDateTime,
+      request: { url: requestUrl },
+    } = harEntry;
     const requestTime = Date.parse(requestDateTime);
+
     // const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
     // if (!initiator) continue;
-    const postData = postDataObj && harController.readPostData(postDataObj);
+
     // const senderOrigin = originFromUrl(initiator);
-    const receiverOrigin = originFromUrl(url);
-    for (const [value, valueGroup] of storageReadGroups) {
-      const syntacticMatches =
-        syntacticMatchUrl(value, url) ||
-        (postData && syntacticMatch(value, postData));
-      if (!syntacticMatches) continue;
-      for (const { itemId, value, timestamp: storageReadTime } of valueGroup) {
+    const receiverOrigin = originFromUrl(requestUrl);
+
+    const syntacticMatch = syntacticMatchCookieguard(harEntry, harController);
+
+    for (const [storageValue, storageValueGroup] of storageReadGroups) {
+      if (!syntacticMatch(storageValue)) continue;
+      for (const {
+        itemId,
+        value,
+        timestamp: storageReadTime,
+      } of storageValueGroup) {
         if (!(storageReadTime < requestTime)) continue;
         history.push({
           itemId,
@@ -94,24 +103,158 @@ export function getSyntacticStorageFlowHistory(
   return history;
 }
 
-function syntacticMatchUrl(storageValue: string, url: string): boolean {
-  return syntacticMatch(storageValue, new URL(url).search);
+function syntacticMatchJourney(
+  harEntry: HarEntry,
+  harController: HarController
+) {
+  type Decoder = (value: string) => string[];
+
+  const decodeURLEncoding: Decoder = (value) => {
+    try {
+      const decoded = decodeURIComponent(value);
+      return decoded !== value ? [decoded] : [];
+    } catch {
+      return [];
+    }
+  };
+  const decodeJSON: Decoder = (value) => {
+    let jsRootValue;
+    try {
+      jsRootValue = JSON.parse(value);
+    } catch {
+      return [];
+    }
+    return (function extractStringValues(jsValue): string[] {
+      switch (typeof jsValue) {
+        case "string": {
+          return [jsValue];
+        }
+        case "object": {
+          if (!jsValue) {
+            return [];
+          }
+          if (Array.isArray(jsValue)) {
+            return jsValue.flatMap((x) => extractStringValues(x));
+          }
+          return Object.values(jsValue).flatMap((x) => extractStringValues(x));
+        }
+        default:
+          return [];
+      }
+    })(jsRootValue);
+  };
+  const decodeBase64: Decoder = (value) => {
+    if (value.length % 4 !== 0 || !/^[A-Za-z0-9+\/\-_]+={0,2}$/.test(value)) {
+      return [];
+    }
+    return [Buffer.from(value, "base64").toString()];
+  };
+  const decodeGzip: Decoder = (value) => {
+    try {
+      return [gunzipSync(Buffer.from(value)).toString()];
+    } catch {
+      return [];
+    }
+  };
+  const decodeDeflate: Decoder = (value) => {
+    try {
+      return [inflateSync(Buffer.from(value)).toString()];
+    } catch {
+      return [];
+    }
+  };
+  const decodeSearchParams: Decoder = (value) => {
+    return Object.values(
+      parseSearchParams(value, undefined, undefined, {
+        decodeURIComponent: (x) => x,
+      })
+    )
+      .flatMap((values) => values ?? "")
+      .filter((value) => value.length !== 0);
+  };
+  function* generateCandidateRequestValues(
+    initialValues: string[]
+  ): Generator<string> {
+    const MAX_ITERATION: number = 1000;
+    const queue: string[] = [...initialValues];
+    let value: string | undefined;
+    let iteration: number = 0;
+    while (
+      iteration < MAX_ITERATION &&
+      ((value = queue.pop()), value !== undefined)
+    ) {
+      iteration += 1;
+      if (value.length < 5) continue;
+      yield value;
+      for (const decoder of [
+        decodeURLEncoding,
+        decodeJSON,
+        decodeBase64,
+        // decodeGzip,
+        // decodeDeflate,
+        decodeSearchParams,
+      ]) {
+        const newValues = decoder(value);
+        queue.unshift(...newValues);
+      }
+    }
+  }
+
+  function* extractInitialRequestValues(): Generator<string> {
+    const {
+      request: { url, postData: postDataObj },
+    } = harEntry;
+    yield new URL(url).search; // query
+    if (postDataObj) {
+      yield harController.readPostData(postDataObj); // POST data
+    }
+  }
+
+  const requestValues = [
+    ...generateCandidateRequestValues([...extractInitialRequestValues()]),
+  ];
+
+  return function (storageValue: string): boolean {
+    for (const requestValue of requestValues) {
+      if (
+        requestValue.includes(storageValue) ||
+        storageValue.includes(requestValue)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
 }
 
-function syntacticMatch(storageValue: string, str: string): boolean {
-  const MIN_STR_LENGTH: number = 8;
+function syntacticMatchCookieguard(
+  harEntry: HarEntry,
+  harController: HarController
+) {
+  const {
+    request: { url: requestUrl },
+  } = harEntry;
 
-  const tokens = storageValue
-    .split(/[^A-Za-z0-9]/)
-    .filter((x) => x.length >= MIN_STR_LENGTH);
-  if (tokens.some((t) => str.includes(t))) {
-    return true;
-  }
+  const query = new URL(requestUrl).search; // query
 
-  const base64Tokens = tokens.map((t) => Buffer.from(t).toString("base64"));
-  if (base64Tokens.some((t) => str.includes(t))) {
-    return true;
-  }
+  return function (storageValue: string): boolean {
+    const tokens = storageValue
+      .split(/[^A-Za-z0-9]/)
+      .filter((x) => x.length >= 8);
 
-  return false;
+    const doesQueryIncludeSomeToken = (
+      encoder?: (value: string) => string
+    ): boolean => tokens.some((t) => query.includes(encoder ? encoder(t) : t));
+
+    return (
+      doesQueryIncludeSomeToken() ||
+      doesQueryIncludeSomeToken((t) => Buffer.from(t).toString("base64")) ||
+      doesQueryIncludeSomeToken((t) =>
+        createHash("md5").update(t).digest("hex")
+      ) ||
+      doesQueryIncludeSomeToken((t) =>
+        createHash("sha1").update(t).digest("hex")
+      )
+    );
+  };
 }
