@@ -345,18 +345,30 @@ function createStorageMap(taintReports: TaintReport[]): Map<string, string> {
             assert(key === argsKey);
             return [...kvArray, version];
           })) {
-          storageMap.set(getStorageMapKey("cookie", key, version), value);
+          setStorageMapValue(
+            storageMap,
+            getStorageMapKey("cookie", key, version),
+            value
+          );
         }
         break;
       }
       case "localStorage.getItem": {
         const [key, version] = firstTaintSource.arguments;
-        storageMap.set(getStorageMapKey("localStorage", key, version), str);
+        setStorageMapValue(
+          storageMap,
+          getStorageMapKey("localStorage", key, version),
+          str
+        );
         break;
       }
       case "sessionStorage.getItem": {
         const [key, version] = firstTaintSource.arguments;
-        storageMap.set(getStorageMapKey("sessionStorage", key, version), str);
+        setStorageMapValue(
+          storageMap,
+          getStorageMapKey("sessionStorage", key, version),
+          str
+        );
         break;
       }
     }
@@ -379,4 +391,13 @@ function getStorageMapValue(
   const value = storageMap.get(storageMapKey);
   assert(value !== undefined);
   return value;
+}
+
+function setStorageMapValue(
+  storageMap: Map<string, string>,
+  storageMapKey: string,
+  value: string
+): void {
+  assert(!storageMap.has(storageMapKey));
+  storageMap.set(storageMapKey, value);
 }
