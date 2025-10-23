@@ -16,7 +16,6 @@ import {
   getSyntacticStorageFlowHistory,
   getTaintStorageFlowHistory,
   StorageFlow,
-  StorageFlowHistory,
 } from "../core/StorageFlowHistory";
 
 export default function cmdMeasure(args: { analysisId: number }) {
@@ -33,6 +32,8 @@ export default function cmdMeasure(args: { analysisId: number }) {
   let successSitesCount = 0;
   let syntacticFlowsCount = 0;
   let onlyTaintFlowsCount = 0;
+  let syntacticFlowsSitesCount = 0;
+  let onlyTaintFlowsSitesCount = 0;
 
   for (const [documentIndex, analysisDocument] of enumerate(
     store.getDocumentsByCollection(analysisCollection.id)
@@ -145,6 +146,9 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
     syntacticFlowsCount += syntacticFlows.length;
     onlyTaintFlowsCount += onlyTaintFlows.length;
+
+    syntacticFlowsSitesCount += Number(syntacticFlows.length > 0);
+    onlyTaintFlowsSitesCount += Number(onlyTaintFlows.length > 0);
   }
 
   const report = {
@@ -153,6 +157,9 @@ export default function cmdMeasure(args: { analysisId: number }) {
     syntacticFlowsCount,
     onlyTaintFlowsCount,
     taintEnhancement: onlyTaintFlowsCount / syntacticFlowsCount,
+    syntacticFlowsSitesCount,
+    onlyTaintFlowsSitesCount,
+    taintEnhancementSites: onlyTaintFlowsSitesCount / syntacticFlowsSitesCount,
   };
   console.log(report);
   writeOutputFileSync(
