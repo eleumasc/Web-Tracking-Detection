@@ -190,9 +190,7 @@ function toAbstractStorageOperation(
         // set document.cookie
         const sc = str.indexOf(";");
         const kvStr = sc !== -1 ? str.substring(0, sc) : str;
-        const eq = kvStr.indexOf("=");
-        key = eq !== -1 ? kvStr.substring(0, eq).trim() : "";
-        value = eq !== -1 ? kvStr.substring(eq + 1).trim() : kvStr.trim();
+        [key, value] = parseCookieKeyValueString(kvStr);
       }
       break;
     }
@@ -336,11 +334,10 @@ function createStorageMap(taintReports: TaintReport[]): Map<string, string> {
         for (const [key, value, version] of str
           .split("; ")
           .map((kvStr, index) => {
-            const tokens = kvStr.split("=", 2);
-            assert(tokens.length > 0);
-            const kvArray = tokens.length === 2 ? tokens : ["", tokens[0]];
+            const kvArray = parseCookieKeyValueString(kvStr);
             const [key] = kvArray;
             const taintSource = taint[index].flow;
+            assert(taintSource.operation === "document.cookie");
             const [argsKey, version] = taintSource.arguments;
             assert(key === argsKey);
             return [...kvArray, version];
@@ -400,4 +397,11 @@ function setStorageMapValue(
 ): void {
   assert(!storageMap.has(storageMapKey));
   storageMap.set(storageMapKey, value);
+}
+
+function parseCookieKeyValueString(kvStr: string): [string, string] {
+  const eq = kvStr.indexOf("=");
+  const key = eq !== -1 ? kvStr.substring(0, eq).trim() : "";
+  const value = eq !== -1 ? kvStr.substring(eq + 1).trim() : kvStr.trim();
+  return [key, value];
 }
