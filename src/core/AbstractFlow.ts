@@ -59,9 +59,13 @@ function toAbstractOperation(
   taintOperation: TaintOperation,
   taintReport: TaintReport
 ): AbstractOperation | null {
-  for (const fn of [toAbstractNetworkOperation, toAbstractStorageOperation]) {
-    const absOp = fn(cx, taintOperation, taintReport);
-    if (absOp) return absOp;
+  try {
+    for (const fn of [toAbstractNetworkOperation, toAbstractStorageOperation]) {
+      const absOp = fn(cx, taintOperation, taintReport);
+      if (absOp) return absOp;
+    }
+  } catch (e) {
+    console.error(e);
   }
   return null;
 }
