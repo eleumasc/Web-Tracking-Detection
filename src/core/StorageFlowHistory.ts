@@ -186,7 +186,7 @@ function syntacticMatchJourney(requestValue: string) {
     let iteration: number = 0;
     while (
       iteration < MAX_ITERATION &&
-      ((value = queue.pop()), value !== undefined)
+      ((value = queue.shift()), value !== undefined)
     ) {
       iteration += 1;
       if (value.length < 5) continue;
@@ -200,7 +200,7 @@ function syntacticMatchJourney(requestValue: string) {
         decodeSearchParams,
       ]) {
         const newValues = decoder(value);
-        queue.unshift(...newValues);
+        queue.push(...newValues);
       }
     }
   }
