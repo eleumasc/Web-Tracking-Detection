@@ -5,9 +5,8 @@ export type SimulateConnectResult = {
   landingPageUrl: string;
 };
 
-const NAVIGATE_TIMEOUT_MS: number = 60 * 1000; // 60 seconds
-
-const NAVIGATE_EXTRA_TIMEOUT_MS: number = 10 * 1000; // 10 seconds
+const LOAD_TIMEOUT_MS: number = 60 * 1000; // 60 seconds
+const WAIT_AFTER_LOAD_MS: number = 10 * 1000; // 10 seconds
 
 export default async function simulateConnect(
   browser: BrowserContext,
@@ -23,12 +22,12 @@ export default async function simulateConnect(
   // navigate to landing page
   try {
     await page.goto(`http://${site}/`, {
-      timeout: NAVIGATE_TIMEOUT_MS,
+      timeout: LOAD_TIMEOUT_MS,
     });
   } catch (e) {
     throw new SimulateConnectError(String(e));
   }
-  await timeout(NAVIGATE_EXTRA_TIMEOUT_MS);
+  await timeout(WAIT_AFTER_LOAD_MS);
 
   const landingPageUrl = page.url();
 
@@ -36,6 +35,9 @@ export default async function simulateConnect(
   if (screenshotPath) {
     await page.screenshot({ path: screenshotPath });
   }
+
+  // trigger late requests for capturing
+  await page.goto("about:blank");
 
   return { landingPageUrl };
 }
