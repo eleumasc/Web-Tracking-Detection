@@ -2,6 +2,7 @@ import assert from "assert";
 import { TaintLocation, TaintOperation, TaintReport } from "../foxhound/types";
 
 export type AbstractFlow = {
+  str: string;
   sink: AbstractOperation;
   sources: AbstractOperation[];
 };
@@ -36,7 +37,7 @@ export function getAbstractFlowsFromTaintReports(
   };
   const flows: AbstractFlow[] = [];
   for (const taintReport of taintReports) {
-    const { sink: taintSink, taint } = taintReport;
+    const { str, sink: taintSink, taint } = taintReport;
     const sink = toAbstractOperation(cx, taintSink, taintReport);
     if (!sink) continue;
     const sources: AbstractOperation[] = [];
@@ -45,7 +46,7 @@ export function getAbstractFlowsFromTaintReports(
       if (!source) continue;
       sources.push(source);
     }
-    flows.push({ sink, sources });
+    flows.push({ str, sink, sources });
   }
   return flows;
 }

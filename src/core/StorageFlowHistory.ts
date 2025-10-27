@@ -14,13 +14,18 @@ export type StorageFlowHistory = StorageFlow[];
 
 export type StorageFlow = {
   itemId: string;
-  value: string;
+  storageValue: string;
   // senderOrigin: string;
   receiverOrigin: string;
+  requestValue: string;
 };
 
+export type SyntacticMatcher = (
+  requestValue: string
+) => (storageValue: string) => boolean;
+
 function originFromUrl(url: string): string {
-  return new URL(url).hostname;
+  return new URL(url).origin;
 }
 
 export function getTaintStorageFlowHistory(
@@ -28,20 +33,22 @@ export function getTaintStorageFlowHistory(
 ): StorageFlowHistory {
   const history: StorageFlowHistory = [];
   for (const flow of getAbstractFlowsFromTaintReports(taintReports)) {
-    const { sources, sink } = flow;
+    const { str: requestValue, sources, sink } = flow;
     const { type: sinkType } = sink;
     if (sinkType === "Network") {
       const { location, requestUrl } = sink;
       // const senderOrigin = originFromUrl(location);
-      const receiverOrigin = originFromUrl(requestUrl);
-      for (const { itemId, value } of sources.filter(
+      const receiverUrl = requestUrl;
+      const receiverOrigin = originFromUrl(receiverUrl);
+      for (const { itemId, value: storageValue } of sources.filter(
         (source) => source.type === "Storage"
       )) {
         history.push({
           itemId,
-          value,
+          storageValue,
           // senderOrigin,
           receiverOrigin,
+          requestValue,
         });
       }
     }
@@ -52,15 +59,13 @@ export function getTaintStorageFlowHistory(
 export function getSyntacticStorageFlowHistory(
   storageOperations: StorageOperation[],
   harEntries: HarEntry[],
-  harController: HarController
+  harController: HarController,
+  syntacticMatch: SyntacticMatcher
 ): StorageFlowHistory {
   const history: StorageFlowHistory = [];
-  const storageReadGroups = _.toPairs(
+  const storageOperationGroups = _.toPairs(
     _.mapValues(
-      _.groupBy(
-        storageOperations.filter(({ type }) => type === "Read"),
-        ({ value }) => value
-      ),
+      _.groupBy(storageOperations, ({ value }) => value),
       (valueGroup) =>
         _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
           // minBy because we consider the first moment when value is assigned to that storage item
@@ -70,40 +75,39 @@ export function getSyntacticStorageFlowHistory(
   );
   for (const harEntry of harEntries) {
     const {
-      startedDateTime: requestDateTime,
       request: { url: requestUrl, postData },
     } = harEntry;
-    const requestTime = Date.parse(requestDateTime);
     const requestURL = new URL(requestUrl);
 
     // const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
     // if (!initiator) continue;
 
     // const senderOrigin = originFromUrl(initiator);
-    const receiverOrigin = originFromUrl(requestUrl);
+    const receiverUrl = requestUrl;
+    const receiverOrigin = originFromUrl(receiverUrl);
 
-    const syntacticMatch = syntacticMatchJourney; // syntacticMatchJourney or syntacticMatchCookieguard
-    const matchers = [
-      syntacticMatch(requestURL.pathname),
-      syntacticMatch(requestURL.search),
-      ...(postData
-        ? [syntacticMatch(harController.readPostData(postData))]
-        : []),
-    ];
+    const requestValueMatchers = [
+      requestURL.pathname,
+      requestURL.search,
+      ...(postData ? [harController.readPostData(postData)] : []),
+    ].map((requestValue) => ({
+      value: requestValue,
+      matcher: syntacticMatch(requestValue),
+    }));
 
-    for (const [storageValue, storageValueGroup] of storageReadGroups) {
-      if (!matchers.some((match) => match(storageValue))) continue;
-      for (const {
-        itemId,
-        value,
-        timestamp: storageReadTime,
-      } of storageValueGroup) {
-        if (!(storageReadTime < requestTime)) continue;
+    for (const [storageValue, storageValueGroup] of storageOperationGroups) {
+      const match = requestValueMatchers.find(({ matcher }) =>
+        matcher(storageValue)
+      );
+      if (!match) continue;
+      const { value: requestValue } = match;
+      for (const { itemId, value: storageValue } of storageValueGroup) {
         history.push({
           itemId,
-          value,
+          storageValue,
           // senderOrigin,
           receiverOrigin,
+          requestValue,
         });
       }
     }
@@ -111,7 +115,9 @@ export function getSyntacticStorageFlowHistory(
   return history;
 }
 
-function syntacticMatchJourney(requestValue: string) {
+export const syntacticMatchJourney: SyntacticMatcher = (
+  requestValue: string
+) => {
   type Decoder = (value: string) => string[];
 
   const decodeURLEncoding: Decoder = (value) => {
@@ -173,9 +179,7 @@ function syntacticMatchJourney(requestValue: string) {
       parseSearchParams(value, undefined, undefined, {
         decodeURIComponent: (x) => x,
       })
-    )
-      .flatMap((values) => values ?? "")
-      .filter((value) => value.length !== 0);
+    ).flatMap((values) => values ?? []);
   };
   function* generateCandidateRequestValues(
     initialValue: string
@@ -199,7 +203,7 @@ function syntacticMatchJourney(requestValue: string) {
         // decodeDeflate,
         decodeSearchParams,
       ]) {
-        const newValues = decoder(value);
+        const newValues = decoder(value).filter((x) => x.length > 0);
         queue.push(...newValues);
       }
     }
@@ -207,21 +211,20 @@ function syntacticMatchJourney(requestValue: string) {
 
   const requestValues = [...generateCandidateRequestValues(requestValue)];
 
-  return function (storageValue: string): boolean {
-    for (const requestValue of requestValues) {
-      if (
+  return (storageValue: string) => {
+    return requestValues.some((requestValue) => {
+      return (
         requestValue.includes(storageValue) ||
         storageValue.includes(requestValue)
-      ) {
-        return true;
-      }
-    }
-    return false;
+      );
+    });
   };
-}
+};
 
-function syntacticMatchCookieguard(requestValue: string) {
-  return function (storageValue: string): boolean {
+export const syntacticMatchCookieguard: SyntacticMatcher = (
+  requestValue: string
+) => {
+  return (storageValue: string) => {
     const tokens = storageValue
       .split(/[^A-Za-z0-9]/)
       .filter((x) => x.length >= 8);
@@ -242,4 +245,4 @@ function syntacticMatchCookieguard(requestValue: string) {
       )
     );
   };
-}
+};

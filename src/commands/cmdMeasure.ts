@@ -16,6 +16,8 @@ import {
   getSyntacticStorageFlowHistory,
   getTaintStorageFlowHistory,
   StorageFlow,
+  syntacticMatchCookieguard,
+  syntacticMatchJourney,
 } from "../core/StorageFlowHistory";
 
 export default function cmdMeasure(args: { analysisId: number }) {
@@ -73,21 +75,23 @@ export default function cmdMeasure(args: { analysisId: number }) {
       )
     );
 
-    const storageWrites = storageOperations.filter(
-      ({ type }) => type === "Write"
-    );
+    // const storageWrites = storageOperations.filter(
+    //   ({ type }) => type === "Write"
+    // );
 
     const taintHistory = getTaintStorageFlowHistory(taintReports);
     const syntacticHistory = getSyntacticStorageFlowHistory(
       storageOperations,
       harController.entries(),
-      harController
+      harController,
+      syntacticMatchJourney
     );
 
     type AggregateStorageFlow = {
       itemId: string;
       receiverOrigin: string;
-      _values: string[]; // list of possible values that flowed from storage source to network sink
+      _storageValues: string[];
+      _requestValues: string[];
     };
 
     const toAggregateStorageFlows = (
@@ -102,13 +106,14 @@ export default function cmdMeasure(args: { analysisId: number }) {
         return {
           itemId,
           receiverOrigin,
-          _values: _.uniq(keyGroup.map(({ value }) => value)),
+          _storageValues: _.uniq(keyGroup.map((x) => x.storageValue)),
+          _requestValues: _.uniq(keyGroup.map((x) => x.requestValue)),
         };
       });
 
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
-    ): StorageFlow[] => storageFlows.filter(({ value }) => value.length >= 8);
+    ): StorageFlow[] => storageFlows.filter((x) => x.storageValue.length >= 8);
 
     const taintFlows = toAggregateStorageFlows(
       prefilterStorageFlows(taintHistory)
