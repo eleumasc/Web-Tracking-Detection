@@ -1,6 +1,5 @@
 import _ from "lodash";
 import { createHash } from "crypto";
-import { Entry as HarEntry } from "har-format";
 import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
 import { parse as parseSearchParams } from "querystring";

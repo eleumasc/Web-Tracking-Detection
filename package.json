@@ -18,15 +18,16 @@
     "@types/async": "^3.2.24",
     "@types/better-sqlite3": "^7.6.12",
     "@types/dockerode": "^3.3.44",
+    "@types/har-format": "^1.2.16",
     "@types/jsdom": "^21.1.7",
     "@types/lodash": "^4.17.15",
     "@types/node": "^22.10.1",
     "@types/yargs": "^17.0.33",
+    "@types/zxcvbn": "^4.4.5",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@types/har-format": "^1.2.16",
     "adm-zip": "^0.5.16",
     "async": "^3.2.6",
     "better-sqlite3": "^11.7.0",
@@ -35,8 +36,9 @@
     "iter-tools": "^7.5.4",
     "jsdom": "^26.1.0",
     "lodash": "^4.17.21",
-    "playwright": "1.53.1",
+    "playwright": "^1.56.1",
     "psl": "^1.15.0",
-    "yargs": "^17.7.2"
+    "yargs": "^17.7.2",
+    "zxcvbn": "^4.4.2"
   }
 }

@@ -4,6 +4,7 @@ import currentTime from "../util/currentTime";
 import isLoEqual from "../util/isLoEqual";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
+import zxcvbn from "zxcvbn";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { enumerate } from "iter-tools";
@@ -113,9 +114,18 @@ export default function cmdMeasure(args: { analysisId: number }) {
         };
       });
 
+    const zxcvbnCheckCache = new Map<string, boolean>();
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
-    ): StorageFlow[] => storageFlows.filter((x) => x.storageValue.length >= 8);
+    ): StorageFlow[] =>
+      storageFlows.filter(({ storageValue }) => {
+        const zxcvbnCheck =
+          zxcvbnCheckCache.get(storageValue) ??
+          (storageValue.length >= 128 ||
+            zxcvbn(storageValue).guesses_log10 >= 9);
+        zxcvbnCheckCache.set(storageValue, zxcvbnCheck);
+        return zxcvbnCheck;
+      });
 
     const taintFlows = toAggregateStorageFlows(
       prefilterStorageFlows(taintHistory)
