@@ -79,10 +79,12 @@ export default function cmdMeasure(args: { analysisId: number }) {
     //   ({ type }) => type === "Write"
     // );
 
-    const taintHistory = getTaintStorageFlowHistory(taintReports);
+    const taintHistory = getTaintStorageFlowHistory(
+      taintReports,
+      harController
+    );
     const syntacticHistory = getSyntacticStorageFlowHistory(
       storageOperations,
-      harController.entries(),
       harController,
       syntacticMatchJourney
     );

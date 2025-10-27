@@ -29,28 +29,40 @@ function originFromUrl(url: string): string {
 }
 
 export function getTaintStorageFlowHistory(
-  taintReports: TaintReport[]
+  taintReports: TaintReport[],
+  harController: HarController
 ): StorageFlowHistory {
   const history: StorageFlowHistory = [];
   for (const flow of getAbstractFlowsFromTaintReports(taintReports)) {
-    const { str: requestValue, sources, sink } = flow;
-    const { type: sinkType } = sink;
-    if (sinkType === "Network") {
-      const { location, requestUrl } = sink;
-      // const senderOrigin = originFromUrl(location);
-      const receiverUrl = requestUrl;
-      const receiverOrigin = originFromUrl(receiverUrl);
-      for (const { itemId, value: storageValue } of sources.filter(
-        (source) => source.type === "Storage"
-      )) {
-        history.push({
-          itemId,
-          storageValue,
-          // senderOrigin,
-          receiverOrigin,
-          requestValue,
-        });
-      }
+    const { sources, sink } = flow;
+
+    if (!(sink.type === "Network")) continue;
+    const { str: requestValue } = flow;
+    const { location, requestUrl } = sink;
+
+    // Consider only taint flows such that there is an HAR entry whose
+    // request URL corresponds to that of the network sink.
+    // This especially helps to remove taint flows whose network sink do not
+    // initiate a network request (e.g., set img.src to data URIs).
+    if (!harController.hasRequestWithUrl(requestUrl)) {
+      console.log(requestUrl);
+      continue;
+    }
+
+    // const senderOrigin = originFromUrl(location);
+    const receiverUrl = requestUrl;
+    const receiverOrigin = originFromUrl(receiverUrl);
+
+    for (const { itemId, value: storageValue } of sources.filter(
+      (source) => source.type === "Storage"
+    )) {
+      history.push({
+        itemId,
+        storageValue,
+        // senderOrigin,
+        receiverOrigin,
+        requestValue,
+      });
     }
   }
   return history;
@@ -58,7 +70,6 @@ export function getTaintStorageFlowHistory(
 
 export function getSyntacticStorageFlowHistory(
   storageOperations: StorageOperation[],
-  harEntries: HarEntry[],
   harController: HarController,
   syntacticMatch: SyntacticMatcher
 ): StorageFlowHistory {
@@ -73,7 +84,7 @@ export function getSyntacticStorageFlowHistory(
         )
     )
   );
-  for (const harEntry of harEntries) {
+  for (const harEntry of harController.entries()) {
     const {
       request: { url: requestUrl, postData },
     } = harEntry;

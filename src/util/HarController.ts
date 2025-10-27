@@ -58,6 +58,19 @@ export class HarController {
     return this.getEntryData(file);
   }
 
+  hasRequestWithUrl(url: string): boolean {
+    const toNormalizedUrl = (url: string): string => {
+      const urlObject = new URL(url);
+      urlObject.hash = "";
+      return urlObject.href;
+    };
+    const urlNormalized = toNormalizedUrl(url);
+    return this.entries().some(
+      ({ request: { url: requestUrl } }) =>
+        toNormalizedUrl(requestUrl) === urlNormalized
+    );
+  }
+
   protected getEntryData(name: string): string {
     const zip = new AdmZip(this.zipFile);
     const harEntry = zip.getEntry(name);
