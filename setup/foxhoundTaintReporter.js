@@ -18,13 +18,15 @@
     return {
       ...taintReport,
       sink,
-      taint: $Array$$map(taint, (range) => {
-        const { flow } = range;
-        return {
-          ...range,
-          flow: flow[flow.length - 1],
-        };
-      }),
+      taint: combineStorageTaintRanges(
+        $Array$$map(taint, (range) => {
+          const { flow } = range;
+          return {
+            ...range,
+            flow: flow[flow.length - 1],
+          };
+        })
+      ),
     };
   }
 
@@ -33,6 +35,61 @@
     const taint = value.str.taint;
     const taintReport = simplifyTaintReport({ ...value, taint });
     if (!taintReport) return;
-    window.__playwright_taint_report(taintReport);
+    (window.__playwright_taint_report ?? console.log)(taintReport);
   });
+
+  function combineStorageTaintRanges(ranges) {
+    const result = [];
+    for (let headIndex = 0; headIndex < ranges.length; ++headIndex) {
+      const headRange = ranges[headIndex];
+      const { begin: headBegin, flow: headFlow } = headRange;
+      const { operation: headOperation } = headFlow;
+
+      checkOperation: switch (headOperation) {
+        case "document.cookie":
+        case "localStorage.getItem":
+        case "sessionStorage.getItem":
+          break checkOperation;
+        default: {
+          result[result.length] = headRange;
+          continue;
+        }
+      }
+
+      let lastIndex = headIndex;
+      for (let i = headIndex + 1; i < ranges.length; ++i) {
+        const currRange = ranges[i];
+        const { begin: currBegin, flow: currFlow } = currRange;
+        const { operation: currOperation, arguments: currArgs } = currFlow;
+
+        const prevRange = ranges[i - 1];
+        const { end: prevEnd, flow: prevFlow } = prevRange;
+        const { operation: prevOperation, arguments: prevArgs } = prevFlow;
+
+        if (
+          prevEnd === currBegin &&
+          prevOperation === currOperation &&
+          prevArgs[0] === currArgs[0] && // storageKey
+          prevArgs[1] === currArgs[1] // version
+        ) {
+          lastIndex = i;
+        } else {
+          break;
+        }
+      }
+
+      const lastRange = ranges[lastIndex];
+      const { end: lastEnd } = lastRange;
+
+      const newRange = {
+        begin: headBegin,
+        end: lastEnd,
+        flow: headFlow,
+      };
+      result[result.length] = newRange;
+
+      headIndex = lastIndex;
+    }
+    return result;
+  }
 })();
