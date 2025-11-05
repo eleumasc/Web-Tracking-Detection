@@ -43,7 +43,7 @@
     for (let headIndex = 0; headIndex < ranges.length; ++headIndex) {
       const headRange = ranges[headIndex];
       const { begin: headBegin, flow: headFlow } = headRange;
-      const { operation: headOperation } = headFlow;
+      const { operation: headOperation, arguments: headArgs } = headFlow;
 
       checkOperation: switch (headOperation) {
         case "document.cookie":
@@ -87,7 +87,14 @@
       const newRange = {
         begin: headBegin,
         end: lastEnd,
-        flow: headFlow,
+        flow: {
+          ...headFlow,
+          arguments: [
+            headArgs[0],
+            headArgs[1],
+            `${headArgs[2]}:${+headArgs[2] + (lastIndex - headIndex + 1)}`,
+          ],
+        },
       };
       result[result.length] = newRange;
 
