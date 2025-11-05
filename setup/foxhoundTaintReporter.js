@@ -13,7 +13,7 @@
 
   function simplifyTaintReport(taintReport) {
     const { taint } = taintReport;
-    const sink = taint[0]?.flow[1];
+    const sink = taint[0]?.flow[0];
     if (!sink) return;
     return {
       ...taintReport,
