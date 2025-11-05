@@ -59,18 +59,21 @@
       let lastIndex = headIndex;
       for (let i = headIndex + 1; i < ranges.length; ++i) {
         const currRange = ranges[i];
-        const { begin: currBegin, flow: currFlow } = currRange;
+        const { begin: currBegin, end: currEnd, flow: currFlow } = currRange;
         const { operation: currOperation, arguments: currArgs } = currFlow;
 
         const prevRange = ranges[i - 1];
-        const { end: prevEnd, flow: prevFlow } = prevRange;
+        const { begin: prevBegin, end: prevEnd, flow: prevFlow } = prevRange;
         const { operation: prevOperation, arguments: prevArgs } = prevFlow;
 
         if (
+          prevBegin + 1 === prevEnd &&
+          currBegin + 1 === currEnd &&
           prevEnd === currBegin &&
           prevOperation === currOperation &&
           prevArgs[0] === currArgs[0] && // storageKey
-          prevArgs[1] === currArgs[1] // version
+          prevArgs[1] === currArgs[1] && // version
+          +prevArgs[2] + 1 === +currArgs[2]
         ) {
           lastIndex = i;
         } else {
