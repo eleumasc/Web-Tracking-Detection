@@ -131,39 +131,34 @@ export async function runAnalyze(
   const harFile = `${site}.zip`;
   const harPath = path.join(outputPath, harFile);
 
-  return toCompletion(async () =>
-    useFoxhound(
-      {
-        headless: headlessBrowser,
-        harPath,
-      },
-      async (browser) => {
-        // capture taint reports
-        const taintReports: TaintReport[] = [];
-        await installFoxhoundTaintReporter(browser, {
-          onTaintReport: (taintReport) => {
-            taintReports.push(taintReport);
-          },
-        });
+  return toCompletion(() =>
+    bomb(ANALYSIS_TIMEOUT_MS, () =>
+      useFoxhound(
+        {
+          headless: headlessBrowser,
+          harPath,
+        },
+        async (browser) => {
+          // capture taint reports
+          const taintReports: TaintReport[] = [];
+          await installFoxhoundTaintReporter(browser, {
+            onTaintReport: (taintReport) => {
+              taintReports.push(taintReport);
+            },
+          });
 
-        const connectResult = await bomb(
-          () =>
-            simulateConnect(browser, {
-              site,
-              screenshotPath: path.join(outputPath, `${site}.png`),
-            }),
-          ANALYSIS_TIMEOUT_MS
-        );
+          const connectResult = await simulateConnect(browser, {
+            site,
+            screenshotPath: path.join(outputPath, `${site}.png`),
+          });
 
-        const storageState = await browser.storageState();
-
-        return {
-          connectResult,
-          taintReports,
-          storageState,
-          harFile,
-        };
-      }
+          return {
+            connectResult,
+            taintReports,
+            harFile,
+          };
+        }
+      )
     )
   );
 }

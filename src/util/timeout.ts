@@ -7,13 +7,13 @@ export function forever(): Promise<void> {
 }
 
 export function bomb<T>(
-  asyncCallback: () => Promise<T>,
-  timeoutMs: number
+  timeoutMs: number,
+  asyncCallback: () => Promise<T>
 ): Promise<T> {
   return Promise.race([
     asyncCallback(),
     timeout(timeoutMs).then(() => {
-      throw new TimeoutError(`Bomb exploded after ${timeoutMs} ms`);
+      throw new TimeoutError(`Timeout of ${timeoutMs} ms exceeded`);
     }),
   ]);
 }

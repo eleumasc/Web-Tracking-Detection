@@ -8,6 +8,5 @@ export type AnalysisLogEntry = Completion<CTAResult>;
 export type CTAResult = {
   connectResult: SimulateConnectResult;
   taintReports: TaintReport[];
-  storageState: StorageState;
   harFile: string;
 };
