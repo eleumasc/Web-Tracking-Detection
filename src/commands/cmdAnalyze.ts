@@ -7,6 +7,7 @@ import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import simulateConnect from "../core/simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
+import useTempPath from "../util/useTempPath";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { createOutputDir } from "../data/outputDir";
@@ -133,31 +134,47 @@ export async function runAnalyze(
 
   return toCompletion(() =>
     bomb(ANALYSIS_TIMEOUT_MS, () =>
-      useFoxhound(
-        {
-          headless: headlessBrowser,
-          harPath,
-        },
-        async (browser) => {
-          // capture taint reports
-          const taintReports: TaintReport[] = [];
-          await installFoxhoundTaintReporter(browser, {
-            onTaintReport: (taintReport) => {
-              taintReports.push(taintReport);
+      useTempPath(
+        undefined,
+        async (userDataDir) => (
+          await useFoxhound(
+            {
+              userDataDir,
+              headless: headlessBrowser,
+              taintingActive: false,
             },
-          });
+            async (browser) => {
+              await simulateConnect(browser, { site });
+            }
+          ),
+          useFoxhound(
+            {
+              userDataDir,
+              headless: headlessBrowser,
+              harPath,
+            },
+            async (browser) => {
+              // capture taint reports
+              const taintReports: TaintReport[] = [];
+              await installFoxhoundTaintReporter(browser, {
+                onTaintReport: (taintReport) => {
+                  taintReports.push(taintReport);
+                },
+              });
 
-          const connectResult = await simulateConnect(browser, {
-            site,
-            screenshotPath: path.join(outputPath, `${site}.png`),
-          });
+              const connectResult = await simulateConnect(browser, {
+                site,
+                screenshotPath: path.join(outputPath, `${site}.png`),
+              });
 
-          return {
-            connectResult,
-            taintReports,
-            harFile,
-          };
-        }
+              return {
+                connectResult,
+                taintReports,
+                harFile,
+              };
+            }
+          )
+        )
       )
     )
   );

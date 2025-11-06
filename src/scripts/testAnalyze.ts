@@ -1,37 +1,27 @@
-import assert from "assert";
 import currentTime from "../util/currentTime";
-import openDocumentStore from "../data/openDocumentStore";
+import execWorker from "../worker/execWorker";
 import { runAnalyze } from "../commands/cmdAnalyze";
 import { SiteEntry } from "../core/SiteEntry";
-import { SITES_COLL_TYPE } from "../commands/cmdLoadSiteList";
+import { toFlatCompletion } from "../util/Completion";
 
-async function main(args: { sitesId: number; siteName: string }) {
-  const store = openDocumentStore();
+async function main(args: { siteName: string }) {
+  const siteEntry: SiteEntry = { name: args.siteName, rank: 1 };
 
-  const sitesCollection = store.getCollectionById(args.sitesId);
-  assert(sitesCollection.meta.type === SITES_COLL_TYPE);
-
-  const siteDocument = store.getDocumentByName(
-    sitesCollection.id,
-    args.siteName
+  const completion = await toFlatCompletion(() =>
+    execWorker(runAnalyze, [
+      siteEntry,
+      {
+        headlessBrowser: true,
+        outputName: `${currentTime()}-testAnalyze`,
+      },
+    ])
   );
-  const siteEntry = store.getDocumentData<SiteEntry>(siteDocument.id);
 
-  const result = await runAnalyze(siteEntry, {
-    headlessBrowser: false,
-    outputName: `${currentTime()}-testAnalyze`,
-  });
-
-  console.log(result);
+  console.log(completion);
 
   process.exit(0);
 }
 
-main(
-  ((argv) => {
-    return {
-      sitesId: parseInt(argv[0]),
-      siteName: argv[1],
-    };
-  })(process.argv.slice(2))
-);
+main({
+  siteName: process.argv[2],
+});
