@@ -23,6 +23,7 @@ export interface StorageAbstractOperation extends BaseAbstractOperation {
   storageType: string;
   key: string;
   value: string;
+  valueRange: { begin: number; end: number };
 }
 
 export type AbstractOperation =
@@ -171,11 +172,30 @@ function toAbstractNetworkOperation(
 function toAbstractStorageOperation(
   cx: ToAbstractOperationContext,
   taintOperation: TaintOperation,
-  { str }: TaintReport
+  { str, taint }: TaintReport
 ): AbstractOperation | null {
   let storageType: string;
   let key: string;
   let value: string;
+  let valueRange: StorageAbstractOperation["valueRange"];
+  const getValueRangeForSource = (): typeof valueRange => {
+    const { arguments: taintArgs } = taintOperation;
+    const taintRange = taint.find(({ flow }) => flow === taintOperation);
+    assert(taintRange);
+    const { begin: rangeBegin, end: rangeEnd } = taintRange;
+    const [beginStr, endStr] = taintArgs[2].split(":");
+    if (beginStr === "undefined" && endStr === "NaN") {
+      // This case should happen only in taint flows where the sink is StorageRead
+      return { begin: 0, end: rangeEnd - rangeBegin };
+    }
+    const begin = +beginStr;
+    const end = +endStr;
+    assert(!isNaN(begin));
+    return { begin, end };
+  };
+  const getValueRangeForSink = (): typeof valueRange => {
+    return { begin: 0, end: str.length };
+  };
   switch (taintOperation.operation) {
     case "document.cookie": {
       storageType = "cookie";
@@ -187,11 +207,13 @@ function toAbstractStorageOperation(
           cx.storageMap,
           getStorageMapKey(storageType, key, version)
         );
+        valueRange = getValueRangeForSource();
       } else {
         // set document.cookie
         const sc = str.indexOf(";");
         const kvStr = sc !== -1 ? str.substring(0, sc) : str;
         [key, value] = parseCookieKeyValueString(kvStr);
+        valueRange = getValueRangeForSink();
       }
       break;
     }
@@ -203,12 +225,14 @@ function toAbstractStorageOperation(
         cx.storageMap,
         getStorageMapKey(storageType, key, version)
       );
+      valueRange = getValueRangeForSource();
       break;
     }
     case "localStorage.setItem": {
       storageType = "localStorage";
       key = taintOperation.arguments[0];
       value = str;
+      valueRange = getValueRangeForSink();
       break;
     }
     // case "localStorage.setItem(key)": {
@@ -225,12 +249,14 @@ function toAbstractStorageOperation(
         cx.storageMap,
         getStorageMapKey(storageType, key, version)
       );
+      valueRange = getValueRangeForSource();
       break;
     }
     case "sessionStorage.setItem": {
       storageType = "sessionStorage";
       key = taintOperation.arguments[0];
       value = str;
+      valueRange = getValueRangeForSink();
       break;
     }
     // case "sessionStorage.setItem(key)": {
@@ -252,6 +278,7 @@ function toAbstractStorageOperation(
     storageType,
     key,
     value,
+    valueRange,
   };
 }
 
@@ -334,8 +361,9 @@ function createStorageMap(taintReports: TaintReport[]): Map<string, string> {
       case "document.cookie": {
         for (const [key, value, version] of str
           .split("; ")
-          .map((kvStr, index) => {
-            const kvArray = parseCookieKeyValueString(kvStr);
+          .map((kvStr) => parseCookieKeyValueString(kvStr))
+          .filter(([_key, value]) => value.length > 0)
+          .map((kvArray, index) => {
             const [key] = kvArray;
             const taintSource = taint[index].flow;
             assert(taintSource.operation === "document.cookie");

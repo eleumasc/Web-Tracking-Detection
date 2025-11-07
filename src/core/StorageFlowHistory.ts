@@ -3,6 +3,7 @@ import { createHash } from "crypto";
 import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
 import { parse as parseSearchParams } from "querystring";
+import { range as iterRange } from "iter-tools";
 import { TaintReport } from "../foxhound/types";
 import {
   getAbstractFlowsFromTaintReports,
@@ -17,11 +18,14 @@ export type StorageFlow = {
   // senderOrigin: string;
   receiverOrigin: string;
   requestValue: string;
+  stgValCharsSent: string;
 };
 
 export type SyntacticMatcher = (
   requestValue: string
-) => (storageValue: string) => boolean;
+) => (storageValue: string) => SyntacticMatcherResult;
+
+export type SyntacticMatcherResult = { token: string } | undefined;
 
 function originFromUrl(url: string): string {
   return new URL(url).origin;
@@ -52,15 +56,37 @@ export function getTaintStorageFlowHistory(
     const receiverUrl = requestUrl;
     const receiverOrigin = originFromUrl(receiverUrl);
 
-    for (const { itemId, value: storageValue } of sources.filter(
-      (source) => source.type === "Storage"
-    )) {
+    // We group storage sources having the same itemId and value, then for each
+    // group we join all (distinct) storage value chars that have been sent.
+    const storageItemsSent = _.values(
+      _.groupBy(
+        sources.filter((source) => source.type === "Storage"),
+        ({ itemId, value }) => JSON.stringify({ itemId, value })
+      )
+    ).map((group) => {
+      const { itemId, value, valueRange } = group[0];
+      const stgValCharsSentIndexesSet = new Set<number>();
+      for (const i of iterRange(valueRange.begin, valueRange.end)) {
+        stgValCharsSentIndexesSet.add(i);
+      }
+      const stgValCharsSent = _.sortBy([...stgValCharsSentIndexesSet])
+        .map((i) => value.at(i))
+        .join("");
+      return { itemId, value, stgValCharsSent };
+    });
+
+    for (const {
+      itemId,
+      value: storageValue,
+      stgValCharsSent,
+    } of storageItemsSent) {
       history.push({
         itemId,
         storageValue,
         // senderOrigin,
         receiverOrigin,
         requestValue,
+        stgValCharsSent,
       });
     }
   }
@@ -101,16 +127,22 @@ export function getSyntacticStorageFlowHistory(
       requestURL.search,
       ...(postData ? [harController.readPostData(postData)] : []),
     ].map((requestValue) => ({
-      value: requestValue,
+      requestValue,
       matcher: syntacticMatch(requestValue),
     }));
 
     for (const [storageValue, storageValueGroup] of storageOperationGroups) {
-      const match = requestValueMatchers.find(({ matcher }) =>
-        matcher(storageValue)
-      );
+      let match: { requestValue: string; token: string } | undefined;
+      for (const { requestValue, matcher } of requestValueMatchers) {
+        const matcherResult = matcher(storageValue);
+        if (matcherResult) {
+          const { token } = matcherResult;
+          match = { requestValue, token };
+          break;
+        }
+      }
       if (!match) continue;
-      const { value: requestValue } = match;
+      const { requestValue, token } = match;
       for (const { itemId, value: storageValue } of storageValueGroup) {
         history.push({
           itemId,
@@ -118,6 +150,7 @@ export function getSyntacticStorageFlowHistory(
           // senderOrigin,
           receiverOrigin,
           requestValue,
+          stgValCharsSent: token, // TODO: the first occurrence may not be the unique one, to be revised
         });
       }
     }
@@ -221,13 +254,15 @@ export const syntacticMatchJourney: SyntacticMatcher = (
 
   const requestValues = [...generateCandidateRequestValues(requestValue)];
 
-  return (storageValue: string) => {
-    return requestValues.some((requestValue) => {
-      return (
-        requestValue.includes(storageValue) ||
+  return (storageValue: string): SyntacticMatcherResult => {
+    const token =
+      requestValues.find((requestValue) =>
         storageValue.includes(requestValue)
-      );
-    });
+      ) ??
+      (requestValues.some((requestValue) => requestValue.includes(storageValue))
+        ? storageValue
+        : undefined);
+    return token ? { token } : undefined;
   };
 };
 
@@ -239,20 +274,20 @@ export const syntacticMatchCookieguard: SyntacticMatcher = (
       .split(/[^A-Za-z0-9]/)
       .filter((x) => x.length >= 8);
 
-    const doesQueryIncludeSomeToken = (
+    const matchSomeTokenInQuery = (
       encoder?: (value: string) => string
-    ): boolean =>
-      tokens.some((t) => requestValue.includes(encoder ? encoder(t) : t));
+    ): SyntacticMatcherResult => {
+      const token = tokens.find((t) =>
+        requestValue.includes(encoder ? encoder(t) : t)
+      );
+      return token ? { token } : undefined;
+    };
 
     return (
-      doesQueryIncludeSomeToken() ||
-      doesQueryIncludeSomeToken((t) => Buffer.from(t).toString("base64")) ||
-      doesQueryIncludeSomeToken((t) =>
-        createHash("md5").update(t).digest("hex")
-      ) ||
-      doesQueryIncludeSomeToken((t) =>
-        createHash("sha1").update(t).digest("hex")
-      )
+      matchSomeTokenInQuery() ||
+      matchSomeTokenInQuery((t) => Buffer.from(t).toString("base64")) ||
+      matchSomeTokenInQuery((t) => createHash("md5").update(t).digest("hex")) ||
+      matchSomeTokenInQuery((t) => createHash("sha1").update(t).digest("hex"))
     );
   };
 };

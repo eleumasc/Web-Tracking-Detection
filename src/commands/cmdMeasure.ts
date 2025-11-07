@@ -7,7 +7,7 @@ import path from "path";
 import zxcvbn from "zxcvbn";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { enumerate } from "iter-tools";
+import { enumerate as iterEnumerate } from "iter-tools";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { getStorageOperationsFromTaintReports } from "../core/AbstractFlow";
 import { HarController } from "../util/HarController";
@@ -33,12 +33,18 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
   let totalSitesCount = 0;
   let successSitesCount = 0;
-  let syntacticFlowsCount = 0;
-  let onlyTaintFlowsCount = 0;
-  let syntacticFlowsSitesCount = 0;
-  let onlyTaintFlowsSitesCount = 0;
 
-  for (const [documentIndex, analysisDocument] of enumerate(
+  let syntacticFlowsCount = 0;
+  let intersectFlowsCount = 0;
+  let onlyTaintFlowsCount = 0;
+  let onlySyntacticFlowsCount = 0;
+
+  let syntacticFlowsSitesCount = 0;
+  let intersectFlowsSitesCount = 0;
+  let onlyTaintFlowsSitesCount = 0;
+  let onlySyntacticFlowsSitesCount = 0;
+
+  for (const [documentIndex, analysisDocument] of iterEnumerate(
     store.getDocumentsByCollection(analysisCollection.id)
   )) {
     const site = analysisDocument.name;
@@ -95,6 +101,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
       receiverOrigin: string;
       _storageValues: string[];
       _requestValues: string[];
+      _stgValCharsSent: string[];
     };
 
     const toAggregateStorageFlows = (
@@ -104,26 +111,30 @@ export default function cmdMeasure(args: { analysisId: number }) {
         _.groupBy(storageFlows, ({ itemId, receiverOrigin }) =>
           JSON.stringify({ itemId, receiverOrigin })
         )
-      ).map((keyGroup) => {
+      ).map((keyGroup): AggregateStorageFlow => {
         const { itemId, receiverOrigin } = keyGroup[0];
         return {
           itemId,
           receiverOrigin,
           _storageValues: _.uniq(keyGroup.map((x) => x.storageValue)),
           _requestValues: _.uniq(keyGroup.map((x) => x.requestValue)),
+          _stgValCharsSent: _.uniq(keyGroup.map((x) => x.stgValCharsSent)),
         };
       });
 
+    // Prefilter flows using the zxcvbn technique from Journey
+    // Taint flows: information about distinct characters (positions) is in taint information
+    // Syntactic flows: since whole substrings are matched, every character (position) is distinct
     const zxcvbnCheckCache = new Map<string, boolean>();
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
     ): StorageFlow[] =>
-      storageFlows.filter(({ storageValue }) => {
+      storageFlows.filter(({ stgValCharsSent: stgValCharsSent }) => {
         const zxcvbnCheck =
-          zxcvbnCheckCache.get(storageValue) ??
-          (storageValue.length >= 128 ||
-            zxcvbn(storageValue).guesses_log10 >= 9);
-        zxcvbnCheckCache.set(storageValue, zxcvbnCheck);
+          zxcvbnCheckCache.get(stgValCharsSent) ??
+          (stgValCharsSent.length >= 128 ||
+            zxcvbn(stgValCharsSent).guesses_log10 >= 9);
+        zxcvbnCheckCache.set(stgValCharsSent, zxcvbnCheck);
         return zxcvbnCheck;
       });
 
@@ -162,20 +173,28 @@ export default function cmdMeasure(args: { analysisId: number }) {
     );
 
     syntacticFlowsCount += syntacticFlows.length;
+    intersectFlowsCount += intersectFlows.length;
     onlyTaintFlowsCount += onlyTaintFlows.length;
+    onlySyntacticFlowsCount += onlySyntacticFlows.length;
 
     syntacticFlowsSitesCount += Number(syntacticFlows.length > 0);
+    intersectFlowsSitesCount += Number(intersectFlows.length > 0);
     onlyTaintFlowsSitesCount += Number(onlyTaintFlows.length > 0);
+    onlySyntacticFlowsSitesCount += Number(onlySyntacticFlows.length > 0);
   }
 
   const report = {
     totalSitesCount,
     successSitesCount,
     syntacticFlowsCount,
+    intersectFlowsCount,
     onlyTaintFlowsCount,
+    onlySyntacticFlowsCount,
     taintEnhancement: onlyTaintFlowsCount / syntacticFlowsCount,
     syntacticFlowsSitesCount,
+    intersectFlowsSitesCount,
     onlyTaintFlowsSitesCount,
+    onlySyntacticFlowsSitesCount,
     taintEnhancementSites: onlyTaintFlowsSitesCount / syntacticFlowsSitesCount,
   };
   console.log(report);
