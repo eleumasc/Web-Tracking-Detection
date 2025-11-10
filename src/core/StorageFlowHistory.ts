@@ -101,7 +101,11 @@ export function getSyntacticStorageFlowHistory(
   const history: StorageFlowHistory = [];
   const storageOperationGroups = _.toPairs(
     _.mapValues(
-      _.groupBy(storageOperations, ({ value }) => value),
+      _.groupBy(
+        // Consider only storage read operations
+        storageOperations.filter(({ type }) => type === "Read"),
+        ({ value }) => value
+      ),
       (valueGroup) =>
         _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
           // minBy because we consider the first moment when value is assigned to that storage item

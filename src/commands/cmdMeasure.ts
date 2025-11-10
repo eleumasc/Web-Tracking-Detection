@@ -2,6 +2,7 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import isLoEqual from "../util/isLoEqual";
+import matchIdentifiers from "../core/chen/matchIdentifiers";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import zxcvbn from "zxcvbn";
@@ -57,6 +58,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
     );
 
     if (isFailure(analysisLogEntry)) continue;
+    const { value: ctaResult } = analysisLogEntry;
 
     successSitesCount += 1;
 
@@ -71,15 +73,13 @@ export default function cmdMeasure(args: { analysisId: number }) {
         )
         .map(({ data }) => data);
     })();
-    analysisLogEntry.value.taintReports = taintReports;
+    ctaResult.taintReports = taintReports;
 
     const storageOperations =
       getStorageOperationsFromTaintReports(taintReports);
+
     const harController = new HarController(
-      path.join(
-        getOutputPath(analysisCollection.name),
-        analysisLogEntry.value.harFile
-      )
+      path.join(getOutputPath(analysisCollection.name), ctaResult.harFile)
     );
 
     // const storageWrites = storageOperations.filter(
@@ -122,21 +122,33 @@ export default function cmdMeasure(args: { analysisId: number }) {
         };
       });
 
-    // Prefilter flows using the zxcvbn technique from Journey
-    // Taint flows: information about distinct characters (positions) is in taint information
-    // Syntactic flows: since whole substrings are matched, every character (position) is distinct
+    const identifiers = matchIdentifiers(
+      ctaResult.preStorageState,
+      ctaResult.firstStorageState
+    );
     const zxcvbnCheckCache = new Map<string, boolean>();
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
     ): StorageFlow[] =>
-      storageFlows.filter(({ stgValCharsSent: stgValCharsSent }) => {
-        const zxcvbnCheck =
-          zxcvbnCheckCache.get(stgValCharsSent) ??
-          (stgValCharsSent.length >= 128 ||
-            zxcvbn(stgValCharsSent).guesses_log10 >= 9);
-        zxcvbnCheckCache.set(stgValCharsSent, zxcvbnCheck);
-        return zxcvbnCheck;
-      });
+      storageFlows
+        .filter(({ itemId, storageValue }) => {
+          // Prefilter flows based on the persisted value of identifiers
+          return identifiers.find(({ key: identKey, value: identValue }) => {
+            const identItemId = `${identKey.storageType}:${identKey.name}`;
+            return itemId === identItemId && storageValue === identValue;
+          });
+        })
+        .filter(({ stgValCharsSent }) => {
+          // Prefilter flows using the zxcvbn technique from Journey on stgValCharsSent
+          // Taint flows: information about distinct characters (positions) is in taint information
+          // Syntactic flows: since whole substrings are matched, every character (position) is distinct
+          const zxcvbnCheck =
+            zxcvbnCheckCache.get(stgValCharsSent) ??
+            (stgValCharsSent.length >= 128 ||
+              zxcvbn(stgValCharsSent).guesses_log10 >= 9);
+          zxcvbnCheckCache.set(stgValCharsSent, zxcvbnCheck);
+          return zxcvbnCheck;
+        });
 
     const taintFlows = toAggregateStorageFlows(
       prefilterStorageFlows(taintHistory)

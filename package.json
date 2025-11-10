@@ -28,6 +28,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@algorithm.ts/lcs": "^4.0.5",
     "adm-zip": "^0.5.16",
     "async": "^3.2.6",
     "better-sqlite3": "^11.7.0",
