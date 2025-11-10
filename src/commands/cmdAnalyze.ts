@@ -5,17 +5,20 @@ import execWorker from "../worker/execWorker";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import simulateConnect from "../core/simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
 import useTempPath from "../util/useTempPath";
-import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
+import { AnalysisLogEntry, CTAResult } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { createOutputDir } from "../data/outputDir";
 import { isSuccess, toCompletion, toFlatCompletion } from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
+import { StorageState } from "../core/StorageState";
 import { TaintReport } from "../foxhound/types";
+import simulateConnect, {
+  SimulateConnectResult,
+} from "../core/simulateConnect";
 
 export const ANALYSIS_LOGS_COLL_TYPE = "analysis_logs";
 
@@ -133,49 +136,76 @@ export async function runAnalyze(
   const harPath = path.join(outputPath, harFile);
 
   return toCompletion(() =>
-    bomb(ANALYSIS_TIMEOUT_MS, () =>
-      useTempPath(
-        undefined,
-        async (userDataDir) => (
-          await useFoxhound(
-            {
-              userDataDir,
-              headless: headlessBrowser,
-              taintingActive: false,
-            },
-            async (browser) => {
-              await simulateConnect(browser, { site });
-            }
-          ),
-          useFoxhound(
-            {
-              userDataDir,
-              headless: headlessBrowser,
-              harPath,
-            },
-            async (browser) => {
-              // capture taint reports
-              const taintReports: TaintReport[] = [];
-              await installFoxhoundTaintReporter(browser, {
-                onTaintReport: (taintReport) => {
-                  taintReports.push(taintReport);
-                },
-              });
+    bomb(ANALYSIS_TIMEOUT_MS, async () => {
+      let firstConnectResult: SimulateConnectResult;
+      let preConnectResult: SimulateConnectResult;
+      let taintConnectResult: SimulateConnectResult;
+      let firstStorageState: StorageState;
+      let preStorageState: StorageState;
+      const taintReports: TaintReport[] = [];
 
-              const connectResult = await simulateConnect(browser, {
-                site,
-                screenshotPath: path.join(outputPath, `${site}.png`),
-              });
+      await useTempPath(undefined, async (userDataDir) => {
+        await useFoxhound(
+          {
+            userDataDir,
+            headless: headlessBrowser,
+            taintingActive: false,
+          },
+          async (browser) => {
+            firstConnectResult = await simulateConnect(browser, { site });
+            firstStorageState = await browser.storageState();
+          }
+        );
+      });
+      assert(firstConnectResult!);
+      assert(firstStorageState!);
 
-              return {
-                connectResult,
-                taintReports,
-                harFile,
-              };
-            }
-          )
-        )
-      )
-    )
+      await useTempPath(undefined, async (userDataDir) => {
+        await useFoxhound(
+          {
+            userDataDir,
+            headless: headlessBrowser,
+            taintingActive: false,
+          },
+          async (browser) => {
+            preConnectResult = await simulateConnect(browser, { site });
+            preStorageState = await browser.storageState();
+          }
+        );
+
+        await useFoxhound(
+          {
+            userDataDir,
+            headless: headlessBrowser,
+            harPath,
+          },
+          async (browser) => {
+            // capture taint reports
+            await installFoxhoundTaintReporter(browser, {
+              onTaintReport: (taintReport) => {
+                taintReports.push(taintReport);
+              },
+            });
+            taintConnectResult = await simulateConnect(browser, {
+              site,
+              screenshotPath: path.join(outputPath, `${site}.png`),
+            });
+          }
+        );
+      });
+      assert(preConnectResult!);
+      assert(taintConnectResult!);
+      assert(preStorageState!);
+
+      return <CTAResult>{
+        firstConnectResult,
+        preConnectResult,
+        taintConnectResult,
+        firstStorageState,
+        preStorageState,
+        taintReports,
+        harFile,
+      };
+    })
   );
 }

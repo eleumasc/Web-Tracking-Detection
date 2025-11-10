@@ -6,7 +6,11 @@ import { TaintReport } from "../foxhound/types";
 export type AnalysisLogEntry = Completion<CTAResult>;
 
 export type CTAResult = {
-  connectResult: SimulateConnectResult;
+  firstConnectResult: SimulateConnectResult;
+  preConnectResult: SimulateConnectResult;
+  taintConnectResult: SimulateConnectResult;
+  firstStorageState: StorageState;
+  preStorageState: StorageState;
   taintReports: TaintReport[];
   harFile: string;
 };
