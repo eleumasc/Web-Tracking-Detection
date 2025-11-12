@@ -153,6 +153,13 @@ function toAbstractNetworkOperation(
     default:
       return null;
   }
+  if (
+    requestUrl.startsWith("data:") ||
+    requestUrl.startsWith("blob:") ||
+    requestUrl.startsWith("javascript:")
+  ) {
+    return null;
+  }
   if (!URL.canParse(requestUrl, baseURI)) {
     console.log(
       `[toAbstractNetworkOperation.ParseURL] ${taintOperation.operation} ${requestUrl}`
