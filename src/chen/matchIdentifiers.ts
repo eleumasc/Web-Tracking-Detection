@@ -1,5 +1,5 @@
 import significantlyDifferent from "./significantlyDifferent";
-import { StorageState } from "../StorageState";
+import { StorageState } from "../core/StorageState";
 
 export type StorageKey =
   | {

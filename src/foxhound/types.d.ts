@@ -1,33 +1,33 @@
-export interface TaintReport {
+export interface FoxhoundReport {
   subframe: boolean;
   loc: string;
   baseURI: string;
-  sink: TaintOperation;
+  sink: FoxhoundOperation;
   str: string;
-  taint: Taint;
+  taint: FoxhoundTaint;
   stack: any;
   timestamp: any; // It should be a number, but Date.now() may have been monkey-patched at analysis time. In such a case, the function may have returned a non-number value (e.g., see cornell.edu).
 }
 
-export type Taint = TaintRange[];
+export type FoxhoundTaint = FoxhoundRange[];
 
-export interface TaintRange {
+export interface FoxhoundRange {
   begin: number;
   end: number;
-  flow: TaintFlow;
+  flow: FoxhoundFlow;
 }
 
-export type TaintFlow = TaintOperation;
+export type FoxhoundFlow = FoxhoundOperation;
 
-export interface TaintOperation {
+export interface FoxhoundOperation {
   arguments: string[];
   builtin: boolean;
-  location: TaintLocation;
+  location: FoxhoundLocation;
   operation: string;
   source: boolean;
 }
 
-export interface TaintLocation {
+export interface FoxhoundLocation {
   filename: string;
   function: string;
   line: number;

@@ -1,443 +1,297 @@
-import assert from "assert";
-import { TaintLocation, TaintOperation, TaintReport } from "../foxhound/types";
+import _ from "lodash";
+import { createHash } from "crypto";
+import { FoxhoundReport } from "../foxhound/types";
+import { gunzipSync, inflateSync } from "zlib";
+import { HarController } from "../util/HarController";
+import { parse as parseSearchParams } from "querystring";
+import { range as iterRange } from "iter-tools";
+import {
+  getTaintFlowsFromFoxhoundReports,
+  StorageOperation,
+} from "./TaintFlow";
 
 export type AbstractFlow = {
-  str: string;
-  sink: AbstractOperation;
-  sources: AbstractOperation[];
+  itemId: string;
+  storageValue: string;
+  // senderOrigin: string;
+  receiverOrigin: string;
+  requestValue: string;
+  stgValCharsSent: string;
 };
 
-export interface BaseAbstractOperation {
-  type: string;
-  location: string;
+export type SyntacticMatcher = (
+  requestValue: string
+) => (storageValue: string) => SyntacticMatcherResult;
+
+export type SyntacticMatcherResult = { token: string } | undefined;
+
+function originFromUrl(url: string): string {
+  return new URL(url).origin;
 }
 
-export interface NetworkAbstractOperation extends BaseAbstractOperation {
-  type: "Network";
-  requestUrl: string;
-}
-
-export interface StorageAbstractOperation extends BaseAbstractOperation {
-  type: "Storage";
-  itemId: string;
-  storageType: string;
-  key: string;
-  value: string;
-  valueRange: { begin: number; end: number };
-}
-
-export type AbstractOperation =
-  | NetworkAbstractOperation
-  | StorageAbstractOperation;
-
-export function getAbstractFlowsFromTaintReports(
-  taintReports: TaintReport[]
+export function getTaintAbstractFlows(
+  foxhoundReports: FoxhoundReport[],
+  harController: HarController
 ): AbstractFlow[] {
-  const cx: ToAbstractOperationContext = {
-    storageMap: createStorageMap(taintReports),
-  };
-  const flows: AbstractFlow[] = [];
-  for (const taintReport of taintReports) {
-    const { str, sink: taintSink, taint } = taintReport;
-    const sink = toAbstractOperation(cx, taintSink, taintReport);
-    if (!sink) continue;
-    const sources: AbstractOperation[] = [];
-    for (const { begin, end, flow: taintSource } of taint) {
-      const source = toAbstractOperation(cx, taintSource, taintReport);
-      if (!source) continue;
-      sources.push(source);
+  const abstractFlows: AbstractFlow[] = [];
+  for (const flow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
+    const { sources, sink } = flow;
+
+    if (!(sink.type === "Network")) continue;
+    const { str: requestValue } = flow;
+    const { location, requestUrl } = sink;
+
+    // Consider only taint flows such that there is an HAR entry whose
+    // request URL corresponds to that of the network sink.
+    // This especially helps to remove taint flows whose network sink do not
+    // initiate a network request (e.g., set img.src to data URIs).
+    if (!harController.hasRequestWithUrl(requestUrl)) {
+      console.log(requestUrl);
+      continue;
     }
-    flows.push({ str, sink, sources });
-  }
-  return flows;
-}
 
-interface ToAbstractOperationContext {
-  storageMap: Map<string, string>;
-}
+    // const senderOrigin = originFromUrl(location);
+    const receiverUrl = requestUrl;
+    const receiverOrigin = originFromUrl(receiverUrl);
 
-function toAbstractOperation(
-  cx: ToAbstractOperationContext,
-  taintOperation: TaintOperation,
-  taintReport: TaintReport
-): AbstractOperation | null {
-  try {
-    for (const fn of [toAbstractNetworkOperation, toAbstractStorageOperation]) {
-      const absOp = fn(cx, taintOperation, taintReport);
-      if (absOp) return absOp;
-    }
-  } catch (e) {
-    console.error(e);
-  }
-  return null;
-}
-
-function toAbstractNetworkOperation(
-  cx: ToAbstractOperationContext,
-  taintOperation: TaintOperation,
-  { str, baseURI }: TaintReport
-): AbstractOperation | null {
-  let requestUrl: string;
-  switch (taintOperation.operation) {
-    // SINKS
-    //
-    // XMLHttpRequest
-    case "XMLHttpRequest.open(url)":
-      requestUrl = str;
-      break;
-    case "XMLHttpRequest.send":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    // fetch
-    case "fetch.url":
-      requestUrl = str;
-      break;
-    case "fetch.body":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    // sendBeacon
-    case "navigator.sendBeacon(url)":
-      requestUrl = str;
-      break;
-    case "navigator.sendBeacon(body)":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    // WebSocket
-    // case "WebSocket":
-    //   requestUrl = taintOperation.arguments[0];
-    //   break;
-    // case "WebSocket.send":
-    //   requestUrl = taintOperation.arguments[0];
-    //   break;
-    //
-    // location (SINK-ONLY)
-    case "location.pathname":
-    case "location.search":
-    case "location.hash":
-    case "location.href":
-    case "location.assign":
-    case "location.replace": {
-      if (!taintOperation.source) {
-        requestUrl = str;
-      } else {
-        return null;
+    // We group storage sources having the same itemId and value, then for each
+    // group we join all (distinct) storage value chars that have been sent.
+    const storageItemsSent = _.values(
+      _.groupBy(
+        sources.filter((source) => source.type === "Storage"),
+        ({ itemId, value }) => JSON.stringify([itemId, value])
+      )
+    ).map((group) => {
+      const { itemId, value } = group[0];
+      const stgValCharsSentIndexesSet = new Set<number>();
+      for (const { valueRange } of group) {
+        for (const i of iterRange(valueRange.begin, valueRange.end)) {
+          stgValCharsSentIndexesSet.add(i);
+        }
       }
-      break;
-    }
-    //
-    // DOM
-    case "iframe.src":
-    case "img.src":
-    case "script.src": {
-      requestUrl = str;
-      break;
-    }
-    //
-    // SOURCES
-    //
-    // XMLHttpRequest
-    case "XMLHttpRequest.response":
-    case "XMLHttpRequest.response(json)":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    // fetch
-    case "fetch.text()":
-    case "fetch.json()":
-      requestUrl = taintOperation.arguments[0];
-      break;
-    // WebSocket
-    // case "WebSocket.MessageEvent.data": // TODO: fix location in Foxhound
-    //   requestUrl = taintOperation.arguments[0];
-    //   break;
-    //
-    default:
-      return null;
-  }
-  if (
-    requestUrl.startsWith("data:") ||
-    requestUrl.startsWith("blob:") ||
-    requestUrl.startsWith("javascript:")
-  ) {
-    return null;
-  }
-  if (!URL.canParse(requestUrl, baseURI)) {
-    console.log(
-      `[toAbstractNetworkOperation.ParseURL] ${taintOperation.operation} ${requestUrl}`
-    );
-    return null;
-  }
-  requestUrl = new URL(requestUrl, baseURI).href;
-  const location = getLocation(taintOperation.location);
-  if (!location) return null;
-  return {
-    type: "Network",
-    location,
-    requestUrl,
-  };
-}
+      const stgValCharsSent = _.sortBy([...stgValCharsSentIndexesSet])
+        .map((i) => value.at(i))
+        .join("");
+      return { itemId, value, stgValCharsSent };
+    });
 
-function toAbstractStorageOperation(
-  cx: ToAbstractOperationContext,
-  taintOperation: TaintOperation,
-  { str, taint }: TaintReport
-): AbstractOperation | null {
-  let storageType: string;
-  let key: string;
-  let value: string;
-  let valueRange: StorageAbstractOperation["valueRange"];
-  const getValueRangeForSource = (): typeof valueRange => {
-    const { arguments: taintArgs } = taintOperation;
-    const taintRange = taint.find(({ flow }) => flow === taintOperation);
-    assert(taintRange);
-    const { begin: rangeBegin, end: rangeEnd } = taintRange;
-    const [beginStr, endStr] = taintArgs[2].split(":");
-    if (beginStr === "undefined" && endStr === "NaN") {
-      // This case should happen only in taint flows where the sink is StorageRead
-      return { begin: 0, end: rangeEnd - rangeBegin };
-    }
-    const begin = +beginStr;
-    const end = +endStr;
-    assert(!isNaN(begin));
-    return { begin, end };
-  };
-  const getValueRangeForSink = (): typeof valueRange => {
-    return { begin: 0, end: str.length };
-  };
-  switch (taintOperation.operation) {
-    case "document.cookie": {
-      storageType = "cookie";
-      if (taintOperation.source) {
-        // get document.cookie
-        let version: string;
-        [key, version] = taintOperation.arguments;
-        value = getStorageMapValue(
-          cx.storageMap,
-          getStorageMapKey(storageType, key, version)
-        );
-        valueRange = getValueRangeForSource();
-      } else {
-        // set document.cookie
-        const sc = str.indexOf(";");
-        const kvStr = sc !== -1 ? str.substring(0, sc) : str;
-        [key, value] = parseCookieKeyValueString(kvStr);
-        valueRange = getValueRangeForSink();
-      }
-      break;
-    }
-    case "localStorage.getItem": {
-      storageType = "localStorage";
-      let version: string;
-      [key, version] = taintOperation.arguments;
-      value = getStorageMapValue(
-        cx.storageMap,
-        getStorageMapKey(storageType, key, version)
-      );
-      valueRange = getValueRangeForSource();
-      break;
-    }
-    case "localStorage.setItem": {
-      storageType = "localStorage";
-      key = taintOperation.arguments[0];
-      value = str;
-      valueRange = getValueRangeForSink();
-      break;
-    }
-    // case "localStorage.setItem(key)": {
-    //   storageType = "localStorage";
-    //   key = str;
-    //   value = taintOperation.arguments[0];
-    //   break;
-    // }
-    case "sessionStorage.getItem": {
-      storageType = "sessionStorage";
-      let version: string;
-      [key, version] = taintOperation.arguments;
-      value = getStorageMapValue(
-        cx.storageMap,
-        getStorageMapKey(storageType, key, version)
-      );
-      valueRange = getValueRangeForSource();
-      break;
-    }
-    case "sessionStorage.setItem": {
-      storageType = "sessionStorage";
-      key = taintOperation.arguments[0];
-      value = str;
-      valueRange = getValueRangeForSink();
-      break;
-    }
-    // case "sessionStorage.setItem(key)": {
-    //   storageType = "sessionStorage";
-    //   key = str;
-    //   value = taintOperation.arguments[0];
-    //   break;
-    // }
-    default:
-      return null;
-  }
-  const itemId = `${storageType}:${key}`;
-  const location = getLocation(taintOperation.location);
-  if (!location) return null;
-  return {
-    type: "Storage",
-    location,
-    itemId,
-    storageType,
-    key,
-    value,
-    valueRange,
-  };
-}
-
-function getLocation(taintLocation: TaintLocation): string | null {
-  const { filename } = taintLocation;
-  if (URL.canParse(filename)) {
-    return filename;
-  }
-  const moduleSep = filename.indexOf("<@");
-  if (moduleSep !== -1) {
-    const moduleFilename = filename.substring(moduleSep + 2);
-    if (URL.canParse(moduleFilename)) {
-      return moduleFilename;
-    }
-  }
-  console.log(`[getLocation.ParseURL] ${filename}`);
-  return null;
-}
-
-////
-
-export type StorageOperation = {
-  type: "Read" | "Write";
-  location: string;
-  itemId: string;
-  value: string;
-  timestamp: number;
-};
-
-export function getStorageOperationsFromTaintReports(
-  taintReports: TaintReport[]
-): StorageOperation[] {
-  const cx: ToAbstractOperationContext = {
-    storageMap: createStorageMap(taintReports),
-  };
-  const storageOperations: StorageOperation[] = [];
-  for (const taintReport of taintReports) {
-    const { sink: taintSink, taint, timestamp: unsafeTimestamp } = taintReport;
-    const timestamp =
-      typeof unsafeTimestamp === "number"
-        ? unsafeTimestamp
-        : Date.parse(unsafeTimestamp);
-    assert(!isNaN(timestamp));
-    if (taintSink.operation === "StorageRead") {
-      for (const { begin, end, flow: taintSource } of taint) {
-        const source = toAbstractStorageOperation(cx, taintSource, taintReport);
-        if (!source) continue;
-        const { location, itemId, value } = source as StorageAbstractOperation;
-        storageOperations.push({
-          type: "Read",
-          location,
-          itemId,
-          value,
-          timestamp,
-        });
-      }
-    } else {
-      const sink = toAbstractStorageOperation(cx, taintSink, taintReport);
-      if (!sink) continue;
-      const { location, itemId, value } = sink as StorageAbstractOperation;
-      storageOperations.push({
-        type: "Write",
-        location,
+    for (const {
+      itemId,
+      value: storageValue,
+      stgValCharsSent,
+    } of storageItemsSent) {
+      abstractFlows.push({
         itemId,
-        value,
-        timestamp,
+        storageValue,
+        // senderOrigin,
+        receiverOrigin,
+        requestValue,
+        stgValCharsSent,
       });
     }
   }
-  return storageOperations;
+  return abstractFlows;
 }
 
-function createStorageMap(taintReports: TaintReport[]): Map<string, string> {
-  const storageMap = new Map<string, string>();
-  for (const taintReport of taintReports) {
-    const { str, sink: taintSink, taint } = taintReport;
-    if (taintSink.operation !== "StorageRead") continue;
-    const firstTaintSource = taint[0].flow;
-    switch (firstTaintSource.operation) {
-      case "document.cookie": {
-        for (const [key, value, version] of str
-          .split("; ")
-          .map((kvStr) => parseCookieKeyValueString(kvStr))
-          .filter(([_key, value]) => value.length > 0)
-          .map((kvArray, index) => {
-            const [key] = kvArray;
-            const taintSource = taint[index].flow;
-            assert(taintSource.operation === "document.cookie");
-            const [argsKey, version] = taintSource.arguments;
-            assert(key === argsKey);
-            return [...kvArray, version];
-          })) {
-          setStorageMapValue(
-            storageMap,
-            getStorageMapKey("cookie", key, version),
-            value
-          );
+export function getSyntacticAbstractFlows(
+  storageOperations: StorageOperation[],
+  harController: HarController,
+  syntacticMatch: SyntacticMatcher
+): AbstractFlow[] {
+  const abstractFlows: AbstractFlow[] = [];
+  const storageOperationGroups = _.toPairs(
+    _.mapValues(
+      _.groupBy(
+        // Consider only storage read operations
+        storageOperations.filter(({ type }) => type === "Read"),
+        ({ value }) => value
+      ),
+      (valueGroup) =>
+        _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
+          // minBy because we consider the first moment when value is assigned to that storage item
+          (itemIdGroup) => _.minBy(itemIdGroup, ({ timestamp }) => timestamp)!
+        )
+    )
+  );
+  for (const harEntry of harController.entries()) {
+    const {
+      request: { url: requestUrl, postData },
+    } = harEntry;
+    const requestURL = new URL(requestUrl);
+
+    // const initiator = headers.find(({ name }) => name === "X-Initiator")?.value;
+    // if (!initiator) continue;
+
+    // const senderOrigin = originFromUrl(initiator);
+    const receiverUrl = requestUrl;
+    const receiverOrigin = originFromUrl(receiverUrl);
+
+    const requestValueMatchers = [
+      requestURL.pathname,
+      requestURL.search,
+      ...(postData ? [harController.readPostData(postData)] : []),
+    ].map((requestValue) => ({
+      requestValue,
+      matcher: syntacticMatch(requestValue),
+    }));
+
+    for (const [storageValue, storageValueGroup] of storageOperationGroups) {
+      let match: { requestValue: string; token: string } | undefined;
+      for (const { requestValue, matcher } of requestValueMatchers) {
+        const matcherResult = matcher(storageValue);
+        if (matcherResult) {
+          const { token } = matcherResult;
+          match = { requestValue, token };
+          break;
         }
-        break;
       }
-      case "localStorage.getItem": {
-        const [key, version] = firstTaintSource.arguments;
-        setStorageMapValue(
-          storageMap,
-          getStorageMapKey("localStorage", key, version),
-          str
-        );
-        break;
-      }
-      case "sessionStorage.getItem": {
-        const [key, version] = firstTaintSource.arguments;
-        setStorageMapValue(
-          storageMap,
-          getStorageMapKey("sessionStorage", key, version),
-          str
-        );
-        break;
+      if (!match) continue;
+      const { requestValue, token } = match;
+      for (const { itemId, value: storageValue } of storageValueGroup) {
+        abstractFlows.push({
+          itemId,
+          storageValue,
+          // senderOrigin,
+          receiverOrigin,
+          requestValue,
+          stgValCharsSent: token, // TODO: the first occurrence may not be the unique one, to be revised
+        });
       }
     }
   }
-  return storageMap;
+  return abstractFlows;
 }
 
-function getStorageMapKey(
-  storageType: string,
-  key: string,
-  version: string
-): string {
-  return `${version}:${storageType}:${key}`;
-}
+export const syntacticMatchJourney: SyntacticMatcher = (
+  requestValue: string
+) => {
+  type Decoder = (value: string) => string[];
 
-function getStorageMapValue(
-  storageMap: Map<string, string>,
-  storageMapKey: string
-): string {
-  const value = storageMap.get(storageMapKey);
-  assert(value !== undefined);
-  return value;
-}
+  const decodeURLEncoding: Decoder = (value) => {
+    try {
+      const decoded = decodeURIComponent(value);
+      return decoded !== value ? [decoded] : [];
+    } catch {
+      return [];
+    }
+  };
+  const decodeJSON: Decoder = (value) => {
+    let jsRootValue;
+    try {
+      jsRootValue = JSON.parse(value);
+    } catch {
+      return [];
+    }
+    return (function extractStringValues(jsValue): string[] {
+      switch (typeof jsValue) {
+        case "string": {
+          return [jsValue];
+        }
+        case "object": {
+          if (!jsValue) {
+            return [];
+          }
+          if (Array.isArray(jsValue)) {
+            return jsValue.flatMap((x) => extractStringValues(x));
+          }
+          return Object.values(jsValue).flatMap((x) => extractStringValues(x));
+        }
+        default:
+          return [];
+      }
+    })(jsRootValue);
+  };
+  const decodeBase64: Decoder = (value) => {
+    if (value.length % 4 !== 0 || !/^[A-Za-z0-9+\/\-_]+={0,2}$/.test(value)) {
+      return [];
+    }
+    return [Buffer.from(value, "base64").toString()];
+  };
+  const decodeGzip: Decoder = (value) => {
+    try {
+      return [gunzipSync(Buffer.from(value)).toString()];
+    } catch {
+      return [];
+    }
+  };
+  const decodeDeflate: Decoder = (value) => {
+    try {
+      return [inflateSync(Buffer.from(value)).toString()];
+    } catch {
+      return [];
+    }
+  };
+  const decodeSearchParams: Decoder = (value) => {
+    return Object.values(
+      parseSearchParams(value, undefined, undefined, {
+        decodeURIComponent: (x) => x,
+      })
+    ).flatMap((values) => values ?? []);
+  };
+  function* generateCandidateRequestValues(
+    initialValue: string
+  ): Generator<string> {
+    const MAX_ITERATION: number = 1000;
+    const queue: string[] = [initialValue];
+    let value: string | undefined;
+    let iteration: number = 0;
+    while (
+      iteration < MAX_ITERATION &&
+      ((value = queue.shift()), value !== undefined)
+    ) {
+      iteration += 1;
+      if (value.length < 5) continue;
+      yield value;
+      for (const decoder of [
+        decodeURLEncoding,
+        decodeJSON,
+        decodeBase64,
+        // decodeGzip,
+        // decodeDeflate,
+        decodeSearchParams,
+      ]) {
+        const newValues = decoder(value).filter((x) => x.length > 0);
+        queue.push(...newValues);
+      }
+    }
+  }
 
-function setStorageMapValue(
-  storageMap: Map<string, string>,
-  storageMapKey: string,
-  value: string
-): void {
-  assert(!storageMap.has(storageMapKey));
-  storageMap.set(storageMapKey, value);
-}
+  const requestValues = [...generateCandidateRequestValues(requestValue)];
 
-function parseCookieKeyValueString(kvStr: string): [string, string] {
-  const eq = kvStr.indexOf("=");
-  const key = eq !== -1 ? kvStr.substring(0, eq).trim() : "";
-  const value = eq !== -1 ? kvStr.substring(eq + 1).trim() : kvStr.trim();
-  return [key, value];
-}
+  return (storageValue: string): SyntacticMatcherResult => {
+    const token =
+      requestValues.find((requestValue) =>
+        storageValue.includes(requestValue)
+      ) ??
+      (requestValues.some((requestValue) => requestValue.includes(storageValue))
+        ? storageValue
+        : undefined);
+    return token ? { token } : undefined;
+  };
+};
+
+export const syntacticMatchCookieguard: SyntacticMatcher = (
+  requestValue: string
+) => {
+  return (storageValue: string) => {
+    const tokens = storageValue
+      .split(/[^A-Za-z0-9]/)
+      .filter((x) => x.length >= 8);
+
+    const matchSomeTokenInQuery = (
+      encoder?: (value: string) => string
+    ): SyntacticMatcherResult => {
+      const token = tokens.find((t) =>
+        requestValue.includes(encoder ? encoder(t) : t)
+      );
+      return token ? { token } : undefined;
+    };
+
+    return (
+      matchSomeTokenInQuery() ||
+      matchSomeTokenInQuery((t) => Buffer.from(t).toString("base64")) ||
+      matchSomeTokenInQuery((t) => createHash("md5").update(t).digest("hex")) ||
+      matchSomeTokenInQuery((t) => createHash("sha1").update(t).digest("hex"))
+    );
+  };
+};

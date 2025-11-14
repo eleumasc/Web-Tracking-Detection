@@ -2,24 +2,24 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import isLoEqual from "../util/isLoEqual";
-import matchIdentifiers from "../core/chen/matchIdentifiers";
+import matchIdentifiers from "../chen/matchIdentifiers";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { enumerate as iterEnumerate } from "iter-tools";
+import { FoxhoundReport } from "../foxhound/types";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
-import { getStorageOperationsFromTaintReports } from "../core/AbstractFlow";
+import { getStorageOperationsFromFoxhoundReports } from "../core/TaintFlow";
 import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
-import { TaintReport } from "../foxhound/types";
 import {
-  getSyntacticStorageFlowHistory,
-  getTaintStorageFlowHistory,
-  StorageFlow,
+  getSyntacticAbstractFlows,
+  getTaintAbstractFlows,
+  AbstractFlow,
   syntacticMatchCookieguard,
   syntacticMatchJourney,
-} from "../core/StorageFlowHistory";
+} from "../core/AbstractFlow";
 
 export default function cmdMeasure(args: { analysisId: number }) {
   const { analysisId } = args;
@@ -61,21 +61,21 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
     successSitesCount += 1;
 
-    const taintReports = (() => {
+    const foxhoundReports = (() => {
       const taintReportsCollection = store.getCollectionByName(
         analysisCollection.id,
         `taintReports:${site}`
       );
       return store
-        .getDocumentsWithDataByCollection<TaintReport>(
+        .getDocumentsWithDataByCollection<FoxhoundReport>(
           taintReportsCollection.id
         )
         .map(({ data }) => data);
     })();
-    ctaResult.taintReports = taintReports;
+    ctaResult.taintReports = foxhoundReports;
 
     const storageOperations =
-      getStorageOperationsFromTaintReports(taintReports);
+      getStorageOperationsFromFoxhoundReports(foxhoundReports);
 
     const harController = new HarController(
       path.join(getOutputPath(analysisCollection.name), ctaResult.harFile)
@@ -85,17 +85,17 @@ export default function cmdMeasure(args: { analysisId: number }) {
     //   ({ type }) => type === "Write"
     // );
 
-    const taintHistory = getTaintStorageFlowHistory(
-      taintReports,
+    const taintAbstractFlows = getTaintAbstractFlows(
+      foxhoundReports,
       harController
     );
-    const syntacticHistory = getSyntacticStorageFlowHistory(
+    const syntacticAbstractFlows = getSyntacticAbstractFlows(
       storageOperations,
       harController,
       syntacticMatchJourney
     );
 
-    type AggregateStorageFlow = {
+    type AggregateFlow = {
       itemId: string;
       receiverOrigin: string;
       _storageValues: string[];
@@ -103,14 +103,12 @@ export default function cmdMeasure(args: { analysisId: number }) {
       _stgValCharsSent: string[];
     };
 
-    const toAggregateStorageFlows = (
-      storageFlows: StorageFlow[]
-    ): AggregateStorageFlow[] =>
+    const toAggregateFlows = (abstractFlows: AbstractFlow[]): AggregateFlow[] =>
       _.values(
-        _.groupBy(storageFlows, ({ itemId, receiverOrigin }) =>
+        _.groupBy(abstractFlows, ({ itemId, receiverOrigin }) =>
           JSON.stringify([itemId, receiverOrigin])
         )
-      ).map((keyGroup): AggregateStorageFlow => {
+      ).map((keyGroup): AggregateFlow => {
         const { itemId, receiverOrigin } = keyGroup[0];
         return {
           itemId,
@@ -125,10 +123,10 @@ export default function cmdMeasure(args: { analysisId: number }) {
       ctaResult.preStorageState,
       ctaResult.firstStorageState
     );
-    const prefilterStorageFlows = (
-      storageFlows: StorageFlow[]
-    ): StorageFlow[] =>
-      storageFlows.filter(({ itemId, storageValue }) => {
+    const prefilterAbstractFlows = (
+      abstractFlows: AbstractFlow[]
+    ): AbstractFlow[] =>
+      abstractFlows.filter(({ itemId, storageValue }) => {
         // Prefilter flows based on the persisted value of identifiers
         return identifiers.find(({ key: identKey, value: identValue }) => {
           const identItemId = `${identKey.storageType}:${identKey.name}`;
@@ -136,11 +134,11 @@ export default function cmdMeasure(args: { analysisId: number }) {
         });
       });
 
-    const taintFlows = toAggregateStorageFlows(
-      prefilterStorageFlows(taintHistory)
+    const taintFlows = toAggregateFlows(
+      prefilterAbstractFlows(taintAbstractFlows)
     );
-    const syntacticFlows = toAggregateStorageFlows(
-      prefilterStorageFlows(syntacticHistory)
+    const syntacticFlows = toAggregateFlows(
+      prefilterAbstractFlows(syntacticAbstractFlows)
     );
 
     const intersectFlows = _.intersectionWith(

@@ -10,12 +10,12 @@ import useTempPath from "../util/useTempPath";
 import { AnalysisLogEntry, CTAResult } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { createOutputDir } from "../data/outputDir";
+import { FoxhoundReport } from "../foxhound/types";
 import { isSuccess, toCompletion, toFlatCompletion } from "../util/Completion";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
 import { StorageState } from "../core/StorageState";
-import { TaintReport } from "../foxhound/types";
 import simulateConnect, {
   SimulateConnectResult,
 } from "../core/simulateConnect";
@@ -142,7 +142,7 @@ export async function runAnalyze(
       let taintConnectResult: SimulateConnectResult;
       let firstStorageState: StorageState;
       let preStorageState: StorageState;
-      const taintReports: TaintReport[] = [];
+      const taintReports: FoxhoundReport[] = [];
 
       await useTempPath(undefined, async (userDataDir) => {
         await useFoxhound(
