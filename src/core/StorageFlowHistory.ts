@@ -61,13 +61,15 @@ export function getTaintStorageFlowHistory(
     const storageItemsSent = _.values(
       _.groupBy(
         sources.filter((source) => source.type === "Storage"),
-        ({ itemId, value }) => JSON.stringify({ itemId, value })
+        ({ itemId, value }) => JSON.stringify([itemId, value])
       )
     ).map((group) => {
-      const { itemId, value, valueRange } = group[0];
+      const { itemId, value } = group[0];
       const stgValCharsSentIndexesSet = new Set<number>();
-      for (const i of iterRange(valueRange.begin, valueRange.end)) {
-        stgValCharsSentIndexesSet.add(i);
+      for (const { valueRange } of group) {
+        for (const i of iterRange(valueRange.begin, valueRange.end)) {
+          stgValCharsSentIndexesSet.add(i);
+        }
       }
       const stgValCharsSent = _.sortBy([...stgValCharsSentIndexesSet])
         .map((i) => value.at(i))

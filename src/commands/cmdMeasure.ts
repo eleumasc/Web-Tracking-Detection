@@ -5,7 +5,6 @@ import isLoEqual from "../util/isLoEqual";
 import matchIdentifiers from "../core/chen/matchIdentifiers";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import zxcvbn from "zxcvbn";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { enumerate as iterEnumerate } from "iter-tools";
@@ -109,7 +108,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
     ): AggregateStorageFlow[] =>
       _.values(
         _.groupBy(storageFlows, ({ itemId, receiverOrigin }) =>
-          JSON.stringify({ itemId, receiverOrigin })
+          JSON.stringify([itemId, receiverOrigin])
         )
       ).map((keyGroup): AggregateStorageFlow => {
         const { itemId, receiverOrigin } = keyGroup[0];
@@ -126,29 +125,16 @@ export default function cmdMeasure(args: { analysisId: number }) {
       ctaResult.preStorageState,
       ctaResult.firstStorageState
     );
-    const zxcvbnCheckCache = new Map<string, boolean>();
     const prefilterStorageFlows = (
       storageFlows: StorageFlow[]
     ): StorageFlow[] =>
-      storageFlows
-        .filter(({ itemId, storageValue }) => {
-          // Prefilter flows based on the persisted value of identifiers
-          return identifiers.find(({ key: identKey, value: identValue }) => {
-            const identItemId = `${identKey.storageType}:${identKey.name}`;
-            return itemId === identItemId && storageValue === identValue;
-          });
-        })
-        .filter(({ stgValCharsSent }) => {
-          // Prefilter flows using the zxcvbn technique from Journey on stgValCharsSent
-          // Taint flows: information about distinct characters (positions) is in taint information
-          // Syntactic flows: since whole substrings are matched, every character (position) is distinct
-          const zxcvbnCheck =
-            zxcvbnCheckCache.get(stgValCharsSent) ??
-            (stgValCharsSent.length >= 128 ||
-              zxcvbn(stgValCharsSent).guesses_log10 >= 9);
-          zxcvbnCheckCache.set(stgValCharsSent, zxcvbnCheck);
-          return zxcvbnCheck;
+      storageFlows.filter(({ itemId, storageValue }) => {
+        // Prefilter flows based on the persisted value of identifiers
+        return identifiers.find(({ key: identKey, value: identValue }) => {
+          const identItemId = `${identKey.storageType}:${identKey.name}`;
+          return itemId === identItemId && storageValue === identValue;
         });
+      });
 
     const taintFlows = toAggregateStorageFlows(
       prefilterStorageFlows(taintHistory)
