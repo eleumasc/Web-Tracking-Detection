@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS documents (
 export default class DocumentStore {
   constructor(readonly db: Database) {}
 
-  static open(dbFilepath?: string): DocumentStore {
-    const db = new DB(dbFilepath);
+  static open(dbPath?: string): DocumentStore {
+    const db = new DB(dbPath);
     db.exec(SCHEMA);
     return new DocumentStore(db);
   }
@@ -43,7 +43,7 @@ export default class DocumentStore {
     );
     const id = stmt.run([parentId, name, meta ? JSON.stringify(meta) : null])
       .lastInsertRowid as number;
-    return this.getCollectionById(id);
+    return { id, parentId, name, meta };
   }
 
   getCollectionById(id: number): Collection {
@@ -111,10 +111,10 @@ export default class DocumentStore {
     );
     const id = stmt.run([collectionId, name, JSON.stringify(data)])
       .lastInsertRowid as number;
-    return this.getDocumentById(id);
+    return { id, collectionId, name };
   }
 
-  bulkInsertDocuments(
+  insertDocuments(
     collectionId: number,
     entries: { name: string; data: any }[]
   ): void {

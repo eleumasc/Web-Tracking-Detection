@@ -22,4 +22,4 @@ RUN npm run build
 
 COPY ./.env ./.env
 
-CMD ["node", "build/worker/__worker.js"]
+CMD ["node", "build/worker/__containerEntry.js"]

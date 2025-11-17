@@ -1,8 +1,10 @@
 import { BrowserContext } from "playwright";
+import { StorageState } from "./StorageState";
 import { timeout } from "../util/timeout";
 
 export type SimulateConnectResult = {
   landingPageUrl: string;
+  storageState: StorageState;
 };
 
 const LOAD_TIMEOUT_MS: number = 60 * 1000; // 60 seconds
@@ -11,17 +13,17 @@ const WAIT_AFTER_LOAD_MS: number = 10 * 1000; // 10 seconds
 export default async function simulateConnect(
   browser: BrowserContext,
   options: {
-    site: string;
+    siteName: string;
     screenshotPath?: string;
   }
 ): Promise<SimulateConnectResult> {
-  const { site, screenshotPath } = options;
+  const { siteName, screenshotPath } = options;
 
   const page = await browser.newPage();
 
   // navigate to landing page
   try {
-    await page.goto(`http://${site}/`, {
+    await page.goto(`http://${siteName}/`, {
       timeout: LOAD_TIMEOUT_MS,
     });
   } catch (e) {
@@ -39,7 +41,12 @@ export default async function simulateConnect(
   // trigger late requests for capturing
   await page.goto("about:blank");
 
-  return { landingPageUrl };
+  const storageState = await browser.storageState();
+
+  return {
+    landingPageUrl,
+    storageState,
+  };
 }
 
 export class SimulateConnectError extends Error {

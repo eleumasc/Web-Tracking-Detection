@@ -1,6 +1,6 @@
-export class WorkerError extends Error {
+export class GuestError extends Error {
   constructor(readonly type?: string, message?: string) {
     super(message);
-    this.name = WorkerError.name;
+    this.name = GuestError.name;
   }
 }

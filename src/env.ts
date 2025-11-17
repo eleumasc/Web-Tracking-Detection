@@ -3,8 +3,13 @@ import "dotenv/config";
 
 export const rootDir: string = path.resolve(__dirname, "..");
 
+export const TS_NODE_REGISTER_INSTANCE = Boolean(
+  // @ts-ignore
+  process[Symbol.for("ts-node.register.instance")]
+);
+
 export const TU_WIEN_MEASUREMENT_ID: string | undefined =
   process.env["TU_WIEN_MEASUREMENT_ID"];
 
-export const WORKER_DOCKER_IMAGE: string | undefined =
-  process.env["WORKER_DOCKER_IMAGE"];
+export const CONTAINER_IMAGE: string | undefined =
+  process.env["CONTAINER_IMAGE"];

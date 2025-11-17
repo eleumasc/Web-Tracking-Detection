@@ -1,5 +1,6 @@
 import _ from "lodash";
 import assert from "assert";
+import BufferedCallback from "../util/BufferedCallback";
 import lineSplitter from "../util/lineSplitter";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
@@ -9,8 +10,6 @@ import { SiteEntry } from "../core/SiteEntry";
 import { Transform, Writable } from "stream";
 
 export const SITES_COLL_TYPE = "sites";
-
-const BUFFER_SIZE: number = 50;
 
 export default async function cmdLoadSiteList(options: {
   pathOrUrl: string | URL;
@@ -35,7 +34,12 @@ export default async function cmdLoadSiteList(options: {
 
   console.log(`Sites Collection ID: ${sitesCollection.id}`);
 
-  const buffer: { name: string; data: SiteEntry }[] = [];
+  const sitesInserter = new BufferedCallback<{ name: string; data: any }>(
+    50,
+    (entries) => {
+      store.insertDocuments(sitesCollection.id, entries);
+    }
+  );
   await pipeline(
     downloadReadable,
     lineSplitter(),
@@ -54,18 +58,11 @@ export default async function cmdLoadSiteList(options: {
     new Writable({
       objectMode: true,
       write(siteEntry: SiteEntry, _, callback) {
-        buffer.push({ name: siteEntry.name, data: siteEntry });
-        if (buffer.length >= BUFFER_SIZE) {
-          store.bulkInsertDocuments(sitesCollection.id, buffer);
-          buffer.length = 0;
-        }
+        sitesInserter.add({ name: siteEntry.name, data: siteEntry });
         callback();
       },
       final(callback) {
-        if (buffer.length !== 0) {
-          store.bulkInsertDocuments(sitesCollection.id, buffer);
-          buffer.length = 0;
-        }
+        sitesInserter.flush();
         callback();
       },
     })

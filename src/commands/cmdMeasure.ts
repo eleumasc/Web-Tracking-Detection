@@ -1,24 +1,22 @@
 import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
-import isLoEqual from "../util/isLoEqual";
-import matchIdentifiers from "../chen/matchIdentifiers";
+import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
+import matchIdentifiers from "../core/chen/matchIdentifiers";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { enumerate as iterEnumerate } from "iter-tools";
-import { FoxhoundReport } from "../foxhound/types";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
-import { getStorageOperationsFromFoxhoundReports } from "../core/TaintFlow";
+import { getStorageItemsFromStorageState } from "../core/StorageItem";
 import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
 import {
   getSyntacticAbstractFlows,
   getTaintAbstractFlows,
   AbstractFlow,
-  syntacticMatchCookieguard,
-  syntacticMatchJourney,
+  journeySyntacticMatcher,
 } from "../core/AbstractFlow";
 
 export default function cmdMeasure(args: { analysisId: number }) {
@@ -61,68 +59,35 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
     successSitesCount += 1;
 
-    const foxhoundReports = (() => {
-      const taintReportsCollection = store.getCollectionByName(
-        analysisCollection.id,
-        `taintReports:${site}`
-      );
-      return store
-        .getDocumentsWithDataByCollection<FoxhoundReport>(
-          taintReportsCollection.id
-        )
-        .map(({ data }) => data);
-    })();
-    ctaResult.taintReports = foxhoundReports;
+    const foxhoundReports = FoxhoundTaintStore.open(
+      path.join(
+        getOutputPath(analysisCollection.name),
+        ctaResult.taint.taintFile
+      )
+    ).getReports();
 
-    const storageOperations =
-      getStorageOperationsFromFoxhoundReports(foxhoundReports);
-
-    const harController = new HarController(
-      path.join(getOutputPath(analysisCollection.name), ctaResult.harFile)
+    const auxStorageItems = getStorageItemsFromStorageState(
+      ctaResult.aux.connectResult.storageState
+    );
+    const preStorageItems = getStorageItemsFromStorageState(
+      ctaResult.pre.connectResult.storageState
     );
 
-    // const storageWrites = storageOperations.filter(
-    //   ({ type }) => type === "Write"
-    // );
+    const harController = new HarController(
+      path.join(getOutputPath(analysisCollection.name), ctaResult.taint.harFile)
+    );
 
     const taintAbstractFlows = getTaintAbstractFlows(
       foxhoundReports,
       harController
     );
     const syntacticAbstractFlows = getSyntacticAbstractFlows(
-      storageOperations,
+      preStorageItems,
       harController,
-      syntacticMatchJourney
+      journeySyntacticMatcher
     );
 
-    type AggregateFlow = {
-      itemId: string;
-      receiverOrigin: string;
-      _storageValues: string[];
-      _requestValues: string[];
-      _stgValCharsSent: string[];
-    };
-
-    const toAggregateFlows = (abstractFlows: AbstractFlow[]): AggregateFlow[] =>
-      _.values(
-        _.groupBy(abstractFlows, ({ itemId, receiverOrigin }) =>
-          JSON.stringify([itemId, receiverOrigin])
-        )
-      ).map((keyGroup): AggregateFlow => {
-        const { itemId, receiverOrigin } = keyGroup[0];
-        return {
-          itemId,
-          receiverOrigin,
-          _storageValues: _.uniq(keyGroup.map((x) => x.storageValue)),
-          _requestValues: _.uniq(keyGroup.map((x) => x.requestValue)),
-          _stgValCharsSent: _.uniq(keyGroup.map((x) => x.stgValCharsSent)),
-        };
-      });
-
-    const identifiers = matchIdentifiers(
-      ctaResult.preStorageState,
-      ctaResult.firstStorageState
-    );
+    const identifiers = matchIdentifiers(preStorageItems, auxStorageItems);
     const prefilterAbstractFlows = (
       abstractFlows: AbstractFlow[]
     ): AbstractFlow[] =>
@@ -134,6 +99,20 @@ export default function cmdMeasure(args: { analysisId: number }) {
         });
       });
 
+    type AggregateFlow = {
+      itemId: string;
+      receiverOrigin: string;
+    };
+
+    const toAggregateFlows = (abstractFlows: AbstractFlow[]): AggregateFlow[] =>
+      _.uniqWith(
+        abstractFlows.map(({ itemId, receiverOrigin }) => ({
+          itemId,
+          receiverOrigin,
+        })),
+        _.isEqual
+      );
+
     const taintFlows = toAggregateFlows(
       prefilterAbstractFlows(taintAbstractFlows)
     );
@@ -144,27 +123,52 @@ export default function cmdMeasure(args: { analysisId: number }) {
     const intersectFlows = _.intersectionWith(
       taintFlows,
       syntacticFlows,
-      isLoEqual
+      _.isEqual
     );
     const onlyTaintFlows = _.differenceWith(
       taintFlows,
       syntacticFlows,
-      isLoEqual
+      _.isEqual
     );
     const onlySyntacticFlows = _.differenceWith(
       syntacticFlows,
       taintFlows,
-      isLoEqual
+      _.isEqual
     );
+
+    const toOutputFlows = (
+      flows: AggregateFlow[],
+      abstractFlows: AbstractFlow[]
+    ) =>
+      flows.map((flow) => {
+        const { itemId, receiverOrigin } = flow;
+        const groupAbstractFlows = abstractFlows.filter(
+          (af) => af.itemId === itemId && af.receiverOrigin === receiverOrigin
+        );
+        const storageValues = _.uniq(
+          groupAbstractFlows.map((x) => x.storageValue)
+        );
+        const requestValues = _.uniq(
+          groupAbstractFlows.map((x) => x.requestValue)
+        );
+        return {
+          itemId,
+          receiverOrigin,
+          storageValues,
+          requestValues,
+        };
+      });
 
     writeOutputFileSync(
       path.join(outputName, `${site}.json`),
       JSON.stringify({
         site,
-        // storageWrites,
-        intersectFlows,
-        onlyTaintFlows,
-        onlySyntacticFlows,
+        intersectFlows: toOutputFlows(intersectFlows, taintAbstractFlows),
+        onlyTaintFlows: toOutputFlows(onlyTaintFlows, taintAbstractFlows),
+        onlySyntacticFlows: toOutputFlows(
+          onlySyntacticFlows,
+          syntacticAbstractFlows
+        ),
       })
     );
 

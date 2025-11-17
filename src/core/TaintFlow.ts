@@ -1,4 +1,5 @@
 import assert from "assert";
+import { Range } from "../util/Range";
 import {
   FoxhoundLocation,
   FoxhoundOperation,
@@ -27,7 +28,7 @@ export interface StorageTaintOperation extends BaseTaintOperation {
   storageType: string;
   key: string;
   value: string;
-  valueRange: { begin: number; end: number };
+  valueRange: Range;
 }
 
 export type TaintOperation = NetworkTaintOperation | StorageTaintOperation;
@@ -361,6 +362,8 @@ export function getStorageOperationsFromFoxhoundReports(
   }
   return storageOperations;
 }
+
+////
 
 function createStorageMap(
   foxhoundReports: FoxhoundReport[]

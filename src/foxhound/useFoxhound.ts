@@ -5,8 +5,6 @@ import { rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
 
 const FOXHOUND_PATH = path.join(rootDir, "foxhound", "foxhound");
 
-let firstCall = true;
-
 export default async function useFoxhound<T>(
   options: {
     userDataDir: string;
@@ -41,13 +39,10 @@ export default async function useFoxhound<T>(
     await browser.setExtraHTTPHeaders({
       "X-Research-Measurement": `https://measurements.secpriv.wien/${TU_WIEN_MEASUREMENT_ID}`,
     });
-    if (firstCall)
-      console.log(`TU Wien Measurement ID: ${TU_WIEN_MEASUREMENT_ID}`);
+    console.log(`TU Wien Measurement ID: ${TU_WIEN_MEASUREMENT_ID}`);
   } else {
-    if (firstCall)
-      console.log("WARNING! TU Wien Measurement ID is empty or not found");
+    console.log("WARNING! TU Wien Measurement ID is empty or not found");
   }
-  firstCall = false;
   try {
     return await use(browser);
   } finally {

@@ -1,14 +1,13 @@
 import _ from "lodash";
+import Interval from "../util/Interval";
 import { createHash } from "crypto";
 import { FoxhoundReport } from "../foxhound/types";
+import { getTaintFlowsFromFoxhoundReports } from "./TaintFlow";
 import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
 import { parse as parseSearchParams } from "querystring";
-import { range as iterRange } from "iter-tools";
-import {
-  getTaintFlowsFromFoxhoundReports,
-  StorageOperation,
-} from "./TaintFlow";
+import { Range } from "../util/Range";
+import { StorageItem } from "./StorageItem";
 
 export type AbstractFlow = {
   itemId: string;
@@ -16,14 +15,14 @@ export type AbstractFlow = {
   // senderOrigin: string;
   receiverOrigin: string;
   requestValue: string;
-  stgValCharsSent: string;
+  storageRanges: Range[];
 };
 
 export type SyntacticMatcher = (
   requestValue: string
-) => (storageValue: string) => SyntacticMatcherResult;
+) => (storageValue: string) => SyntacticMatch | undefined;
 
-export type SyntacticMatcherResult = { token: string } | undefined;
+export type SyntacticMatch = { range: Range };
 
 function originFromUrl(url: string): string {
   return new URL(url).origin;
@@ -62,31 +61,25 @@ export function getTaintAbstractFlows(
         ({ itemId, value }) => JSON.stringify([itemId, value])
       )
     ).map((group) => {
-      const { itemId, value } = group[0];
-      const stgValCharsSentIndexesSet = new Set<number>();
-      for (const { valueRange } of group) {
-        for (const i of iterRange(valueRange.begin, valueRange.end)) {
-          stgValCharsSentIndexesSet.add(i);
-        }
+      const { itemId, value: storageValue } = group[0];
+      const storageInterval = new Interval();
+      for (const {
+        valueRange: { begin, end },
+      } of group) {
+        storageInterval.addRange(begin, end);
       }
-      const stgValCharsSent = _.sortBy([...stgValCharsSentIndexesSet])
-        .map((i) => value.at(i))
-        .join("");
-      return { itemId, value, stgValCharsSent };
+      const storageRanges = storageInterval.getRanges();
+      return { itemId, storageValue, storageRanges };
     });
 
-    for (const {
-      itemId,
-      value: storageValue,
-      stgValCharsSent,
-    } of storageItemsSent) {
+    for (const { itemId, storageValue, storageRanges } of storageItemsSent) {
       abstractFlows.push({
         itemId,
         storageValue,
         // senderOrigin,
         receiverOrigin,
         requestValue,
-        stgValCharsSent,
+        storageRanges,
       });
     }
   }
@@ -94,23 +87,16 @@ export function getTaintAbstractFlows(
 }
 
 export function getSyntacticAbstractFlows(
-  storageOperations: StorageOperation[],
+  storageItems: StorageItem[],
   harController: HarController,
-  syntacticMatch: SyntacticMatcher
+  syntacticMatcher: SyntacticMatcher
 ): AbstractFlow[] {
   const abstractFlows: AbstractFlow[] = [];
-  const storageOperationGroups = _.toPairs(
-    _.mapValues(
-      _.groupBy(
-        // Consider only storage read operations
-        storageOperations.filter(({ type }) => type === "Read"),
-        ({ value }) => value
-      ),
-      (valueGroup) =>
-        _.values(_.groupBy(valueGroup, ({ itemId }) => itemId)).map(
-          // minBy because we consider the first moment when value is assigned to that storage item
-          (itemIdGroup) => _.minBy(itemIdGroup, ({ timestamp }) => timestamp)!
-        )
+  const storageItemGroups = _.toPairs(
+    _.groupBy(
+      // Consider only storage read operations
+      storageItems,
+      ({ value }) => value
     )
   );
   for (const harEntry of harController.entries()) {
@@ -126,35 +112,45 @@ export function getSyntacticAbstractFlows(
     const receiverUrl = requestUrl;
     const receiverOrigin = originFromUrl(receiverUrl);
 
-    const requestValueMatchers = [
+    const requestValueMatcherEntries = [
       requestURL.pathname,
       requestURL.search,
       ...(postData ? [harController.readPostData(postData)] : []),
     ].map((requestValue) => ({
       requestValue,
-      matcher: syntacticMatch(requestValue),
+      requestValueMatcher: syntacticMatcher(requestValue),
     }));
 
-    for (const [storageValue, storageValueGroup] of storageOperationGroups) {
-      let match: { requestValue: string; token: string } | undefined;
-      for (const { requestValue, matcher } of requestValueMatchers) {
-        const matcherResult = matcher(storageValue);
-        if (matcherResult) {
-          const { token } = matcherResult;
-          match = { requestValue, token };
+    for (const [storageValue, storageItemGroup] of storageItemGroups) {
+      let matchEntry:
+        | { requestValue: string; match: SyntacticMatch }
+        | undefined;
+      for (const {
+        requestValue,
+        requestValueMatcher,
+      } of requestValueMatcherEntries) {
+        const match = requestValueMatcher(storageValue);
+        if (match) {
+          matchEntry = { requestValue, match: match };
           break;
         }
       }
-      if (!match) continue;
-      const { requestValue, token } = match;
-      for (const { itemId, value: storageValue } of storageValueGroup) {
+      if (!matchEntry) continue;
+      const {
+        requestValue,
+        match: { range },
+      } = matchEntry;
+      for (const {
+        key: { itemId },
+        value: storageValue,
+      } of storageItemGroup) {
         abstractFlows.push({
           itemId,
           storageValue,
           // senderOrigin,
           receiverOrigin,
           requestValue,
-          stgValCharsSent: token, // TODO: the first occurrence may not be the unique one, to be revised
+          storageRanges: [range], // TODO: the first occurrence may not be the unique one, to be revised
         });
       }
     }
@@ -162,7 +158,7 @@ export function getSyntacticAbstractFlows(
   return abstractFlows;
 }
 
-export const syntacticMatchJourney: SyntacticMatcher = (
+export const journeySyntacticMatcher: SyntacticMatcher = (
   requestValue: string
 ) => {
   type Decoder = (value: string) => string[];
@@ -258,33 +254,40 @@ export const syntacticMatchJourney: SyntacticMatcher = (
 
   const requestValues = [...generateCandidateRequestValues(requestValue)];
 
-  return (storageValue: string): SyntacticMatcherResult => {
-    const token =
-      requestValues.find((requestValue) =>
-        storageValue.includes(requestValue)
-      ) ??
-      (requestValues.some((requestValue) => requestValue.includes(storageValue))
-        ? storageValue
-        : undefined);
-    return token ? { token } : undefined;
+  return (storageValue: string) => {
+    const range = ((): Range | undefined => {
+      for (const requestValue of requestValues) {
+        let index;
+        if (requestValue.includes(storageValue)) {
+          return { begin: 0, end: storageValue.length };
+        } else if ((index = storageValue.indexOf(requestValue)) !== -1) {
+          return { begin: index, end: index + requestValue.length };
+        }
+      }
+      return undefined;
+    })();
+    return range ? { range } : undefined;
   };
 };
 
-export const syntacticMatchCookieguard: SyntacticMatcher = (
+export const cookieguardSyntacticMatcher: SyntacticMatcher = (
   requestValue: string
 ) => {
   return (storageValue: string) => {
-    const tokens = storageValue
-      .split(/[^A-Za-z0-9]/)
-      .filter((x) => x.length >= 8);
+    const tokenEntries = [...storageValue.matchAll(/[A-Za-z0-9]+/g)]
+      .map(({ 0: token, index: begin }) => ({
+        token,
+        range: <Range>{ begin, end: begin + token.length },
+      }))
+      .filter(({ token }) => token.length >= 8);
 
     const matchSomeTokenInQuery = (
       encoder?: (value: string) => string
-    ): SyntacticMatcherResult => {
-      const token = tokens.find((t) =>
-        requestValue.includes(encoder ? encoder(t) : t)
-      );
-      return token ? { token } : undefined;
+    ): SyntacticMatch | undefined => {
+      const range = tokenEntries.find(({ token }) =>
+        requestValue.includes(encoder ? encoder(token) : token)
+      )?.range;
+      return range ? { range } : undefined;
     };
 
     return (

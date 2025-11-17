@@ -6,11 +6,21 @@ import { StorageState } from "./StorageState";
 export type AnalysisLogEntry = Completion<CTAResult>;
 
 export type CTAResult = {
-  firstConnectResult: SimulateConnectResult;
-  preConnectResult: SimulateConnectResult;
-  taintConnectResult: SimulateConnectResult;
-  firstStorageState: StorageState;
-  preStorageState: StorageState;
-  taintReports: FoxhoundReport[];
-  harFile: string;
+  aux: {
+    connectResult: SimulateConnectResult;
+  };
+  pre: {
+    connectResult: SimulateConnectResult;
+  };
+  taint: {
+    connectResult: SimulateConnectResult;
+    harFile: string;
+    taintFile: string;
+  };
+  verif: {
+    initialStorageState: StorageState;
+    connectResult: SimulateConnectResult;
+    harFile: string;
+    taintFile: string;
+  };
 };

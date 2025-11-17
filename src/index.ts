@@ -33,10 +33,6 @@ async function main() {
           .option("maxTasks", {
             type: "number",
             default: 1,
-          })
-          .option("noHeadlessBrowser", {
-            type: "boolean",
-            default: false,
           }),
       (args) => cmdAnalyze({ action: "create", ...args })
     )
@@ -53,10 +49,6 @@ async function main() {
           .option("maxTasks", {
             type: "number",
             default: 1,
-          })
-          .option("noHeadlessBrowser", {
-            type: "boolean",
-            default: false,
           }),
       (args) => cmdAnalyze({ action: "resume", ...args })
     )

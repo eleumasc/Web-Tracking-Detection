@@ -6,10 +6,10 @@ import { rootDir } from "../env";
 export default async function installFoxhoundTaintReporter(
   context: BrowserContext | Page,
   options: {
-    onTaintReport: (taintReport: FoxhoundReport) => void;
+    onReport: (foxhoundReport: FoxhoundReport) => void;
   }
 ): Promise<void> {
-  const { onTaintReport } = options;
+  const { onReport } = options;
 
   await context.addInitScript({
     path: path.resolve(rootDir, "setup", "foxhoundTaintReporter.js"),
@@ -17,8 +17,8 @@ export default async function installFoxhoundTaintReporter(
 
   await context.exposeBinding(
     "__playwright_taint_report",
-    async (_source, taintReport: FoxhoundReport) => {
-      onTaintReport(taintReport);
+    async (_source, foxhoundReport: FoxhoundReport) => {
+      onReport(foxhoundReport);
     }
   );
 }
