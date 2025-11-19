@@ -39,7 +39,9 @@ export default async function simulateConnect(
   }
 
   // trigger late requests for capturing
-  await page.goto("about:blank");
+  try {
+    await page.goto("about:blank");
+  } catch {}
 
   const storageState = await browser.storageState();
 
