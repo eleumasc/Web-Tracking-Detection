@@ -1,4 +1,5 @@
 import _ from "lodash";
+import alterStorageStateForVerif from "../core/alterStorageStateForVerif";
 import assert from "assert";
 import BufferedCallback from "../util/BufferedCallback";
 import currentTime from "../util/currentTime";
@@ -13,12 +14,15 @@ import useTempPath from "../util/useTempPath";
 import { AnalysisLogEntry, CTAResult } from "../core/AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { cpSync } from "fs";
-import { createOutputDir } from "../data/outputDir";
+import { createOutputDir, getOutputPath } from "../data/outputDir";
 import { FoxhoundReport } from "../foxhound/types";
+import { HarController } from "../util/HarController";
 import { makeTaskFromFunction } from "../worker/Task";
+import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
 import { processTaskQueue } from "../util/TaskQueue";
 import { SiteEntry } from "../core/SiteEntry";
 import { SITES_COLL_TYPE } from "./cmdLoadSiteList";
+import { StorageItem } from "../core/StorageItem";
 import { toCompletion, toFlatCompletion } from "../util/Completion";
 import simulateConnect, {
   SimulateConnectResult,
@@ -125,6 +129,7 @@ export async function runAnalyze(
     let preConnectResult: SimulateConnectResult;
     let taintConnectResult: SimulateConnectResult;
     let verifConnectResult: SimulateConnectResult;
+    let verifAlteredStorageItems: StorageItem[];
 
     await useTempPath({ localTmpDir: true }, async (profilesDir) => {
       const guestProfilesDir = "/profiles";
@@ -171,7 +176,19 @@ export async function runAnalyze(
         { extraBinds: [profilesBind] }
       );
 
-      // TODO: alter storage state in profiles/verif
+      // patch firefox profile storage of profiles/verif using altered storage items
+      verifAlteredStorageItems = alterStorageStateForVerif(
+        auxConnectResult.storageState,
+        preConnectResult.storageState,
+        FoxhoundTaintStore.open(
+          path.join(getOutputPath(outputName), taintTaintFile)
+        ).getReports(),
+        new HarController(path.join(getOutputPath(outputName), taintHarFile))
+      );
+      patchFoxhoundProfileStorage(
+        path.join(profilesDir, "verif"),
+        verifAlteredStorageItems
+      );
 
       verifConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
@@ -190,6 +207,7 @@ export async function runAnalyze(
     assert(preConnectResult!);
     assert(taintConnectResult!);
     assert(verifConnectResult!);
+    assert(verifAlteredStorageItems!);
 
     return <CTAResult>{
       aux: {
@@ -204,6 +222,7 @@ export async function runAnalyze(
         taintFile: taintTaintFile,
       },
       verif: {
+        alteredStorageItems: verifAlteredStorageItems,
         connectResult: verifConnectResult,
         harFile: verifHarFile,
         taintFile: verifTaintFile,

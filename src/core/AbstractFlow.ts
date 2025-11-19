@@ -1,21 +1,24 @@
 import _ from "lodash";
+import assert from "assert";
 import Interval from "../util/Interval";
 import { createHash } from "crypto";
 import { FoxhoundReport } from "../foxhound/types";
-import { getTaintFlowsFromFoxhoundReports } from "./TaintFlow";
 import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
 import { parse as parseSearchParams } from "querystring";
 import { Range } from "../util/Range";
 import { StorageItem } from "./StorageItem";
+import {
+  getTaintFlowsFromFoxhoundReports,
+  StorageTaintOperation,
+} from "./TaintFlow";
 
 export type AbstractFlow = {
-  itemId: string;
-  storageValue: string;
+  storageItem: StorageItem;
   // senderOrigin: string;
   receiverOrigin: string;
   requestValue: string;
-  storageRanges: Range[];
+  storageInterval: Range[];
 };
 
 export type SyntacticMatcher = (
@@ -30,13 +33,14 @@ function originFromUrl(url: string): string {
 
 export function getTaintAbstractFlows(
   foxhoundReports: FoxhoundReport[],
+  storageItems: StorageItem[],
   harController: HarController
 ): AbstractFlow[] {
   const abstractFlows: AbstractFlow[] = [];
   for (const flow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
     const { sources, sink } = flow;
 
-    if (!(sink.type === "Network")) continue;
+    if (sink.type !== "Network") continue;
     const { str: requestValue } = flow;
     const { location, requestUrl } = sink;
 
@@ -53,33 +57,53 @@ export function getTaintAbstractFlows(
     const receiverUrl = requestUrl;
     const receiverOrigin = originFromUrl(receiverUrl);
 
-    // We group storage sources having the same itemId and value, then for each
-    // group we join all (distinct) storage value chars that have been sent.
+    const findSingleStorageItemByTaintOperation = (
+      op: StorageTaintOperation
+    ): StorageItem | undefined => {
+      const found = storageItems.filter(
+        ({ id: { storageType, key }, value }) =>
+          op.storageType === storageType && op.key === key && op.value === value
+      );
+      assert(
+        found.length < 2,
+        `Expected to find at most one StorageItem, but found ${found.length}`
+      );
+      return found.length === 1 ? found[0] : undefined;
+    };
+
     const storageItemsSent = _.values(
       _.groupBy(
-        sources.filter((source) => source.type === "Storage"),
-        ({ itemId, value }) => JSON.stringify([itemId, value])
+        sources
+          .filter((source) => source.type === "Storage")
+          .flatMap((source) => {
+            const storageItem = findSingleStorageItemByTaintOperation(source);
+            return storageItem ? [{ source, storageItem }] : [];
+          }),
+        ({ storageItem }) => JSON.stringify(storageItem)
       )
     ).map((group) => {
-      const { itemId, value: storageValue } = group[0];
+      const { storageItem } = group[0];
       const storageInterval = new Interval();
       for (const {
-        valueRange: { begin, end },
+        source: {
+          valueRange: { begin, end },
+        },
       } of group) {
         storageInterval.addRange(begin, end);
       }
-      const storageRanges = storageInterval.getRanges();
-      return { itemId, storageValue, storageRanges };
+      return {
+        storageItem,
+        storageInterval: storageInterval.getRanges(),
+      };
     });
 
-    for (const { itemId, storageValue, storageRanges } of storageItemsSent) {
+    for (const { storageItem, storageInterval } of storageItemsSent) {
       abstractFlows.push({
-        itemId,
-        storageValue,
+        storageItem,
         // senderOrigin,
         receiverOrigin,
         requestValue,
-        storageRanges,
+        storageInterval,
       });
     }
   }
@@ -93,11 +117,7 @@ export function getSyntacticAbstractFlows(
 ): AbstractFlow[] {
   const abstractFlows: AbstractFlow[] = [];
   const storageItemGroups = _.toPairs(
-    _.groupBy(
-      // Consider only storage read operations
-      storageItems,
-      ({ value }) => value
-    )
+    _.groupBy(storageItems, ({ value }) => value)
   );
   for (const harEntry of harController.entries()) {
     const {
@@ -140,17 +160,13 @@ export function getSyntacticAbstractFlows(
         requestValue,
         match: { range },
       } = matchEntry;
-      for (const {
-        key: { itemId },
-        value: storageValue,
-      } of storageItemGroup) {
+      for (const storageItem of storageItemGroup) {
         abstractFlows.push({
-          itemId,
-          storageValue,
+          storageItem,
           // senderOrigin,
           receiverOrigin,
           requestValue,
-          storageRanges: [range], // TODO: the first occurrence may not be the unique one, to be revised
+          storageInterval: [range], // TODO: the first occurrence may not be the unique one, to be revised
         });
       }
     }

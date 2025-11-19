@@ -5,10 +5,12 @@ import { runAnalyze } from "../commands/cmdAnalyze";
 import { toFlatCompletion } from "../util/Completion";
 
 async function main(args: { siteName: string }) {
+  const { siteName } = args;
+
   const completion = await toFlatCompletion(() =>
     execContainer<ReturnType<typeof runAnalyze>>(
       makeTaskFromFunction(runAnalyze, [
-        args.siteName,
+        siteName,
         {
           outputName: `${currentTime()}-testAnalyze`,
         },

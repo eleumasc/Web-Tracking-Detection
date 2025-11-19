@@ -1,50 +1,37 @@
+import _ from "lodash";
 import { StorageState } from "./StorageState";
 
-export type StorageItem = {
-  key: StorageKey;
+export type StorageItem = Cookie | LocalStorageItem;
+
+export type Cookie = {
+  id: {
+    storageType: "cookie";
+    key: string;
+    domain: string;
+    path: string;
+  };
   value: string;
 };
 
-export type StorageKey =
-  | {
-      itemId: string;
-      storageType: "cookie";
-      name: string;
-      domain: string;
-      path: string;
-      httpOnly: boolean;
-      secure: boolean;
-      sameSite: string;
-    }
-  | {
-      itemId: string;
-      storageType: "localStorage";
-      name: string;
-      origin: string;
-    };
+export type LocalStorageItem = {
+  id: {
+    storageType: "localStorage";
+    key: string;
+    origin: string;
+  };
+  value: string;
+};
 
 export function getStorageItemsFromStorageState(
   storageState: StorageState
 ): StorageItem[] {
   const cookieItems: StorageItem[] = storageState.cookies.map(
-    ({
-      name,
-      value,
-      domain,
-      path,
-      httpOnly,
-      secure,
-      sameSite,
-    }): StorageItem => ({
-      key: {
-        itemId: `cookie:${name}`,
+    ({ name: key, value, domain, path }): StorageItem => ({
+      id: {
         storageType: "cookie",
-        name,
+        key,
         domain,
         path,
-        httpOnly,
-        secure,
-        sameSite,
       },
       value,
     })
@@ -53,11 +40,10 @@ export function getStorageItemsFromStorageState(
   const localStorageItems: StorageItem[] = storageState.origins.flatMap(
     ({ origin, localStorage }) =>
       localStorage.map(
-        ({ name, value }): StorageItem => ({
-          key: {
-            itemId: `localStorage:${name}`,
+        ({ name: key, value }): StorageItem => ({
+          id: {
             storageType: "localStorage",
-            name,
+            key,
             origin,
           },
           value,

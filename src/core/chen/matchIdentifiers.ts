@@ -23,10 +23,10 @@ function joinStorageItemsByKey(
   storageItemsB: StorageItem[]
 ): [StorageItem, StorageItem][] {
   const storageItemsAKeyMap = new Map(
-    storageItemsA.map((a) => [JSON.stringify(a.key), a])
+    storageItemsA.map((a) => [JSON.stringify(a.id), a])
   );
   return storageItemsB.flatMap((b) => {
-    const a = storageItemsAKeyMap.get(JSON.stringify(b.key));
+    const a = storageItemsAKeyMap.get(JSON.stringify(b.id));
     return a ? [[a, b]] : [];
   });
 }

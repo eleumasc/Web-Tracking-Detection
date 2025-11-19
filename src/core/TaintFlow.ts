@@ -24,7 +24,6 @@ export interface NetworkTaintOperation extends BaseTaintOperation {
 
 export interface StorageTaintOperation extends BaseTaintOperation {
   type: "Storage";
-  itemId: string;
   storageType: string;
   key: string;
   value: string;
@@ -280,13 +279,11 @@ function toTaintStorageOperation(
     default:
       return null;
   }
-  const itemId = `${storageType}:${key}`;
   const location = getLocation(foxhoundOperation.location);
   if (!location) return null;
   return {
     type: "Storage",
     location,
-    itemId,
     storageType,
     key,
     value,
@@ -315,7 +312,8 @@ function getLocation(foxhoundLocation: FoxhoundLocation): string | null {
 export type StorageOperation = {
   type: "Read" | "Write";
   location: string;
-  itemId: string;
+  storageType: string;
+  key: string;
   value: string;
   timestamp: number;
 };
@@ -338,11 +336,13 @@ export function getStorageOperationsFromFoxhoundReports(
       for (const { begin, end, flow: taintSource } of taint) {
         const source = toTaintStorageOperation(cx, taintSource, taintReport);
         if (!source) continue;
-        const { location, itemId, value } = source as StorageTaintOperation;
+        const { location, storageType, key, value } =
+          source as StorageTaintOperation;
         storageOperations.push({
           type: "Read",
           location,
-          itemId,
+          storageType,
+          key,
           value,
           timestamp,
         });
@@ -350,11 +350,13 @@ export function getStorageOperationsFromFoxhoundReports(
     } else {
       const sink = toTaintStorageOperation(cx, taintSink, taintReport);
       if (!sink) continue;
-      const { location, itemId, value } = sink as StorageTaintOperation;
+      const { location, storageType, key, value } =
+        sink as StorageTaintOperation;
       storageOperations.push({
         type: "Write",
         location,
-        itemId,
+        storageType,
+        key,
         value,
         timestamp,
       });
