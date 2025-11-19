@@ -53,3 +53,38 @@ export function getStorageItemsFromStorageState(
 
   return [...cookieItems, ...localStorageItems];
 }
+
+export function joinStorageItemsById(
+  storageItemsA: StorageItem[],
+  storageItemsB: StorageItem[]
+): [StorageItem, StorageItem][] {
+  const storageItemsBKeyMap = new Map(
+    storageItemsB.map((b) => [JSON.stringify(b.id), b])
+  );
+  return storageItemsA.flatMap((a) => {
+    const b = storageItemsBKeyMap.get(JSON.stringify(a.id));
+    return b ? [[a, b]] : [];
+  });
+}
+
+export function leftJoinStorageItemsById(
+  storageItemsA: StorageItem[],
+  storageItemsB: StorageItem[]
+): [StorageItem, StorageItem | undefined][] {
+  const storageItemsBKeyMap = new Map(
+    storageItemsB.map((b) => [JSON.stringify(b.id), b])
+  );
+  return storageItemsA.flatMap((a) => {
+    const b = storageItemsBKeyMap.get(JSON.stringify(a.id));
+    return [[a, b]];
+  });
+}
+
+export function mergeStorageValues(
+  original: StorageItem[],
+  source: StorageItem[]
+): StorageItem[] {
+  return leftJoinStorageItemsById(original, source).map(
+    ([dstFlow, srcFlow]): StorageItem => srcFlow ?? dstFlow
+  );
+}

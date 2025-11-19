@@ -2,28 +2,23 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
-import matchIdentifiers from "../core/chen/matchIdentifiers";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import zxcvbn from "zxcvbn";
+import processTaintableOnlySyntacticFlows from "../core/processTaintableOnlySyntacticFlows";
+import { AbstractFlow } from "../core/AbstractFlow";
+import { AggregateFlow } from "../core/AggregateFlow";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { enumerate as iterEnumerate } from "iter-tools";
-import { FoxhoundReport } from "../foxhound/types";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
 import { jsView } from "../core/StorageState";
+import { processFlows, processIdentifiers } from "../core/processFlows";
 import {
   getStorageItemsFromStorageState,
-  StorageItem,
+  mergeStorageValues,
 } from "../core/StorageItem";
-import {
-  getSyntacticAbstractFlows,
-  getTaintAbstractFlows,
-  AbstractFlow,
-  journeySyntacticMatcher,
-} from "../core/AbstractFlow";
 
 export default function cmdMeasure(args: { analysisId: number }) {
   const { analysisId } = args;
@@ -42,11 +37,13 @@ export default function cmdMeasure(args: { analysisId: number }) {
   let intersectFlowsCount = 0;
   let onlyTaintFlowsCount = 0;
   let onlySyntacticFlowsCount = 0;
+  let taintableOnlySyntacticFlowsCount = 0;
 
   let syntacticFlowsSitesCount = 0;
   let intersectFlowsSitesCount = 0;
   let onlyTaintFlowsSitesCount = 0;
   let onlySyntacticFlowsSitesCount = 0;
+  let taintableOnlySyntacticFlowsSitesCount = 0;
 
   for (const [documentIndex, analysisDocument] of iterEnumerate(
     store.getDocumentsByCollection(analysisCollection.id)
@@ -65,16 +62,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
     successSitesCount += 1;
 
-    const foxhoundReports = FoxhoundTaintStore.open(
-      path.join(
-        getOutputPath(analysisCollection.name),
-        ctaResult.taint.taintFile
-      )
-    ).getReports();
-
-    const harController = new HarController(
-      path.join(getOutputPath(analysisCollection.name), ctaResult.taint.harFile)
-    );
+    const outputPath = getOutputPath(analysisCollection.name);
 
     const auxStorageItems = getStorageItemsFromStorageState(
       jsView(ctaResult.aux.connectResult.storageState)
@@ -83,17 +71,19 @@ export default function cmdMeasure(args: { analysisId: number }) {
       jsView(ctaResult.pre.connectResult.storageState)
     );
 
+    const foxhoundReports = FoxhoundTaintStore.open(
+      path.join(outputPath, ctaResult.taint.taintFile)
+    ).getReports();
+    const harController = new HarController(
+      path.join(outputPath, ctaResult.taint.harFile)
+    );
+    const identifiers = processIdentifiers(auxStorageItems, preStorageItems);
     const {
       taintAbstractFlows,
       syntacticAbstractFlows,
       taintFlows,
       syntacticFlows,
-    } = getAbstractAndAggregateFlows(
-      auxStorageItems,
-      preStorageItems,
-      foxhoundReports,
-      harController
-    );
+    } = processFlows(identifiers, foxhoundReports, harController);
 
     const intersectFlows = _.intersectionWith(
       taintFlows,
@@ -109,6 +99,30 @@ export default function cmdMeasure(args: { analysisId: number }) {
       syntacticFlows,
       taintFlows,
       _.isEqual
+    );
+
+    const { alteredStorageItems } = ctaResult.verif;
+    const verifFoxhoundReports = FoxhoundTaintStore.open(
+      path.join(outputPath, ctaResult.verif.taintFile)
+    ).getReports();
+    const verifHarController = new HarController(
+      path.join(outputPath, ctaResult.verif.harFile)
+    );
+    const alteredIdentifiers = mergeStorageValues(
+      identifiers,
+      alteredStorageItems
+    );
+    const { syntacticAbstractFlows: verifSyntacticAbstractFlows } =
+      processFlows(
+        alteredIdentifiers,
+        verifFoxhoundReports,
+        verifHarController
+      );
+    const taintableOnlySyntacticFlows = processTaintableOnlySyntacticFlows(
+      onlySyntacticFlows,
+      verifSyntacticAbstractFlows,
+      preStorageItems,
+      alteredStorageItems
     );
 
     const toOutputFlows = (
@@ -146,6 +160,10 @@ export default function cmdMeasure(args: { analysisId: number }) {
           onlySyntacticFlows,
           syntacticAbstractFlows
         ),
+        taintableOnlySyntacticFlows: toOutputFlows(
+          taintableOnlySyntacticFlows,
+          verifSyntacticAbstractFlows
+        ),
       })
     );
 
@@ -153,11 +171,15 @@ export default function cmdMeasure(args: { analysisId: number }) {
     intersectFlowsCount += intersectFlows.length;
     onlyTaintFlowsCount += onlyTaintFlows.length;
     onlySyntacticFlowsCount += onlySyntacticFlows.length;
+    taintableOnlySyntacticFlowsCount += taintableOnlySyntacticFlows.length;
 
     syntacticFlowsSitesCount += Number(syntacticFlows.length > 0);
     intersectFlowsSitesCount += Number(intersectFlows.length > 0);
     onlyTaintFlowsSitesCount += Number(onlyTaintFlows.length > 0);
     onlySyntacticFlowsSitesCount += Number(onlySyntacticFlows.length > 0);
+    taintableOnlySyntacticFlowsSitesCount += Number(
+      taintableOnlySyntacticFlows.length > 0
+    );
   }
 
   const report = {
@@ -167,12 +189,14 @@ export default function cmdMeasure(args: { analysisId: number }) {
     intersectFlowsCount,
     onlyTaintFlowsCount,
     onlySyntacticFlowsCount,
+    taintableOnlySyntacticFlowsCount,
     taintEnhancement: onlyTaintFlowsCount / syntacticFlowsCount,
     syntacticFlowsSitesCount,
     intersectFlowsSitesCount,
     onlyTaintFlowsSitesCount,
     onlySyntacticFlowsSitesCount,
     taintEnhancementSites: onlyTaintFlowsSitesCount / syntacticFlowsSitesCount,
+    taintableOnlySyntacticFlowsSitesCount,
   };
   console.log(report);
   writeOutputFileSync(
@@ -181,55 +205,4 @@ export default function cmdMeasure(args: { analysisId: number }) {
   );
 
   process.exit(0);
-}
-
-export type AggregateFlow = {
-  storageId: StorageItem["id"];
-  receiverOrigin: string;
-};
-
-export function getAbstractAndAggregateFlows(
-  auxStorageItems: StorageItem[],
-  preStorageItems: StorageItem[],
-  taintFoxhoundReports: FoxhoundReport[],
-  taintHarController: HarController
-) {
-  const filterStorageItemsUsingZxcvbn = (storageItems: StorageItem[]) =>
-    storageItems.filter(
-      ({ value }) => value.length >= 128 || zxcvbn(value).guesses_log10 >= 9
-    );
-  const identifiers = filterStorageItemsUsingZxcvbn(
-    matchIdentifiers(preStorageItems, auxStorageItems)
-  );
-
-  const taintAbstractFlows = getTaintAbstractFlows(
-    taintFoxhoundReports,
-    identifiers,
-    taintHarController
-  );
-  const syntacticAbstractFlows = getSyntacticAbstractFlows(
-    identifiers,
-    taintHarController,
-    journeySyntacticMatcher
-  );
-
-  const toAggregateFlows = (abstractFlows: AbstractFlow[]): AggregateFlow[] => {
-    return _.uniqWith(
-      abstractFlows.map(({ storageItem, receiverOrigin }) => ({
-        storageId: storageItem.id,
-        receiverOrigin,
-      })),
-      _.isEqual
-    );
-  };
-
-  const taintFlows = toAggregateFlows(taintAbstractFlows);
-  const syntacticFlows = toAggregateFlows(syntacticAbstractFlows);
-
-  return {
-    taintAbstractFlows,
-    syntacticAbstractFlows,
-    taintFlows,
-    syntacticFlows,
-  };
 }

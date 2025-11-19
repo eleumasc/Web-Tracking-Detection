@@ -1,15 +1,13 @@
 import _ from "lodash";
 import assert from "assert";
 import { AbstractFlow } from "./AbstractFlow";
+import { AggregateFlow } from "./AggregateFlow";
 import { FoxhoundReport } from "../foxhound/types";
 import { getStorageItemsFromStorageState, StorageItem } from "./StorageItem";
 import { HarController } from "../util/HarController";
 import { jsView, StorageState } from "./StorageState";
 import { minHittingPoints } from "../util/Range";
-import {
-  AggregateFlow,
-  getAbstractAndAggregateFlows,
-} from "../commands/cmdMeasure";
+import { processFlows, processIdentifiers } from "./processFlows";
 
 export default function alterStorageStateForVerif(
   auxStorageState: StorageState,
@@ -24,13 +22,13 @@ export default function alterStorageStateForVerif(
     jsView(preStorageState)
   );
 
-  const { syntacticAbstractFlows, taintFlows, syntacticFlows } =
-    getAbstractAndAggregateFlows(
-      auxStorageItems,
-      preStorageItems,
-      taintFoxhoundReports,
-      taintHarController
-    );
+  const identifiers = processIdentifiers(auxStorageItems, preStorageItems);
+
+  const { syntacticAbstractFlows, taintFlows, syntacticFlows } = processFlows(
+    identifiers,
+    taintFoxhoundReports,
+    taintHarController
+  );
 
   const onlySyntacticFlows = _.differenceWith(
     syntacticFlows,
