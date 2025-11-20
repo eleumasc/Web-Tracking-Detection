@@ -10,7 +10,7 @@ import {
   toArray,
 } from "iter-tools";
 
-export default function processTaintableOnlySyntacticFlows(
+export default function processTrueOnlySyntacticFlows(
   onlySyntacticFlows: AggregateFlow[],
   verifSyntacticAbstractFlows: AbstractFlow[],
   preStorageItems: StorageItem[],
@@ -20,7 +20,7 @@ export default function processTaintableOnlySyntacticFlows(
     alteredStorageItems,
     preStorageItems
   );
-  const taintableSyntacticFlows = toAggregateFlows(
+  const trueSyntacticFlows = toAggregateFlows(
     verifSyntacticAbstractFlows.filter((flow) => {
       const replaceIndexesEntry = replaceIndexesEntries.find(({ storageId }) =>
         _.isEqual(storageId, flow.storageItem.id)
@@ -33,11 +33,7 @@ export default function processTaintableOnlySyntacticFlows(
       return replaceIndexes.some((index) => storageInterval.includes(index));
     })
   );
-  return _.intersectionWith(
-    onlySyntacticFlows,
-    taintableSyntacticFlows,
-    _.isEqual
-  );
+  return _.intersectionWith(onlySyntacticFlows, trueSyntacticFlows, _.isEqual);
 }
 
 function extractReplaceIndexes(

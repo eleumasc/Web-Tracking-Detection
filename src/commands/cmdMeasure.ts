@@ -4,7 +4,7 @@ import currentTime from "../util/currentTime";
 import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import processTaintableOnlySyntacticFlows from "../core/processTaintableOnlySyntacticFlows";
+import processTrueOnlySyntacticFlows from "../core/processTrueOnlySyntacticFlows";
 import { AbstractFlow } from "../core/AbstractFlow";
 import { AggregateFlow } from "../core/AggregateFlow";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
@@ -33,17 +33,19 @@ export default function cmdMeasure(args: { analysisId: number }) {
   let totalSitesCount = 0;
   let successSitesCount = 0;
 
-  let syntacticFlowsCount = 0;
   let intersectFlowsCount = 0;
   let onlyTaintFlowsCount = 0;
   let onlySyntacticFlowsCount = 0;
-  let taintableOnlySyntacticFlowsCount = 0;
+  let trueOnlySyntacticFlowsCount = 0;
+  let syntacticFlowsCount = 0;
+  let trueSyntacticFlowsCount = 0;
 
-  let syntacticFlowsSitesCount = 0;
   let intersectFlowsSitesCount = 0;
   let onlyTaintFlowsSitesCount = 0;
   let onlySyntacticFlowsSitesCount = 0;
-  let taintableOnlySyntacticFlowsSitesCount = 0;
+  let trueOnlySyntacticFlowsSitesCount = 0;
+  let syntacticFlowsSitesCount = 0;
+  let trueSyntacticFlowsSitesCount = 0;
 
   for (const [documentIndex, analysisDocument] of iterEnumerate(
     store.getDocumentsByCollection(analysisCollection.id)
@@ -118,7 +120,7 @@ export default function cmdMeasure(args: { analysisId: number }) {
         verifFoxhoundReports,
         verifHarController
       );
-    const taintableOnlySyntacticFlows = processTaintableOnlySyntacticFlows(
+    const trueOnlySyntacticFlows = processTrueOnlySyntacticFlows(
       onlySyntacticFlows,
       verifSyntacticAbstractFlows,
       preStorageItems,
@@ -160,43 +162,55 @@ export default function cmdMeasure(args: { analysisId: number }) {
           onlySyntacticFlows,
           syntacticAbstractFlows
         ),
-        taintableOnlySyntacticFlows: toOutputFlows(
-          taintableOnlySyntacticFlows,
+        trueOnlySyntacticFlows: toOutputFlows(
+          trueOnlySyntacticFlows,
           verifSyntacticAbstractFlows
         ),
       })
     );
 
-    syntacticFlowsCount += syntacticFlows.length;
     intersectFlowsCount += intersectFlows.length;
     onlyTaintFlowsCount += onlyTaintFlows.length;
     onlySyntacticFlowsCount += onlySyntacticFlows.length;
-    taintableOnlySyntacticFlowsCount += taintableOnlySyntacticFlows.length;
+    trueOnlySyntacticFlowsCount += trueOnlySyntacticFlows.length;
+    syntacticFlowsCount += intersectFlows.length + onlySyntacticFlows.length;
+    trueSyntacticFlowsCount +=
+      intersectFlows.length + trueOnlySyntacticFlows.length;
 
-    syntacticFlowsSitesCount += Number(syntacticFlows.length > 0);
     intersectFlowsSitesCount += Number(intersectFlows.length > 0);
     onlyTaintFlowsSitesCount += Number(onlyTaintFlows.length > 0);
     onlySyntacticFlowsSitesCount += Number(onlySyntacticFlows.length > 0);
-    taintableOnlySyntacticFlowsSitesCount += Number(
-      taintableOnlySyntacticFlows.length > 0
+    trueOnlySyntacticFlowsSitesCount += Number(
+      trueOnlySyntacticFlows.length > 0
+    );
+    syntacticFlowsSitesCount += Number(
+      intersectFlows.length > 0 || onlySyntacticFlows.length > 0
+    );
+    trueSyntacticFlowsSitesCount += Number(
+      intersectFlows.length > 0 || trueOnlySyntacticFlows.length > 0
     );
   }
 
   const report = {
     totalSitesCount,
     successSitesCount,
-    syntacticFlowsCount,
+
     intersectFlowsCount,
     onlyTaintFlowsCount,
     onlySyntacticFlowsCount,
-    taintableOnlySyntacticFlowsCount,
-    taintEnhancement: onlyTaintFlowsCount / syntacticFlowsCount,
-    syntacticFlowsSitesCount,
+    trueOnlySyntacticFlowsCount,
+    syntacticFlowsCount,
+    trueSyntacticFlowsCount,
+    taintEnhancement: onlyTaintFlowsCount / trueSyntacticFlowsCount,
+
     intersectFlowsSitesCount,
     onlyTaintFlowsSitesCount,
     onlySyntacticFlowsSitesCount,
-    taintEnhancementSites: onlyTaintFlowsSitesCount / syntacticFlowsSitesCount,
-    taintableOnlySyntacticFlowsSitesCount,
+    trueOnlySyntacticFlowsSitesCount,
+    syntacticFlowsSitesCount,
+    trueSyntacticFlowsSitesCount,
+    taintEnhancementSites:
+      onlyTaintFlowsSitesCount / trueSyntacticFlowsSitesCount,
   };
   console.log(report);
   writeOutputFileSync(
