@@ -277,7 +277,7 @@ export async function runSimulateConnect(
           });
         }
         try {
-          return simulateConnect(browser, {
+          return await simulateConnect(browser, {
             siteName,
             screenshotPath,
           });
