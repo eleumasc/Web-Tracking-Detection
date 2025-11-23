@@ -1,5 +1,5 @@
 export type LCSubStringMatch = {
-  str: string;
+  length: number;
   offset1: number;
   offset2: number;
 };
@@ -27,5 +27,5 @@ export default function findLCSubString(
       }
     }
   }
-  return { str: str1.substring(offset1, offset1 + length), offset1, offset2 };
+  return { length, offset1, offset2 };
 }

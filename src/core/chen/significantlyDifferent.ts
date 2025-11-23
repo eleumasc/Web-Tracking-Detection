@@ -1,73 +1,68 @@
 import findLCSubString from "./findLCSubString";
 import { findMinLexicographicalLCS } from "@algorithm.ts/lcs";
 
-const FROM_YEAR = 2000;
-const FROM_TIMESTAMP = +new Date(FROM_YEAR, 0, 1);
-const TO_YEAR = 2050;
-const TO_TIMESTAMP = +new Date(TO_YEAR, 0, 1);
+const CURRENT_YEAR = new Date().getFullYear();
+const MIN_UNIX_TIMESTAMP = +new Date(CURRENT_YEAR - 1, 0, 1); // first day of last year
+const MAX_UNIX_TIMESTAMP = +new Date(CURRENT_YEAR + 2, 0, 1); // first day of second next year
 
-function stripUnixTimestamps(str: string): string {
-  return [...str.matchAll(/[0-9]+/g)]
-    .filter((match) => {
-      const matchStr = match[0];
-      if (matchStr[0] !== "0") {
-        const ts = +matchStr;
-        return ts >= FROM_TIMESTAMP && ts < TO_TIMESTAMP;
-      }
-      return false;
-    })
-    .map((match) => {
-      const start = match.index!;
-      const end = start + match[0].length;
-      return { start, end };
-    })
-    .reduce((acc, match) => {
-      const offset = str.length - acc.length;
-      const stripStart = match.start - offset;
-      const stripEnd = match.end - offset;
-      return acc.substring(0, stripStart) + acc.substring(stripEnd);
-    }, str);
+// WARNING! This function is guaranteed to work as expected when the distance
+// between included timestamps and the current time is at most one year.
+function removeUnixTimestamps(str: string): string {
+  return str.replace(/[1-9][0-9]+/g, (numStr) => {
+    const num = Number(numStr);
+    if (
+      [0, 3].some((exp) => {
+        const fixedNum = Math.floor(num * Math.pow(10, exp));
+        return fixedNum >= MIN_UNIX_TIMESTAMP && fixedNum < MAX_UNIX_TIMESTAMP;
+      })
+    ) {
+      return "";
+    }
+    return numStr;
+  });
 }
 
-function stripTimestamps(str: string): string {
-  return stripUnixTimestamps(str);
+function removeTimestamps(str: string): string {
+  return removeUnixTimestamps(str);
 }
 
-type StringPair = { str1: string; str2: string };
+function removeAtIndexes(str: string, indexes: number[]): string {
+  const indexesSet = new Set(indexes);
+  let result = "";
+  for (let i = 0; i < str.length; i++) {
+    if (!indexesSet.has(i)) {
+      result += str[i];
+    }
+  }
+  return result;
+}
 
-function stripRecurrentSubstrings(pair: StringPair): StringPair {
-  const MAX_LENGTH = 2;
-
-  const stripChars = (str: string, indexes: number[]): string => {
-    return indexes.reduce(
-      (str, index) => str.substring(0, index) + str.substring(index + 1),
-      str
-    );
-  };
-
-  let { str1, str2 } = pair;
-  for (
-    let sequence;
-    (sequence = findMinLexicographicalLCS(
+function removeRecurrentSubstrings(
+  str1: string,
+  str2: string
+): [string, string] {
+  let lcs;
+  while (
+    (lcs = findMinLexicographicalLCS(
       str1.length,
       str2.length,
       (x, y) => str1[x] === str2[y]
-    )).length > MAX_LENGTH;
-    str1 = stripChars(
+    )).length > 2
+  ) {
+    str1 = removeAtIndexes(
       str1,
-      sequence.map(([x, _]) => x)
-    ),
-      str2 = stripChars(
-        str2,
-        sequence.map(([_, y]) => y)
-      )
-  ) {}
-  return { str1, str2 };
+      lcs.map((x) => x[0])
+    );
+    str2 = removeAtIndexes(
+      str2,
+      lcs.map((x) => x[1])
+    );
+  }
+  return [str1, str2];
 }
 
 function countMatchingCharacters(str1: string, str2: string): number {
-  const { str, offset1, offset2 } = findLCSubString(str1, str2);
-  const length = str.length;
+  const { length, offset1, offset2 } = findLCSubString(str1, str2);
   if (length > 0) {
     return (
       length +
@@ -104,10 +99,11 @@ export default function significantlyDifferent(
   if (str1 === str2) {
     return false;
   } else {
-    const { str1: stripped1, str2: stripped2 } = stripRecurrentSubstrings({
-      str1: stripTimestamps(str1),
-      str2: stripTimestamps(str2),
-    });
-    return similarityScore(stripped1, stripped2) < SCORE_THRESHOLD;
+    let s1 = str1;
+    let s2 = str2;
+    s1 = removeTimestamps(s1);
+    s2 = removeTimestamps(s2);
+    [s1, s2] = removeRecurrentSubstrings(s1, s2);
+    return similarityScore(s1, s2) < SCORE_THRESHOLD;
   }
 }
