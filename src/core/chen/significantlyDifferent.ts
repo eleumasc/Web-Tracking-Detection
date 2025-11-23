@@ -12,6 +12,8 @@ function removeUnixTimestamps(str: string): string {
     const num = Number(numStr);
     if (
       [0, 3].some((exp) => {
+        // 0 if potential timestamp in num is in ms
+        // 3 if potential timestamp in num is in seconds
         const fixedNum = Math.floor(num * Math.pow(10, exp));
         return fixedNum >= MIN_UNIX_TIMESTAMP && fixedNum < MAX_UNIX_TIMESTAMP;
       })
@@ -104,6 +106,11 @@ export default function significantlyDifferent(
     s1 = removeTimestamps(s1);
     s2 = removeTimestamps(s2);
     [s1, s2] = removeRecurrentSubstrings(s1, s2);
+    if (s1.length < 3 && s2.length < 3) {
+      // if differences are negligible (both s1 and s2 have less than 3 chars),
+      // then str1 and str2 are not significantly different.
+      return false;
+    }
     return similarityScore(s1, s2) < SCORE_THRESHOLD;
   }
 }
