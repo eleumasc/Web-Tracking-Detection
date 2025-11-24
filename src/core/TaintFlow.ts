@@ -28,6 +28,7 @@ export interface StorageTaintOperation extends BaseTaintOperation {
   key: string;
   value: string;
   valueRange: Range;
+  locUrl: URL;
 }
 
 export type TaintOperation = NetworkTaintOperation | StorageTaintOperation;
@@ -181,7 +182,7 @@ function toTaintNetworkOperation(
 function toTaintStorageOperation(
   cx: ToTaintOperationContext,
   foxhoundOperation: FoxhoundOperation,
-  { str, taint: foxhoundTaint }: FoxhoundReport
+  { loc, str, taint: foxhoundTaint }: FoxhoundReport
 ): TaintOperation | null {
   let storageType: string;
   let key: string;
@@ -288,6 +289,7 @@ function toTaintStorageOperation(
     key,
     value,
     valueRange,
+    locUrl: new URL(loc),
   };
 }
 

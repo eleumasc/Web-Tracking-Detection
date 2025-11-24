@@ -1,13 +1,13 @@
 import _ from "lodash";
 import assert from "assert";
 import Interval from "../util/Interval";
+import { Cookie, StorageItem } from "./StorageItem";
 import { createHash } from "crypto";
 import { FoxhoundReport } from "../foxhound/types";
 import { gunzipSync, inflateSync } from "zlib";
 import { HarController } from "../util/HarController";
 import { parse as parseSearchParams } from "querystring";
 import { Range } from "../util/Range";
-import { StorageItem } from "./StorageItem";
 import {
   getTaintFlowsFromFoxhoundReports,
   StorageTaintOperation,
@@ -36,6 +36,34 @@ export function getTaintAbstractFlows(
   storageItems: StorageItem[],
   harController: HarController
 ): AbstractFlow[] {
+  const findSingleStorageItemByTaintOperation = (
+    op: StorageTaintOperation
+  ): StorageItem | undefined => {
+    const { storageType, key, value, locUrl } = op;
+    let foundArray = storageItems.filter(
+      ({ id: storageId, value: storageValue }) =>
+        storageType === storageId.storageType &&
+        key === storageId.key &&
+        value === storageValue &&
+        (storageId.storageType === "cookie"
+          ? ("." + locUrl.hostname).endsWith(storageId.domain)
+          : locUrl.origin === storageId.origin)
+    );
+    if (foundArray.length >= 2 && storageType === "cookie") {
+      const maxLengthDomainCookie = _.maxBy(
+        foundArray as Cookie[],
+        ({ id: { domain } }) => domain.length
+      );
+      assert(maxLengthDomainCookie);
+      foundArray = [maxLengthDomainCookie];
+    }
+    assert(
+      foundArray.length < 2,
+      `Expected to find at most one StorageItem, but found ${foundArray.length}`
+    );
+    return foundArray.length === 1 ? foundArray[0] : undefined;
+  };
+
   const abstractFlows: AbstractFlow[] = [];
   for (const flow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
     const { sources, sink } = flow;
@@ -56,20 +84,6 @@ export function getTaintAbstractFlows(
     // const senderOrigin = originFromUrl(location);
     const receiverUrl = requestUrl;
     const receiverOrigin = originFromUrl(receiverUrl);
-
-    const findSingleStorageItemByTaintOperation = (
-      op: StorageTaintOperation
-    ): StorageItem | undefined => {
-      const found = storageItems.filter(
-        ({ id: { storageType, key }, value }) =>
-          op.storageType === storageType && op.key === key && op.value === value
-      );
-      assert(
-        found.length < 2,
-        `Expected to find at most one StorageItem, but found ${found.length}`
-      );
-      return found.length === 1 ? found[0] : undefined;
-    };
 
     const storageItemsSent = _.values(
       _.groupBy(
