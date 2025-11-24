@@ -10,6 +10,41 @@
   }
 
   const $Array$$map = unbind(Array.prototype.map);
+  const $Map = window.Map;
+  const $Map$$get = unbind(Map.prototype.get);
+  const $Map$$set = unbind(Map.prototype.set);
+
+  const leaderWindow = (function () {
+    let w = window;
+    while (w !== w.top) {
+      try {
+        void w.parent.location.href;
+        w = w.parent;
+      } catch (e) {
+        break;
+      }
+    }
+    return w;
+  })();
+  if (window === leaderWindow) {
+    const { StorageReadLogManager } = loadStorageReadLogManager();
+    const logManager = new StorageReadLogManager();
+    window.__foxhound_taint_callback = function (value) {
+      const taint = value.str.taint;
+      const taintReport = simplifyTaintReport({ ...value, taint });
+      if (!taintReport) return;
+      const log = window.__foxhoundTaintReporter ?? console.log;
+      const toBeLoggedTaintReports =
+        logManager.getToBeLoggedTaintReports(taintReport);
+      for (let i = 0; i < toBeLoggedTaintReports.length; ++i) {
+        log(toBeLoggedTaintReports[i]);
+      }
+    };
+  } else {
+    window.__foxhound_taint_callback = function (value) {
+      leaderWindow.__foxhound_taint_callback(value);
+    };
+  }
 
   function simplifyTaintReport(taintReport) {
     const { taint } = taintReport;
@@ -30,39 +65,43 @@
     };
   }
 
-  window.addEventListener("__taintreport", (r) => {
-    const value = r.detail;
-    const taint = value.str.taint;
-    const taintReport = simplifyTaintReport({ ...value, taint });
-    if (!taintReport) return;
-    (window.__playwright_taint_report ?? console.log)(taintReport);
-  });
+  function isStorageReadOperation(taintOperation) {
+    switch (taintOperation.operation) {
+      case "document.cookie":
+        return taintOperation.source;
+      case "localStorage.getItem":
+      case "sessionStorage.getItem":
+        return true;
+      default: {
+        return false;
+      }
+    }
+  }
 
-  function combineStorageTaintRanges(ranges) {
+  function combineStorageTaintRanges(taintRanges) {
     const result = [];
-    for (let headIndex = 0; headIndex < ranges.length; ++headIndex) {
-      const headRange = ranges[headIndex];
+    for (let headIndex = 0; headIndex < taintRanges.length; ++headIndex) {
+      const headRange = taintRanges[headIndex];
       const { begin: headBegin, flow: headFlow } = headRange;
-      const { operation: headOperation, arguments: headArgs } = headFlow;
+      const { arguments: headArgs } = headFlow;
 
-      checkOperation: switch (headOperation) {
-        case "document.cookie":
-        case "localStorage.getItem":
-        case "sessionStorage.getItem":
-          break checkOperation;
-        default: {
-          result[result.length] = headRange;
-          continue;
-        }
+      if (!isStorageReadOperation(headFlow)) {
+        result[result.length] = headRange;
+        continue;
+      }
+
+      if (headArgs[2] === undefined) {
+        result[result.length] = headRange;
+        continue;
       }
 
       let lastIndex = headIndex;
-      for (let i = headIndex + 1; i < ranges.length; ++i) {
-        const currRange = ranges[i];
+      for (let i = headIndex + 1; i < taintRanges.length; ++i) {
+        const currRange = taintRanges[i];
         const { begin: currBegin, end: currEnd, flow: currFlow } = currRange;
         const { operation: currOperation, arguments: currArgs } = currFlow;
 
-        const prevRange = ranges[i - 1];
+        const prevRange = taintRanges[i - 1];
         const { begin: prevBegin, end: prevEnd, flow: prevFlow } = prevRange;
         const { operation: prevOperation, arguments: prevArgs } = prevFlow;
 
@@ -81,7 +120,7 @@
         }
       }
 
-      const lastRange = ranges[lastIndex];
+      const lastRange = taintRanges[lastIndex];
       const { end: lastEnd } = lastRange;
 
       const newRange = {
@@ -101,5 +140,53 @@
       headIndex = lastIndex;
     }
     return result;
+  }
+
+  function loadStorageReadLogManager() {
+    class StorageReadLogManager {
+      constructor() {
+        this.storageReadEntryMap = new $Map();
+      }
+
+      getToBeLoggedTaintReports(taintReport) {
+        if (taintReport.sink.operation === "StorageRead") {
+          this._addStorageRead(taintReport);
+          return [];
+        }
+
+        const { taint } = taintReport;
+
+        let result = [];
+        for (let i = 0; i < taint.length; ++i) {
+          const taintOperation = taint[i].flow;
+          if (!isStorageReadOperation(taintOperation)) continue;
+          const version = taintOperation.arguments[1];
+          const entry = $Map$$get(this.storageReadEntryMap, version);
+          if (!entry) continue;
+          if (entry.logged) continue;
+          result[result.length] = entry.storageRead;
+          entry.logged = true;
+        }
+        result[result.length] = taintReport;
+        return result;
+      }
+
+      _addStorageRead(storageRead) {
+        const { taint } = storageRead;
+
+        const entry = {
+          storageRead,
+          logged: false,
+        };
+
+        for (let i = 0; i < taint.length; ++i) {
+          const taintOperation = taint[i].flow;
+          const version = taintOperation.arguments[1];
+          $Map$$set(this.storageReadEntryMap, version, entry);
+        }
+      }
+    }
+
+    return { StorageReadLogManager };
   }
 })();

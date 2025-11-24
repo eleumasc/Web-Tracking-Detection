@@ -3,7 +3,7 @@ import path from "path";
 import { BrowserContext, firefox } from "playwright";
 import { rootDir, TU_WIEN_MEASUREMENT_ID } from "../env";
 
-const FOXHOUND_PATH = path.join(rootDir, "foxhound", "foxhound");
+const DEFAULT_FOXHOUND_PATH = path.join(rootDir, "foxhound", "foxhound");
 
 export default async function useFoxhound<T>(
   options: {
@@ -11,6 +11,7 @@ export default async function useFoxhound<T>(
     headless?: boolean;
     harPath?: string;
     taintingActive?: boolean;
+    foxhoundPath?: string;
   },
   use: (browser: BrowserContext) => Promise<T>
 ): Promise<T> {
@@ -23,7 +24,7 @@ export default async function useFoxhound<T>(
   );
   const browser = await firefox.launchPersistentContext(options.userDataDir, {
     headless: options.headless,
-    executablePath: FOXHOUND_PATH,
+    executablePath: options.foxhoundPath ?? DEFAULT_FOXHOUND_PATH,
     locale: "en-GB", // request pages in English
     recordHar: options.harPath
       ? {

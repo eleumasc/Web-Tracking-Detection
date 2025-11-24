@@ -16,7 +16,7 @@ export default async function installFoxhoundTaintReporter(
   });
 
   await context.exposeBinding(
-    "__playwright_taint_report",
+    "__foxhoundTaintReporter",
     async (_source, foxhoundReport: FoxhoundReport) => {
       onReport(foxhoundReport);
     }

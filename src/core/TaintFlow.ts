@@ -195,13 +195,13 @@ function toTaintStorageOperation(
     );
     assert(foxhoundRange);
     const { begin: rangeBegin, end: rangeEnd } = foxhoundRange;
-    const [beginStr, endStr] = taintArgs[2].split(":");
-    if (beginStr === "undefined" && endStr === "NaN") {
+    if (taintArgs[2] === undefined) {
       // This case should happen only in taint flows where the sink is StorageRead
       return { begin: 0, end: rangeEnd - rangeBegin };
     }
-    const begin = +beginStr;
-    const end = +endStr;
+    const [beginStr, endStr] = taintArgs[2].split(":");
+    const begin = Number(beginStr);
+    const end = Number(endStr);
     assert(!isNaN(begin));
     return { begin, end };
   };
