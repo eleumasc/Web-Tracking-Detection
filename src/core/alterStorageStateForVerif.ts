@@ -65,32 +65,43 @@ export function alterStorageItemsForVerif(
       continue;
     }
 
-    let newStorageValue = storageValue;
-    for (const index of replaceIndexes) {
-      const oldChar = storageValue[index];
-
-      const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      const lowerChars = "abcdefghijklmnopqrstuvwxyz";
-      const digitChars = "0123456789";
-      let charClass;
-      if (upperChars.includes(oldChar)) {
-        charClass = upperChars;
-      } else if (lowerChars.includes(oldChar)) {
-        charClass = lowerChars;
-      } else {
-        charClass = digitChars;
+    let newStorageValue: string;
+    let iteration: number = 100;
+    do {
+      if (iteration === 0) {
+        throw new Error("Cannot generate non-colliding altered storage values");
       }
+      iteration -= 1;
 
-      let newChar;
-      do {
-        newChar = charClass[Math.floor(Math.random() * charClass.length)];
-      } while (newChar === oldChar);
+      newStorageValue = storageValue;
+      for (const index of replaceIndexes) {
+        const oldChar = storageValue[index];
 
-      newStorageValue =
-        newStorageValue.slice(0, index) +
-        newChar +
-        newStorageValue.slice(index + 1);
-    }
+        const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const lowerChars = "abcdefghijklmnopqrstuvwxyz";
+        const digitChars = "0123456789";
+        let charClass;
+        if (upperChars.includes(oldChar)) {
+          charClass = upperChars;
+        } else if (lowerChars.includes(oldChar)) {
+          charClass = lowerChars;
+        } else {
+          charClass = digitChars;
+        }
+
+        let newChar;
+        do {
+          newChar = charClass[Math.floor(Math.random() * charClass.length)];
+        } while (newChar === oldChar);
+
+        newStorageValue =
+          newStorageValue.slice(0, index) +
+          newChar +
+          newStorageValue.slice(index + 1);
+      }
+    } while (
+      alteredStorageItems.some(({ value }) => value === newStorageValue)
+    );
 
     alteredStorageItems.push({ ...storageItem, value: newStorageValue });
   }
