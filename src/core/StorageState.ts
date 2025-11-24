@@ -20,11 +20,3 @@ export type StorageState = {
     }>;
   }>;
 };
-
-export function jsView(storageState: StorageState) {
-  const { cookies, origins } = storageState;
-  return {
-    cookies: cookies.filter(({ httpOnly }) => !httpOnly),
-    origins,
-  };
-}

@@ -13,7 +13,6 @@ import { enumerate as iterEnumerate } from "iter-tools";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
-import { jsView } from "../core/StorageState";
 import { processFlows, processIdentifiers } from "../core/processFlows";
 import {
   getStorageItemsFromStorageState,
@@ -67,10 +66,10 @@ export default function cmdMeasure(args: { analysisId: number }) {
     const outputPath = getOutputPath(analysisCollection.name);
 
     const auxStorageItems = getStorageItemsFromStorageState(
-      jsView(ctaResult.aux.connectResult.storageState)
+      ctaResult.aux.connectResult.storageState
     );
     const preStorageItems = getStorageItemsFromStorageState(
-      jsView(ctaResult.pre.connectResult.storageState)
+      ctaResult.pre.connectResult.storageState
     );
 
     const foxhoundReports = FoxhoundTaintStore.open(

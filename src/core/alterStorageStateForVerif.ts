@@ -5,9 +5,9 @@ import { AggregateFlow } from "./AggregateFlow";
 import { FoxhoundReport } from "../foxhound/types";
 import { getStorageItemsFromStorageState, StorageItem } from "./StorageItem";
 import { HarController } from "../util/HarController";
-import { jsView, StorageState } from "./StorageState";
 import { minHittingPoints } from "../util/Range";
 import { processFlows, processIdentifiers } from "./processFlows";
+import { StorageState } from "./StorageState";
 
 export default function alterStorageStateForVerif(
   auxStorageState: StorageState,
@@ -15,12 +15,8 @@ export default function alterStorageStateForVerif(
   taintFoxhoundReports: FoxhoundReport[],
   taintHarController: HarController
 ): StorageItem[] {
-  const auxStorageItems = getStorageItemsFromStorageState(
-    jsView(auxStorageState)
-  );
-  const preStorageItems = getStorageItemsFromStorageState(
-    jsView(preStorageState)
-  );
+  const auxStorageItems = getStorageItemsFromStorageState(auxStorageState);
+  const preStorageItems = getStorageItemsFromStorageState(preStorageState);
 
   const identifiers = processIdentifiers(auxStorageItems, preStorageItems);
 
