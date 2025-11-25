@@ -45,9 +45,10 @@ export function getTaintAbstractFlows(
         storageType === storageId.storageType &&
         key === storageId.key &&
         value === storageValue &&
-        (storageId.storageType === "cookie"
+        ((storageId.storageType === "cookie"
           ? ("." + locUrl.hostname).endsWith(storageId.domain)
-          : locUrl.origin === storageId.origin)
+          : locUrl.origin === storageId.origin) ||
+          locUrl.href === "about:blank") // WARNING!
     );
     if (foundArray.length >= 2 && storageType === "cookie") {
       const maxLengthDomainCookie = _.maxBy(
