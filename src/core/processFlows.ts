@@ -13,17 +13,17 @@ import {
 
 export function processFlows(
   identifiers: StorageItem[],
-  taintFoxhoundReports: FoxhoundReport[],
-  taintHarController: HarController
+  foxhoundReports: FoxhoundReport[],
+  harController: HarController
 ) {
   const taintAbstractFlows = getTaintAbstractFlows(
-    taintFoxhoundReports,
+    foxhoundReports,
     identifiers,
-    taintHarController
+    harController
   );
   const syntacticAbstractFlows = getSyntacticAbstractFlows(
     identifiers,
-    taintHarController,
+    harController,
     journeySyntacticMatcher
   );
 
