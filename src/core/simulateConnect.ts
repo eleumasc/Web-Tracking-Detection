@@ -1,3 +1,4 @@
+import currentTime from "../util/currentTime";
 import { BrowserContext } from "playwright";
 import { StorageState } from "./StorageState";
 import { timeout } from "../util/timeout";
@@ -5,6 +6,7 @@ import { timeout } from "../util/timeout";
 export type SimulateConnectResult = {
   landingPageUrl: string;
   storageState: StorageState;
+  timestamp: number;
 };
 
 const LOAD_TIMEOUT_MS: number = 60 * 1000; // 60 seconds
@@ -18,6 +20,8 @@ export default async function simulateConnect(
   }
 ): Promise<SimulateConnectResult> {
   const { siteName, screenshotPath } = options;
+
+  const timestamp = currentTime();
 
   const page = await browser.newPage();
 
@@ -48,6 +52,7 @@ export default async function simulateConnect(
   return {
     landingPageUrl,
     storageState,
+    timestamp,
   };
 }
 
