@@ -106,11 +106,6 @@ export default function significantlyDifferent(
     s1 = removeTimestamps(s1);
     s2 = removeTimestamps(s2);
     [s1, s2] = removeRecurrentSubstrings(s1, s2);
-    if (s1.length < 3 && s2.length < 3) {
-      // if differences are negligible (both s1 and s2 have less than 3 chars),
-      // then str1 and str2 are not significantly different.
-      return false;
-    }
     return similarityScore(s1, s2) < SCORE_THRESHOLD;
   }
 }
