@@ -1,7 +1,9 @@
 import currentTime from "../util/currentTime";
 import execContainer from "../worker/execContainer";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 import { makeTaskFromFunction } from "../worker/Task";
-import { runAnalyze } from "../commands/cmdAnalyze";
+import { runAnalyze } from "../core/runAnalyze";
 import { toFlatCompletion } from "../util/Completion";
 
 async function main(args: { siteName: string }) {
@@ -10,9 +12,10 @@ async function main(args: { siteName: string }) {
   const completion = await toFlatCompletion(() =>
     execContainer<ReturnType<typeof runAnalyze>>(
       makeTaskFromFunction(runAnalyze, [
-        siteName,
         {
+          siteName,
           outputName: `${currentTime()}-testAnalyze`,
+          analysis: { type: "StatefulTracking" },
         },
       ])
     )
@@ -23,6 +26,10 @@ async function main(args: { siteName: string }) {
   process.exit(0);
 }
 
+const argv = yargs(hideBin(process.argv))
+  .option("siteName", { type: "string", demandOption: true })
+  .parseSync();
+
 main({
-  siteName: process.argv[2],
+  siteName: argv.siteName,
 });

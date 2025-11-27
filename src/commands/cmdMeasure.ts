@@ -15,6 +15,9 @@ import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
 import { processFlows, processIdentifiers } from "../core/processFlows";
 import {
+  StatefulTrackingAnalysisResult,
+} from "../core/AnalysisResult";
+import {
   getStorageItemsFromStorageState,
   mergeStorageValues,
 } from "../core/StorageItem";
@@ -54,29 +57,29 @@ export default function cmdMeasure(args: { analysisId: number }) {
 
     totalSitesCount += 1;
 
-    const analysisLogEntry = store.getDocumentData<AnalysisLogEntry>(
-      analysisDocument.id
-    );
+    const analysisLogEntry = store.getDocumentData<
+      AnalysisLogEntry<StatefulTrackingAnalysisResult>
+    >(analysisDocument.id);
 
     if (isFailure(analysisLogEntry)) continue;
-    const { value: ctaResult } = analysisLogEntry;
+    const { value: staResult } = analysisLogEntry;
 
     successSitesCount += 1;
 
     const outputPath = getOutputPath(analysisCollection.name);
 
     const auxStorageItems = getStorageItemsFromStorageState(
-      ctaResult.aux.connectResult.storageState
+      staResult.aux.connectResult.storageState
     );
     const preStorageItems = getStorageItemsFromStorageState(
-      ctaResult.pre.connectResult.storageState
+      staResult.pre.connectResult.storageState
     );
 
     const foxhoundReports = FoxhoundTaintStore.open(
-      path.join(outputPath, ctaResult.taint.taintFile)
+      path.join(outputPath, staResult.taint.taintFile)
     ).getReports();
     const harController = new HarController(
-      path.join(outputPath, ctaResult.taint.harFile)
+      path.join(outputPath, staResult.taint.harFile)
     );
     const identifiers = processIdentifiers(auxStorageItems, preStorageItems);
     const {
@@ -102,12 +105,12 @@ export default function cmdMeasure(args: { analysisId: number }) {
       _.isEqual
     );
 
-    const { alteredStorageItems } = ctaResult.verif;
+    const { alteredStorageItems } = staResult.verif;
     const verifFoxhoundReports = FoxhoundTaintStore.open(
-      path.join(outputPath, ctaResult.verif.taintFile)
+      path.join(outputPath, staResult.verif.taintFile)
     ).getReports();
     const verifHarController = new HarController(
-      path.join(outputPath, ctaResult.verif.harFile)
+      path.join(outputPath, staResult.verif.harFile)
     );
     const alteredIdentifiers = mergeStorageValues(
       identifiers,

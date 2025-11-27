@@ -3,6 +3,7 @@ import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { parseAnalysis } from "./core/Analysis";
 
 async function main() {
   console.log(`PID: ${process.pid}`);
@@ -30,11 +31,21 @@ async function main() {
             type: "number",
             demandOption: true,
           })
+          .option("analysis", {
+            describe: "Analysis descriptor",
+            type: "string",
+            demandOption: true,
+          })
           .option("maxTasks", {
             type: "number",
             default: 1,
           }),
-      (args) => cmdAnalyze({ action: "create", ...args })
+      (args) =>
+        cmdAnalyze({
+          action: "create",
+          ...args,
+          analysis: parseAnalysis(args.analysis),
+        })
     )
     .command(
       "analyze:resume <outputId>",

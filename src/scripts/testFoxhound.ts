@@ -1,7 +1,9 @@
 import path from "path";
 import useFoxhound from "../foxhound/useFoxhound";
-import { forever } from "../util/timeout";
 import useTempPath from "../util/useTempPath";
+import yargs from "yargs";
+import { forever } from "../util/timeout";
+import { hideBin } from "yargs/helpers";
 import { rootDir } from "../env";
 
 async function main(args: { foxhoundPath: string }) {
@@ -27,6 +29,10 @@ async function main(args: { foxhoundPath: string }) {
   process.exit(0);
 }
 
+const argv = yargs(hideBin(process.argv))
+  .option("foxhoundPath", { type: "string", demandOption: true })
+  .parseSync();
+
 main({
-  foxhoundPath: path.resolve(process.argv[2]),
+  foxhoundPath: path.resolve(argv.foxhoundPath),
 });
