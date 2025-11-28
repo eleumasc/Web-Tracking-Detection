@@ -1,5 +1,5 @@
 import _ from "lodash";
-import matchIdentifiers from "./chen/matchIdentifiers";
+import detectIdentifiers from "./chen/detectIdentifiers";
 import zxcvbn from "zxcvbn";
 import { FoxhoundReport } from "../foxhound/types";
 import { HarController } from "../util/HarController";
@@ -48,6 +48,6 @@ export function processIdentifiers(
     );
 
   return filterStorageItemsUsingZxcvbn(
-    matchIdentifiers(preStorageItems, auxStorageItems)
+    detectIdentifiers(preStorageItems, auxStorageItems)
   );
 }

@@ -1,8 +1,8 @@
 import significantlyDifferent from "./significantlyDifferent";
 import { joinStorageItemsById, StorageItem } from "../StorageItem";
 
-// Heuristics-based Identifier Matching à la Cookie Swap Party
-export default function matchIdentifiers(
+// Heuristics-based Identifier Detection à la Cookie Swap Party
+export default function detectIdentifiers(
   storageItemsA: StorageItem[],
   storageItemsB: StorageItem[]
 ): StorageItem[] {
