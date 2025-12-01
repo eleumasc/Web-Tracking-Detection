@@ -14,12 +14,10 @@ export interface IdDetectionAnalysis extends BaseAnalysis {
 
 export type Analysis = StatefulTrackingAnalysis | IdDetectionAnalysis;
 
-export function parseAnalysis(desc: string): Analysis {
-  const data = JSON.parse(desc);
-  assert(typeof data === "object" && data !== null);
-
-  const { type } = data;
-  assert(typeof type === "string");
+export function parseAnalysis(descriptor: string): Analysis {
+  const match = descriptor.match(/([A-Za-z0-9]+)(?:\:(.*))?/);
+  assert(match);
+  const { 1: type, 2: argsData } = match;
 
   switch (type) {
     case "StatefulTracking":
@@ -29,5 +27,11 @@ export function parseAnalysis(desc: string): Analysis {
       assert(false, `Unknown type of Analysis: ${type}`);
   }
 
-  return data;
+  let args = null;
+  if (argsData) {
+    args = JSON.parse(argsData);
+    assert(typeof args === "object" && args !== null);
+  }
+
+  return { type, ...args };
 }
