@@ -2,7 +2,7 @@ import alterStorageTransformTreeEntries from "./syntacticMatching/alterStorageTr
 import detectIdentifiers from "./identifierDetection/detectIdentifiers";
 import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
 import path from "path";
-import { extractStorageIdentifiablesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
+import { extractStorageCanariesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
 import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticAbstractFlows } from "./syntacticMatching/getSyntacticAbstractFlows";
@@ -47,13 +47,13 @@ export function processFlows(args: {
   const verifStorageTransformTreeEntries = alterStorageTransformTreeEntries(
     taintStorageTransformTreeEntries
   );
-  const verifStorageIdentifiablesEntries = extractStorageIdentifiablesEntries(
+  const storageCanariesEntries = extractStorageCanariesEntries(
     verifStorageTransformTreeEntries
   );
 
   return {
     taintAbstractFlows,
     syntacticAbstractFlows,
-    verifStorageIdentifiablesEntries,
+    storageCanariesEntries,
   };
 }

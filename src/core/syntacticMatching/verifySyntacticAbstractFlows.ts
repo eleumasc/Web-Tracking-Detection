@@ -11,14 +11,14 @@ import {
   traverseTransformTree,
 } from "./TransformTree";
 
-export type StorageIdentifiablesEntry = {
+export type StorageCanariesEntry = {
   storageItem: StorageItem;
-  identifiables: string[];
+  canaries: string[];
 };
 
 export function verifySyntacticAbstractFlows(
   abstractFlows: AbstractFlow[],
-  verifStorageIdentifiablesEntries: StorageIdentifiablesEntry[],
+  storageCanariesEntries: StorageCanariesEntry[],
   verifHarController: HarController
 ): AbstractFlow[] {
   const requestEntries = getRequestEntriesFromHar(verifHarController);
@@ -29,11 +29,8 @@ export function verifySyntacticAbstractFlows(
       new DefaultTransformTreeFactory(requestValue, requestValueParseSteps),
       (path) => {
         const { value: requestValue } = path.token;
-        for (const {
-          storageItem,
-          identifiables: storageValues,
-        } of verifStorageIdentifiablesEntries) {
-          for (const storageValue of storageValues) {
+        for (const { storageItem, canaries } of storageCanariesEntries) {
+          for (const canary of canaries) {
             const selectedAbstractFlows = _.difference(
               abstractFlows.filter(
                 (abstractFlow) =>
@@ -44,7 +41,7 @@ export function verifySyntacticAbstractFlows(
             );
             if (
               selectedAbstractFlows.length > 0 &&
-              requestValue.includes(storageValue)
+              requestValue.includes(canary)
             ) {
               trueAbstractFlows.push(...selectedAbstractFlows);
             }
@@ -56,13 +53,13 @@ export function verifySyntacticAbstractFlows(
   return trueAbstractFlows;
 }
 
-export function extractStorageIdentifiablesEntries(
+export function extractStorageCanariesEntries(
   storageTransformTreeEntries: StorageTransformTreeEntry[]
-): StorageIdentifiablesEntry[] {
+): StorageCanariesEntry[] {
   return storageTransformTreeEntries.flatMap(
     ({ storageItem, transformTree }) => ({
       storageItem,
-      identifiables: traverse(transformTree),
+      canaries: traverse(transformTree),
     })
   );
 

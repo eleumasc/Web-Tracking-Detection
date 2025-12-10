@@ -13,3 +13,14 @@ export type Token<T> =
     };
 
 export type OperationToken = Token<string>;
+
+export function removeValuesFromOperationToken(token: OperationToken): any {
+  if (!token.input) {
+    return { input: null };
+  }
+  const { input, value, ...tokenRest } = token;
+  return {
+    ...tokenRest,
+    input: removeValuesFromOperationToken(input),
+  };
+}

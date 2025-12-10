@@ -2,6 +2,7 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import execThread from "../worker/execThread";
+import Flatted from "flatted";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { AbstractFlow } from "../core/AbstractFlow";
@@ -15,6 +16,7 @@ import { makeTaskFromFunction } from "../worker/Task";
 import { processFlows } from "../core/processFlows";
 import { processTaskQueue } from "../util/TaskQueue";
 import { readFileSync } from "fs";
+import { removeValuesFromOperationToken } from "../core/syntacticMatching/Token";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { verifySyntacticAbstractFlows } from "../core/syntacticMatching/verifySyntacticAbstractFlows";
 
@@ -138,12 +140,12 @@ export function measureSite(args: {
   let syntacticAbstractFlows: AbstractFlow[];
   let trueSyntacticAbstractFlows: AbstractFlow[];
   if (staResult.verif && !legacyMode) {
-    taintAbstractFlows = JSON.parse(
+    taintAbstractFlows = Flatted.parse(
       readFileSync(
         path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)
       ).toString()
     );
-    syntacticAbstractFlows = JSON.parse(
+    syntacticAbstractFlows = Flatted.parse(
       readFileSync(
         path.join(
           getOutputPath(analysisName),
@@ -151,11 +153,17 @@ export function measureSite(args: {
         )
       ).toString()
     );
-    const verifStorageIdentifiablesEntries =
-      staResult.verif.storageIdentifiablesEntries;
+    const storageCanariesEntries = Flatted.parse(
+      readFileSync(
+        path.join(
+          getOutputPath(analysisName),
+          staResult.verif.storageCanariesFile
+        )
+      ).toString()
+    );
     trueSyntacticAbstractFlows = verifySyntacticAbstractFlows(
       syntacticAbstractFlows,
-      verifStorageIdentifiablesEntries,
+      storageCanariesEntries,
       new HarController(
         path.join(getOutputPath(analysisName), staResult.verif.harFile)
       )
@@ -170,20 +178,19 @@ export function measureSite(args: {
     });
     taintAbstractFlows = processed.taintAbstractFlows;
     syntacticAbstractFlows = processed.syntacticAbstractFlows;
-    const verifStorageIdentifiablesEntries =
-      processed.verifStorageIdentifiablesEntries;
+    const storageCanariesEntries = processed.storageCanariesEntries;
     trueSyntacticAbstractFlows = [];
     writeOutputFileSync(
       path.join(outputName, `${siteName}+TF.json`),
-      JSON.stringify(taintAbstractFlows)
+      Flatted.stringify(taintAbstractFlows)
     );
     writeOutputFileSync(
       path.join(outputName, `${siteName}+SF.json`),
-      JSON.stringify(syntacticAbstractFlows)
+      Flatted.stringify(syntacticAbstractFlows)
     );
     writeOutputFileSync(
-      path.join(outputName, `${siteName}+SI.json`),
-      JSON.stringify(verifStorageIdentifiablesEntries)
+      path.join(outputName, `${siteName}+C.json`),
+      Flatted.stringify(storageCanariesEntries)
     );
   }
 
@@ -226,7 +233,10 @@ export function measureSite(args: {
       return {
         storageId: `${storageId.storageType}:${storageId.key}`,
         receiverOrigin,
-        matches,
+        matches: matches.map(({ storageToken, requestToken }) => ({
+          storageToken: removeValuesFromOperationToken(storageToken),
+          requestToken: removeValuesFromOperationToken(requestToken),
+        })),
       };
     });
 

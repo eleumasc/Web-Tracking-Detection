@@ -1,6 +1,6 @@
 import { FoxhoundReport } from "../foxhound/types";
 import { SimulateConnectResult } from "./simulateConnect";
-import { StorageIdentifiablesEntry } from "./syntacticMatching/verifySyntacticAbstractFlows";
+import { StorageCanariesEntry } from "./syntacticMatching/verifySyntacticAbstractFlows";
 import { StorageItem } from "./StorageItem";
 import { StorageState } from "./StorageState";
 
@@ -19,7 +19,7 @@ export interface StatefulTrackingAnalysisResult extends AnalysisResult {
     taintFile: string;
   };
   verif?: {
-    storageIdentifiablesEntries: StorageIdentifiablesEntry[];
+    storageCanariesFile: string;
     connectResult: SimulateConnectResult;
     harFile: string;
     taintFile: string;

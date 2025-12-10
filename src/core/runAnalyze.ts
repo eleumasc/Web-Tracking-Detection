@@ -1,6 +1,7 @@
 import assert from "assert";
 import BufferedCallback from "../util/BufferedCallback";
 import execContainer from "../worker/execContainer";
+import Flatted from "flatted";
 import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import path from "path";
@@ -53,6 +54,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const verifTaintFile = `${siteName}+verif.taint.sqlite`;
   const taintFlowsFile = `${siteName}+TF.json`;
   const syntacticFlowsFile = `${siteName}+SF.json`;
+  const storageCanariesFile = `${siteName}+C.json`;
 
   return toCompletion(async () => {
     let aux: StatefulTrackingAnalysisResult["aux"];
@@ -117,7 +119,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
       const {
         taintAbstractFlows,
         syntacticAbstractFlows,
-        verifStorageIdentifiablesEntries,
+        storageCanariesEntries,
       } = processFlows({
         analysisName: outputName,
         auxConnectResult,
@@ -129,7 +131,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
       // patch firefox profile storage of profiles/verif using altered storage items
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
-        verifStorageIdentifiablesEntries.map(({ storageItem }) => storageItem)
+        storageCanariesEntries.map(({ storageItem }) => storageItem)
       );
 
       const verifConnectResult: SimulateConnectResult = await execContainer(
@@ -145,7 +147,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         { extraBinds: [profilesBind] }
       );
       verif = {
-        storageIdentifiablesEntries: verifStorageIdentifiablesEntries,
+        storageCanariesFile,
         connectResult: verifConnectResult,
         harFile: verifHarFile,
         taintFile: verifTaintFile,
@@ -155,11 +157,15 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       writeOutputFileSync(
         path.join(outputName, taintFlowsFile),
-        JSON.stringify(taintAbstractFlows)
+        Flatted.stringify(taintAbstractFlows)
       );
       writeOutputFileSync(
         path.join(outputName, syntacticFlowsFile),
-        JSON.stringify(syntacticAbstractFlows)
+        Flatted.stringify(syntacticAbstractFlows)
+      );
+      writeOutputFileSync(
+        path.join(outputName, storageCanariesFile),
+        Flatted.stringify(storageCanariesEntries)
       );
     });
     assert(aux!);
