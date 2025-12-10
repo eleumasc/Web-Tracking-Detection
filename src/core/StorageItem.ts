@@ -8,7 +8,6 @@ export type Cookie = {
     storageType: "cookie";
     key: string;
     domain: string;
-    path: string;
   };
   value: string;
 };
@@ -31,7 +30,6 @@ export function getStorageItemsFromStorageState(
         storageType: "cookie",
         key,
         domain,
-        path,
       },
       value,
     })
