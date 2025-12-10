@@ -1,3 +1,4 @@
+import _ from "lodash";
 import assert from "assert";
 
 export interface BaseAnalysis {
@@ -6,13 +7,10 @@ export interface BaseAnalysis {
 
 export interface StatefulTrackingAnalysis {
   type: "StatefulTracking";
+  noVerif: boolean;
 }
 
-export interface IdDetectionAnalysis extends BaseAnalysis {
-  type: "IdDetection";
-}
-
-export type Analysis = StatefulTrackingAnalysis | IdDetectionAnalysis;
+export type Analysis = StatefulTrackingAnalysis;
 
 export function parseAnalysis(descriptor: string): Analysis {
   const match = descriptor.match(/([A-Za-z0-9]+)(?:\:(.*))?/);
@@ -21,7 +19,6 @@ export function parseAnalysis(descriptor: string): Analysis {
 
   switch (type) {
     case "StatefulTracking":
-    case "IdDetection":
       break;
     default:
       assert(false, `Unknown type of Analysis: ${type}`);
@@ -31,6 +28,21 @@ export function parseAnalysis(descriptor: string): Analysis {
   if (argsData) {
     args = JSON.parse(argsData);
     assert(typeof args === "object" && args !== null);
+  }
+
+  if (args) {
+    switch (type) {
+      case "StatefulTracking": {
+        args = _.defaults(
+          { ...args },
+          {
+            noVerif: false,
+          }
+        );
+        assert(typeof args.noVerif === "boolean");
+        break;
+      }
+    }
   }
 
   return { type, ...args };

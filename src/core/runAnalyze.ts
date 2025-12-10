@@ -1,4 +1,3 @@
-import alterStorageStateForVerif from "./alterStorageStateForVerif";
 import assert from "assert";
 import BufferedCallback from "../util/BufferedCallback";
 import execContainer from "../worker/execContainer";
@@ -8,24 +7,18 @@ import path from "path";
 import simulateConnect, { SimulateConnectResult } from "./simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
 import useTempPath from "../util/useTempPath";
+import { Analysis, StatefulTrackingAnalysis } from "./Analysis";
 import { AnalysisLogEntry } from "./AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { cpSync } from "fs";
-import { createOutputDir, getOutputPath } from "../data/outputDir";
+import { createOutputDir, writeOutputFileSync } from "../data/outputDir";
 import { FoxhoundReport } from "../foxhound/types";
-import { HarController } from "../util/HarController";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
-import { StorageItem } from "./StorageItem";
+import { processFlows } from "./processFlows";
 import { toCompletion } from "../util/Completion";
 import {
-  Analysis,
-  IdDetectionAnalysis,
-  StatefulTrackingAnalysis,
-} from "./Analysis";
-import {
   AnalysisResult,
-  IdDetectionAnalysisResult,
   StatefulTrackingAnalysisResult,
 } from "./AnalysisResult";
 
@@ -46,10 +39,6 @@ export async function runAnalyze(
       return runAnalyzeForStatefulTrackingAnalysis(
         options as RunAnalyzeOptions<StatefulTrackingAnalysis>
       );
-    case "IdDetection":
-      return runAnalyzeForIdDetectionAnalysis(
-        options as RunAnalyzeOptions<IdDetectionAnalysis>
-      );
   }
 }
 
@@ -62,19 +51,20 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const taintTaintFile = `${siteName}+taint.taint.sqlite`;
   const verifHarFile = `${siteName}+verif.har.zip`;
   const verifTaintFile = `${siteName}+verif.taint.sqlite`;
+  const taintFlowsFile = `${siteName}+TF.json`;
+  const syntacticFlowsFile = `${siteName}+SF.json`;
 
   return toCompletion(async () => {
-    let auxConnectResult: SimulateConnectResult;
-    let preConnectResult: SimulateConnectResult;
-    let taintConnectResult: SimulateConnectResult;
-    let verifConnectResult: SimulateConnectResult;
-    let verifAlteredStorageItems: StorageItem[];
+    let aux: StatefulTrackingAnalysisResult["aux"];
+    let pre: StatefulTrackingAnalysisResult["pre"];
+    let taint: StatefulTrackingAnalysisResult["taint"];
+    let verif: StatefulTrackingAnalysisResult["verif"];
 
     await useTempPath({ localTmpDir: true }, async (profilesDir) => {
       const guestProfilesDir = "/profiles";
       const profilesBind = `${profilesDir}:${guestProfilesDir}`;
 
-      auxConnectResult = await execContainer(
+      const auxConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           siteName,
           {
@@ -84,8 +74,9 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] }
       );
+      aux = { connectResult: auxConnectResult };
 
-      preConnectResult = await execContainer(
+      const preConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           siteName,
           {
@@ -95,13 +86,14 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] }
       );
+      pre = { connectResult: preConnectResult };
 
       // copy profiles/taint to profiles/verif
       cpSync(path.join(profilesDir, "taint"), path.join(profilesDir, "verif"), {
         recursive: true,
       });
 
-      taintConnectResult = await execContainer(
+      const taintConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           siteName,
           {
@@ -114,22 +106,33 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] }
       );
+      taint = {
+        connectResult: taintConnectResult,
+        harFile: taintHarFile,
+        taintFile: taintTaintFile,
+      };
+
+      if (options.analysis.noVerif) return;
+
+      const {
+        taintAbstractFlows,
+        syntacticAbstractFlows,
+        verifStorageIdentifiablesEntries,
+      } = processFlows({
+        analysisName: outputName,
+        auxConnectResult,
+        preConnectResult,
+        taintHarFile,
+        taintTaintFile,
+      });
 
       // patch firefox profile storage of profiles/verif using altered storage items
-      verifAlteredStorageItems = alterStorageStateForVerif(
-        auxConnectResult.storageState,
-        preConnectResult.storageState,
-        FoxhoundTaintStore.open(
-          path.join(getOutputPath(outputName), taintTaintFile)
-        ).getReports(),
-        new HarController(path.join(getOutputPath(outputName), taintHarFile))
-      );
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
-        verifAlteredStorageItems
+        verifStorageIdentifiablesEntries.map(({ storageItem }) => storageItem)
       );
 
-      verifConnectResult = await execContainer(
+      const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           siteName,
           {
@@ -141,98 +144,29 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] }
       );
-    });
-    assert(auxConnectResult!);
-    assert(preConnectResult!);
-    assert(taintConnectResult!);
-    assert(verifConnectResult!);
-    assert(verifAlteredStorageItems!);
-
-    return <StatefulTrackingAnalysisResult>{
-      aux: {
-        connectResult: auxConnectResult,
-      },
-      pre: {
-        connectResult: preConnectResult,
-      },
-      taint: {
-        connectResult: taintConnectResult,
-        harFile: taintHarFile,
-        taintFile: taintTaintFile,
-      },
-      verif: {
-        alteredStorageItems: verifAlteredStorageItems,
+      verif = {
+        storageIdentifiablesEntries: verifStorageIdentifiablesEntries,
         connectResult: verifConnectResult,
         harFile: verifHarFile,
         taintFile: verifTaintFile,
-      },
-    };
-  });
-}
+        taintFlowsFile,
+        syntacticFlowsFile,
+      };
 
-export async function runAnalyzeForIdDetectionAnalysis(
-  options: RunAnalyzeOptions<IdDetectionAnalysis>
-): Promise<AnalysisLogEntry<IdDetectionAnalysisResult>> {
-  const { siteName, outputName } = options;
-
-  return toCompletion(async () => {
-    let auxConnectResult: SimulateConnectResult;
-    let preConnectResult: SimulateConnectResult;
-    let primaryConnectResult: SimulateConnectResult;
-
-    await useTempPath({ localTmpDir: true }, async (profilesDir) => {
-      const guestProfilesDir = "/profiles";
-      const profilesBind = `${profilesDir}:${guestProfilesDir}`;
-
-      auxConnectResult = await execContainer(
-        makeTaskFromFunction(runSimulateConnect, [
-          siteName,
-          {
-            userDataDir: path.join(guestProfilesDir, "aux"),
-            outputName,
-          },
-        ]),
-        { extraBinds: [profilesBind] }
+      writeOutputFileSync(
+        path.join(outputName, taintFlowsFile),
+        JSON.stringify(taintAbstractFlows)
       );
-
-      preConnectResult = await execContainer(
-        makeTaskFromFunction(runSimulateConnect, [
-          siteName,
-          {
-            userDataDir: path.join(guestProfilesDir, "primary"),
-            outputName,
-          },
-        ]),
-        { extraBinds: [profilesBind] }
-      );
-
-      primaryConnectResult = await execContainer(
-        makeTaskFromFunction(runSimulateConnect, [
-          siteName,
-          {
-            userDataDir: path.join(guestProfilesDir, "primary"),
-            outputName,
-            screenshotFile: `${siteName}.png`,
-          },
-        ]),
-        { extraBinds: [profilesBind] }
+      writeOutputFileSync(
+        path.join(outputName, syntacticFlowsFile),
+        JSON.stringify(syntacticAbstractFlows)
       );
     });
-    assert(auxConnectResult!);
-    assert(preConnectResult!);
-    assert(primaryConnectResult!);
+    assert(aux!);
+    assert(pre!);
+    assert(taint!);
 
-    return <IdDetectionAnalysisResult>{
-      aux: {
-        connectResult: auxConnectResult,
-      },
-      pre: {
-        connectResult: preConnectResult,
-      },
-      primary: {
-        connectResult: primaryConnectResult,
-      },
-    };
+    return <StatefulTrackingAnalysisResult>{ aux, pre, taint, verif };
   });
 }
 
@@ -263,21 +197,22 @@ export async function runSimulateConnect(
         harPath,
       },
       async (browser) => {
-        let taintReportsInserter:
-          | BufferedCallback<{
-              serial: number;
-              foxhoundReport: FoxhoundReport;
-            }>
-          | undefined;
+        let taintReportsInserter: BufferedCallback<FoxhoundReport> | undefined;
         if (taintPath) {
           const taintStore = FoxhoundTaintStore.open(taintPath);
-          taintReportsInserter = new BufferedCallback(50, (entries) => {
-            taintStore.insertReports(entries);
-          });
           let serial = 1;
+          taintReportsInserter = new BufferedCallback(50, (foxhoundReports) => {
+            taintStore.insertReports(
+              foxhoundReports.map((foxhoundReport, offset) => ({
+                serial: serial + offset,
+                foxhoundReport,
+              }))
+            );
+            serial += foxhoundReports.length;
+          });
           await installFoxhoundTaintReporter(browser, {
             onReport(foxhoundReport) {
-              taintReportsInserter!.add({ serial: serial++, foxhoundReport });
+              taintReportsInserter!.add(foxhoundReport);
             },
           });
         }

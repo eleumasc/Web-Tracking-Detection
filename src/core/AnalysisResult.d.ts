@@ -1,5 +1,6 @@
 import { FoxhoundReport } from "../foxhound/types";
 import { SimulateConnectResult } from "./simulateConnect";
+import { StorageIdentifiablesEntry } from "./syntacticMatching/verifySyntacticAbstractFlows";
 import { StorageItem } from "./StorageItem";
 import { StorageState } from "./StorageState";
 
@@ -17,22 +18,12 @@ export interface StatefulTrackingAnalysisResult extends AnalysisResult {
     harFile: string;
     taintFile: string;
   };
-  verif: {
-    alteredStorageItems: StorageItem[];
+  verif?: {
+    storageIdentifiablesEntries: StorageIdentifiablesEntry[];
     connectResult: SimulateConnectResult;
     harFile: string;
     taintFile: string;
-  };
-}
-
-export interface IdDetectionAnalysisResult extends AnalysisResult {
-  aux: {
-    connectResult: SimulateConnectResult;
-  };
-  pre: {
-    connectResult: SimulateConnectResult;
-  };
-  primary: {
-    connectResult: SimulateConnectResult;
+    taintFlowsFile: string;
+    syntacticFlowsFile: string;
   };
 }

@@ -1,53 +1,59 @@
-import _ from "lodash";
-import detectIdentifiers from "./chen/detectIdentifiers";
-import zxcvbn from "zxcvbn";
-import { FoxhoundReport } from "../foxhound/types";
+import alterStorageTransformTreeEntries from "./syntacticMatching/alterStorageTransformTreeEntries";
+import detectIdentifiers from "./identifierDetection/detectIdentifiers";
+import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
+import path from "path";
+import { extractStorageIdentifiablesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
+import { getOutputPath } from "../data/outputDir";
+import { getStorageItemsFromStorageState } from "./StorageItem";
+import { getSyntacticAbstractFlows } from "./syntacticMatching/getSyntacticAbstractFlows";
+import { getTaintAbstractFlows } from "./taintTracking/getTaintAbstractFlows";
 import { HarController } from "../util/HarController";
-import { StorageItem } from "./StorageItem";
-import { toAggregateFlows } from "./AggregateFlow";
-import {
-  getSyntacticAbstractFlows,
-  getTaintAbstractFlows,
-  journeySyntacticMatcher,
-} from "./AbstractFlow";
+import { SimulateConnectResult } from "./simulateConnect";
 
-export function processFlows(
-  identifiers: StorageItem[],
-  foxhoundReports: FoxhoundReport[],
-  harController: HarController
-) {
-  const taintAbstractFlows = getTaintAbstractFlows(
-    foxhoundReports,
-    identifiers,
-    harController
-  );
-  const syntacticAbstractFlows = getSyntacticAbstractFlows(
-    identifiers,
-    harController,
-    journeySyntacticMatcher
-  );
+export function processFlows(args: {
+  analysisName: string;
+  auxConnectResult: SimulateConnectResult;
+  preConnectResult: SimulateConnectResult;
+  taintHarFile: string;
+  taintTaintFile: string;
+}) {
+  const {
+    analysisName,
+    auxConnectResult,
+    preConnectResult,
+    taintHarFile,
+    taintTaintFile,
+  } = args;
 
-  const taintFlows = toAggregateFlows(taintAbstractFlows);
-  const syntacticFlows = toAggregateFlows(syntacticAbstractFlows);
+  const identifiers = detectIdentifiers(
+    getStorageItemsFromStorageState(preConnectResult.storageState),
+    getStorageItemsFromStorageState(auxConnectResult.storageState)
+  );
+  const taintHarController = new HarController(
+    path.join(getOutputPath(analysisName), taintHarFile)
+  );
+  const taintFoxhoundReports = FoxhoundTaintStore.open(
+    path.join(getOutputPath(analysisName), taintTaintFile)
+  ).getReports();
+  const { abstractFlows: taintAbstractFlows } = getTaintAbstractFlows(
+    taintFoxhoundReports,
+    identifiers,
+    taintHarController
+  );
+  const {
+    abstractFlows: syntacticAbstractFlows,
+    storageTransformTreeEntries: taintStorageTransformTreeEntries,
+  } = getSyntacticAbstractFlows(identifiers, taintHarController);
+  const verifStorageTransformTreeEntries = alterStorageTransformTreeEntries(
+    taintStorageTransformTreeEntries
+  );
+  const verifStorageIdentifiablesEntries = extractStorageIdentifiablesEntries(
+    verifStorageTransformTreeEntries
+  );
 
   return {
     taintAbstractFlows,
     syntacticAbstractFlows,
-    taintFlows,
-    syntacticFlows,
+    verifStorageIdentifiablesEntries,
   };
-}
-
-export function processIdentifiers(
-  auxStorageItems: StorageItem[],
-  preStorageItems: StorageItem[]
-) {
-  const filterStorageItemsUsingZxcvbn = (storageItems: StorageItem[]) =>
-    storageItems.filter(
-      ({ value }) => value.length >= 128 || zxcvbn(value).guesses_log10 >= 9
-    );
-
-  return filterStorageItemsUsingZxcvbn(
-    detectIdentifiers(preStorageItems, auxStorageItems)
-  );
 }

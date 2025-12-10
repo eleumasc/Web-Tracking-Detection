@@ -1,15 +1,21 @@
 import assert from "assert";
-import { Range } from "../util/Range";
+import { Range } from "../../util/Range";
 import {
   FoxhoundLocation,
   FoxhoundOperation,
   FoxhoundReport,
-} from "../foxhound/types";
+} from "../../foxhound/types";
 
 export type TaintFlow = {
   str: string;
   sink: TaintOperation;
-  sources: TaintOperation[];
+  ranges: TaintRange[];
+};
+
+export type TaintRange = {
+  begin: number;
+  end: number;
+  source: TaintOperation;
 };
 
 export interface BaseTaintOperation {
@@ -44,13 +50,13 @@ export function getTaintFlowsFromFoxhoundReports(
     const { str, sink: foxhoundSink, taint } = report;
     const sink = toTaintOperation(cx, foxhoundSink, report);
     if (!sink) continue;
-    const sources: TaintOperation[] = [];
+    const ranges: TaintRange[] = [];
     for (const { begin, end, flow: foxhoundSource } of taint) {
       const source = toTaintOperation(cx, foxhoundSource, report);
       if (!source) continue;
-      sources.push(source);
+      ranges.push({ begin, end, source });
     }
-    flows.push({ str, sink, sources });
+    flows.push({ str, sink, ranges });
   }
   return flows;
 }
@@ -435,7 +441,7 @@ function getStorageMapValue(
   storageMapKey: string
 ): string {
   const value = storageMap.get(storageMapKey);
-  assert(value !== undefined);
+  assert(value !== undefined, `Storage map entry not found: ${storageMapKey}`);
   return value;
 }
 

@@ -68,11 +68,16 @@ async function main() {
       "measure <analysisId>",
       "Perform data processing from an analysis",
       (yargs) =>
-        yargs.positional("analysisId", {
-          type: "number",
-          describe: "ID of the analysis collection",
-          demandOption: true,
-        }),
+        yargs
+          .positional("analysisId", {
+            type: "number",
+            describe: "ID of the analysis collection",
+            demandOption: true,
+          })
+          .option("maxTasks", {
+            type: "number",
+            default: 1,
+          }),
       (args) => cmdMeasure(args)
     )
 

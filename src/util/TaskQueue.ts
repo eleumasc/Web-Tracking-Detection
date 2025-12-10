@@ -25,6 +25,7 @@ export async function useTaskQueue<T>(
       await task();
       callback();
     } catch (error) {
+      console.error(error);
       callback(error);
     }
   }, options.maxTasks);

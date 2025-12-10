@@ -15,7 +15,10 @@ async function main(args: { siteName: string }) {
         {
           siteName,
           outputName: `${currentTime()}-testAnalyze`,
-          analysis: { type: "StatefulTracking" },
+          analysis: {
+            type: "StatefulTracking",
+            noVerif: false,
+          },
         },
       ])
     )

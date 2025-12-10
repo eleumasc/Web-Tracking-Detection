@@ -1,7 +1,7 @@
 import significantlyDifferent from "./significantlyDifferent";
+import { isZxcvbnIdentifiable } from "./identifiable";
 import { joinStorageItemsById, StorageItem } from "../StorageItem";
 
-// Heuristics-based Identifier Detection à la Cookie Swap Party
 export default function detectIdentifiers(
   storageItemsA: StorageItem[],
   storageItemsB: StorageItem[]
@@ -15,5 +15,6 @@ export default function detectIdentifiers(
         aValue.length <= MAX_STRING_LENGTH &&
         significantlyDifferent(aValue, bValue)
     )
-    .map(([a]) => a);
+    .map(([a]) => a)
+    .filter(({ value }) => isZxcvbnIdentifiable(value));
 }

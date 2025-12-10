@@ -1,4 +1,4 @@
-import significantlyDifferent from "../core/chen/significantlyDifferent";
+import significantlyDifferent from "../core/identifierDetection/significantlyDifferent";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 

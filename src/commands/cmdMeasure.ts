@@ -1,34 +1,34 @@
 import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
-import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
+import execThread from "../worker/execThread";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
-import processTrueOnlySyntacticFlows from "../core/processTrueOnlySyntacticFlows";
 import { AbstractFlow } from "../core/AbstractFlow";
-import { AggregateFlow } from "../core/AggregateFlow";
+import { AggregateFlow, toAggregateFlows } from "../core/AggregateFlow";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { enumerate as iterEnumerate } from "iter-tools";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { HarController } from "../util/HarController";
 import { isFailure } from "../util/Completion";
-import { processFlows, processIdentifiers } from "../core/processFlows";
-import {
-  StatefulTrackingAnalysisResult,
-} from "../core/AnalysisResult";
-import {
-  getStorageItemsFromStorageState,
-  mergeStorageValues,
-} from "../core/StorageItem";
+import { makeTaskFromFunction } from "../worker/Task";
+import { processFlows } from "../core/processFlows";
+import { processTaskQueue } from "../util/TaskQueue";
+import { readFileSync } from "fs";
+import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
+import { verifySyntacticAbstractFlows } from "../core/syntacticMatching/verifySyntacticAbstractFlows";
 
-export default function cmdMeasure(args: { analysisId: number }) {
+export default async function cmdMeasure(args: {
+  analysisId: number;
+  maxTasks: number;
+}) {
   const { analysisId } = args;
 
   const store = openDocumentStore();
 
   const analysisCollection = store.getCollectionById(analysisId);
   assert(analysisCollection, ANALYSIS_LOGS_COLL_TYPE);
+  const { name: analysisName } = analysisCollection;
 
   const outputName = `${currentTime()}-Measure-${analysisId}`;
 
@@ -49,149 +49,50 @@ export default function cmdMeasure(args: { analysisId: number }) {
   let syntacticFlowsSitesCount = 0;
   let trueSyntacticFlowsSitesCount = 0;
 
-  for (const [documentIndex, analysisDocument] of iterEnumerate(
-    store.getDocumentsByCollection(analysisCollection.id)
-  )) {
-    const siteName = analysisDocument.name;
-    console.log(siteName, documentIndex);
+  await processTaskQueue(
+    store.getDocumentsByCollection(analysisCollection.id),
+    { maxTasks: args.maxTasks },
+    (analysisDocument, queueIndex) => async () => {
+      const siteName = analysisDocument.name;
+      console.log(siteName, queueIndex);
 
-    totalSitesCount += 1;
+      totalSitesCount += 1;
 
-    const analysisLogEntry = store.getDocumentData<
-      AnalysisLogEntry<StatefulTrackingAnalysisResult>
-    >(analysisDocument.id);
+      const analysisLogEntry = store.getDocumentData<
+        AnalysisLogEntry<StatefulTrackingAnalysisResult>
+      >(analysisDocument.id);
 
-    if (isFailure(analysisLogEntry)) continue;
-    const { value: staResult } = analysisLogEntry;
+      if (isFailure(analysisLogEntry)) return;
+      const { value: staResult } = analysisLogEntry;
 
-    successSitesCount += 1;
+      successSitesCount += 1;
 
-    const outputPath = getOutputPath(analysisCollection.name);
-
-    const auxStorageItems = getStorageItemsFromStorageState(
-      staResult.aux.connectResult.storageState
-    );
-    const preStorageItems = getStorageItemsFromStorageState(
-      staResult.pre.connectResult.storageState
-    );
-
-    const foxhoundReports = FoxhoundTaintStore.open(
-      path.join(outputPath, staResult.taint.taintFile)
-    ).getReports();
-    const harController = new HarController(
-      path.join(outputPath, staResult.taint.harFile)
-    );
-    const identifiers = processIdentifiers(auxStorageItems, preStorageItems);
-    const {
-      taintAbstractFlows,
-      syntacticAbstractFlows,
-      taintFlows,
-      syntacticFlows,
-    } = processFlows(identifiers, foxhoundReports, harController);
-
-    const intersectFlows = _.intersectionWith(
-      taintFlows,
-      syntacticFlows,
-      _.isEqual
-    );
-    const onlyTaintFlows = _.differenceWith(
-      taintFlows,
-      syntacticFlows,
-      _.isEqual
-    );
-    const onlySyntacticFlows = _.differenceWith(
-      syntacticFlows,
-      taintFlows,
-      _.isEqual
-    );
-
-    const { alteredStorageItems } = staResult.verif;
-    const verifFoxhoundReports = FoxhoundTaintStore.open(
-      path.join(outputPath, staResult.verif.taintFile)
-    ).getReports();
-    const verifHarController = new HarController(
-      path.join(outputPath, staResult.verif.harFile)
-    );
-    const alteredIdentifiers = mergeStorageValues(
-      identifiers,
-      alteredStorageItems
-    );
-    const { syntacticAbstractFlows: verifSyntacticAbstractFlows } =
-      processFlows(
-        alteredIdentifiers,
-        verifFoxhoundReports,
-        verifHarController
+      const s = await execThread<ReturnType<typeof measureSite>>(
+        makeTaskFromFunction(measureSite, [
+          {
+            siteName,
+            analysisName,
+            outputName,
+            staResult,
+          },
+        ])
       );
-    const trueOnlySyntacticFlows = processTrueOnlySyntacticFlows(
-      onlySyntacticFlows,
-      verifSyntacticAbstractFlows,
-      preStorageItems,
-      alteredStorageItems
-    );
 
-    const toOutputFlows = (
-      flows: AggregateFlow[],
-      abstractFlows: AbstractFlow[]
-    ) =>
-      flows.map((flow) => {
-        const { storageId, receiverOrigin } = flow;
-        const groupAbstractFlows = abstractFlows.filter(
-          (af) =>
-            _.isEqual(af.storageItem.id, storageId) &&
-            af.receiverOrigin === receiverOrigin
-        );
-        const storageValues = _.uniq(
-          groupAbstractFlows.map((x) => x.storageItem.value)
-        );
-        const requestValues = _.uniq(
-          groupAbstractFlows.map((x) => x.requestValue)
-        );
-        return {
-          storageId: `${storageId.storageType}:${storageId.key}`,
-          receiverOrigin,
-          storageValues,
-          requestValues,
-        };
-      });
+      intersectFlowsCount += s.intersectFlowsCount;
+      onlyTaintFlowsCount += s.onlyTaintFlowsCount;
+      onlySyntacticFlowsCount += s.onlySyntacticFlowsCount;
+      trueOnlySyntacticFlowsCount += s.trueOnlySyntacticFlowsCount;
+      syntacticFlowsCount += s.syntacticFlowsCount;
+      trueSyntacticFlowsCount += s.trueSyntacticFlowsCount;
 
-    writeOutputFileSync(
-      path.join(outputName, `${siteName}.json`),
-      JSON.stringify({
-        site: siteName,
-        intersectFlows: toOutputFlows(intersectFlows, taintAbstractFlows),
-        onlyTaintFlows: toOutputFlows(onlyTaintFlows, taintAbstractFlows),
-        onlySyntacticFlows: toOutputFlows(
-          onlySyntacticFlows,
-          syntacticAbstractFlows
-        ),
-        trueOnlySyntacticFlows: toOutputFlows(
-          trueOnlySyntacticFlows,
-          verifSyntacticAbstractFlows
-        ),
-      })
-    );
-
-    intersectFlowsCount += intersectFlows.length;
-    onlyTaintFlowsCount += onlyTaintFlows.length;
-    onlySyntacticFlowsCount += onlySyntacticFlows.length;
-    trueOnlySyntacticFlowsCount += trueOnlySyntacticFlows.length;
-    syntacticFlowsCount += intersectFlows.length + onlySyntacticFlows.length;
-    trueSyntacticFlowsCount +=
-      intersectFlows.length + trueOnlySyntacticFlows.length;
-
-    intersectFlowsSitesCount += Number(intersectFlows.length > 0);
-    onlyTaintFlowsSitesCount += Number(onlyTaintFlows.length > 0);
-    onlySyntacticFlowsSitesCount += Number(onlySyntacticFlows.length > 0);
-    trueOnlySyntacticFlowsSitesCount += Number(
-      trueOnlySyntacticFlows.length > 0
-    );
-    syntacticFlowsSitesCount += Number(
-      intersectFlows.length > 0 || onlySyntacticFlows.length > 0
-    );
-    trueSyntacticFlowsSitesCount += Number(
-      intersectFlows.length > 0 || trueOnlySyntacticFlows.length > 0
-    );
-  }
+      intersectFlowsSitesCount += s.intersectFlowsSitesCount;
+      onlyTaintFlowsSitesCount += s.onlyTaintFlowsSitesCount;
+      onlySyntacticFlowsSitesCount += s.onlySyntacticFlowsSitesCount;
+      trueOnlySyntacticFlowsSitesCount += s.trueOnlySyntacticFlowsSitesCount;
+      syntacticFlowsSitesCount += s.syntacticFlowsSitesCount;
+      trueSyntacticFlowsSitesCount += s.trueSyntacticFlowsSitesCount;
+    }
+  );
 
   const report = {
     totalSitesCount,
@@ -221,4 +122,149 @@ export default function cmdMeasure(args: { analysisId: number }) {
   );
 
   process.exit(0);
+}
+
+export function measureSite(args: {
+  siteName: string;
+  analysisName: string;
+  outputName: string;
+  staResult: StatefulTrackingAnalysisResult;
+}) {
+  const { siteName, analysisName, outputName, staResult } = args;
+
+  const legacyMode = true; // DEBUG
+
+  let taintAbstractFlows: AbstractFlow[];
+  let syntacticAbstractFlows: AbstractFlow[];
+  let trueSyntacticAbstractFlows: AbstractFlow[];
+  if (staResult.verif && !legacyMode) {
+    taintAbstractFlows = JSON.parse(
+      readFileSync(
+        path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)
+      ).toString()
+    );
+    syntacticAbstractFlows = JSON.parse(
+      readFileSync(
+        path.join(
+          getOutputPath(analysisName),
+          staResult.verif.syntacticFlowsFile
+        )
+      ).toString()
+    );
+    const verifStorageIdentifiablesEntries =
+      staResult.verif.storageIdentifiablesEntries;
+    trueSyntacticAbstractFlows = verifySyntacticAbstractFlows(
+      syntacticAbstractFlows,
+      verifStorageIdentifiablesEntries,
+      new HarController(
+        path.join(getOutputPath(analysisName), staResult.verif.harFile)
+      )
+    );
+  } else {
+    const processed = processFlows({
+      analysisName,
+      auxConnectResult: staResult.aux.connectResult,
+      preConnectResult: staResult.pre.connectResult,
+      taintHarFile: staResult.taint.harFile,
+      taintTaintFile: staResult.taint.taintFile,
+    });
+    taintAbstractFlows = processed.taintAbstractFlows;
+    syntacticAbstractFlows = processed.syntacticAbstractFlows;
+    const verifStorageIdentifiablesEntries =
+      processed.verifStorageIdentifiablesEntries;
+    trueSyntacticAbstractFlows = [];
+    writeOutputFileSync(
+      path.join(outputName, `${siteName}+TF.json`),
+      JSON.stringify(taintAbstractFlows)
+    );
+    writeOutputFileSync(
+      path.join(outputName, `${siteName}+SF.json`),
+      JSON.stringify(syntacticAbstractFlows)
+    );
+    writeOutputFileSync(
+      path.join(outputName, `${siteName}+SI.json`),
+      JSON.stringify(verifStorageIdentifiablesEntries)
+    );
+  }
+
+  const taintFlows = toAggregateFlows(taintAbstractFlows);
+  const syntacticFlows = toAggregateFlows(syntacticAbstractFlows);
+
+  const intersectFlows = _.intersectionWith(
+    taintFlows,
+    syntacticFlows,
+    _.isEqual
+  );
+  const onlyTaintFlows = _.differenceWith(
+    taintFlows,
+    syntacticFlows,
+    _.isEqual
+  );
+  const onlySyntacticFlows = _.differenceWith(
+    syntacticFlows,
+    taintFlows,
+    _.isEqual
+  );
+
+  const trueOnlySyntacticFlows = _.intersectionWith(
+    toAggregateFlows(trueSyntacticAbstractFlows),
+    onlySyntacticFlows
+  );
+
+  const toOutputFlows = (
+    flows: AggregateFlow[],
+    abstractFlows: AbstractFlow[]
+  ) =>
+    flows.map((flow) => {
+      const { storageId, receiverOrigin } = flow;
+      const groupAbstractFlows = abstractFlows.filter(
+        (af) =>
+          _.isEqual(af.storageItem.id, storageId) &&
+          af.receiverOrigin === receiverOrigin
+      );
+      const matches = groupAbstractFlows.flatMap((x) => x.matches);
+      return {
+        storageId: `${storageId.storageType}:${storageId.key}`,
+        receiverOrigin,
+        matches,
+      };
+    });
+
+  writeOutputFileSync(
+    path.join(outputName, `${siteName}.json`),
+    JSON.stringify({
+      site: siteName,
+      intersectFlows: toOutputFlows(intersectFlows, taintAbstractFlows),
+      onlyTaintFlows: toOutputFlows(onlyTaintFlows, taintAbstractFlows),
+      onlySyntacticFlows: toOutputFlows(
+        onlySyntacticFlows,
+        syntacticAbstractFlows
+      ),
+      trueOnlySyntacticFlows: toOutputFlows(
+        trueOnlySyntacticFlows,
+        trueSyntacticAbstractFlows
+      ),
+    })
+  );
+
+  return {
+    intersectFlowsCount: intersectFlows.length,
+    onlyTaintFlowsCount: onlyTaintFlows.length,
+    onlySyntacticFlowsCount: onlySyntacticFlows.length,
+    trueOnlySyntacticFlowsCount: trueOnlySyntacticFlows.length,
+    syntacticFlowsCount: intersectFlows.length + onlySyntacticFlows.length,
+    trueSyntacticFlowsCount:
+      intersectFlows.length + trueOnlySyntacticFlows.length,
+
+    intersectFlowsSitesCount: Number(intersectFlows.length > 0),
+    onlyTaintFlowsSitesCount: Number(onlyTaintFlows.length > 0),
+    onlySyntacticFlowsSitesCount: Number(onlySyntacticFlows.length > 0),
+    trueOnlySyntacticFlowsSitesCount: Number(trueOnlySyntacticFlows.length > 0),
+    syntacticFlowsSitesCount: Number(
+      intersectFlows.length > 0 || onlySyntacticFlows.length > 0
+    ),
+    trueSyntacticFlowsSitesCount: Number(
+      intersectFlows.length > 0 || trueOnlySyntacticFlows.length > 0
+    ),
+  };
 }
