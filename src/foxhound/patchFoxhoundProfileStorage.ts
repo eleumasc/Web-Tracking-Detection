@@ -41,7 +41,6 @@ function updateCookies(profilePath: string, cookies: Cookie[]) {
     SET value = @value
     WHERE name = @name
       AND host = @domain
-      AND path = @path
   `);
 
   const transaction = db.transaction((items: Cookie[]) => {
@@ -50,7 +49,6 @@ function updateCookies(profilePath: string, cookies: Cookie[]) {
         name: cookie.id.key,
         value: cookie.value,
         domain: cookie.id.domain,
-        path: cookie.id.path,
       });
     }
   });
