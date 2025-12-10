@@ -71,7 +71,7 @@ function toTaintOperation(
   foxhoundReport: FoxhoundReport
 ): TaintOperation | null {
   try {
-    for (const fn of [toTaintNetworkOperation, toTaintStorageOperation]) {
+    for (const fn of [toNetworkTaintOperation, toStorageTaintOperation]) {
       const taintOperation = fn(cx, foxhoundOperation, foxhoundReport);
       if (taintOperation) return taintOperation;
     }
@@ -81,11 +81,11 @@ function toTaintOperation(
   return null;
 }
 
-function toTaintNetworkOperation(
+function toNetworkTaintOperation(
   cx: ToTaintOperationContext,
   foxhoundOperation: FoxhoundOperation,
   { str, baseURI }: FoxhoundReport
-): TaintOperation | null {
+): NetworkTaintOperation | null {
   let requestUrl: string;
   switch (foxhoundOperation.operation) {
     // SINKS
@@ -171,7 +171,7 @@ function toTaintNetworkOperation(
   }
   if (!URL.canParse(requestUrl, baseURI)) {
     console.log(
-      `[toTaintNetworkOperation.ParseURL] ${foxhoundOperation.operation} ${requestUrl}`
+      `[toNetworkTaintOperation.ParseURL] ${foxhoundOperation.operation} ${requestUrl}`
     );
     return null;
   }
@@ -185,11 +185,11 @@ function toTaintNetworkOperation(
   };
 }
 
-function toTaintStorageOperation(
+function toStorageTaintOperation(
   cx: ToTaintOperationContext,
   foxhoundOperation: FoxhoundOperation,
   { loc, str, taint: foxhoundTaint }: FoxhoundReport
-): TaintOperation | null {
+): StorageTaintOperation | null {
   let storageType: string;
   let key: string;
   let value: string;
@@ -253,36 +253,6 @@ function toTaintStorageOperation(
       valueRange = getValueRangeForSink();
       break;
     }
-    // case "localStorage.setItem(key)": {
-    //   storageType = "localStorage";
-    //   key = str;
-    //   value = taintOperation.arguments[0];
-    //   break;
-    // }
-    case "sessionStorage.getItem": {
-      storageType = "sessionStorage";
-      let version: string;
-      [key, version] = foxhoundOperation.arguments;
-      value = getStorageMapValue(
-        cx.storageMap,
-        getStorageMapKey(storageType, key, version)
-      );
-      valueRange = getValueRangeForSource();
-      break;
-    }
-    case "sessionStorage.setItem": {
-      storageType = "sessionStorage";
-      key = foxhoundOperation.arguments[0];
-      value = str;
-      valueRange = getValueRangeForSink();
-      break;
-    }
-    // case "sessionStorage.setItem(key)": {
-    //   storageType = "sessionStorage";
-    //   key = str;
-    //   value = taintOperation.arguments[0];
-    //   break;
-    // }
     default:
       return null;
   }
@@ -342,7 +312,7 @@ export function getStorageOperationsFromFoxhoundReports(
     assert(!isNaN(timestamp));
     if (taintSink.operation === "StorageRead") {
       for (const { begin, end, flow: taintSource } of taint) {
-        const source = toTaintStorageOperation(cx, taintSource, taintReport);
+        const source = toStorageTaintOperation(cx, taintSource, taintReport);
         if (!source) continue;
         const { location, storageType, key, value } =
           source as StorageTaintOperation;
@@ -356,7 +326,7 @@ export function getStorageOperationsFromFoxhoundReports(
         });
       }
     } else {
-      const sink = toTaintStorageOperation(cx, taintSink, taintReport);
+      const sink = toStorageTaintOperation(cx, taintSink, taintReport);
       if (!sink) continue;
       const { location, storageType, key, value } =
         sink as StorageTaintOperation;
