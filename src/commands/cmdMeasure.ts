@@ -134,12 +134,10 @@ export function measureSite(args: {
 }) {
   const { siteName, analysisName, outputName, staResult } = args;
 
-  const legacyMode = true; // DEBUG
-
   let taintAbstractFlows: AbstractFlow[];
   let syntacticAbstractFlows: AbstractFlow[];
   let trueSyntacticAbstractFlows: AbstractFlow[];
-  if (staResult.verif && !legacyMode) {
+  if (staResult.verif) {
     taintAbstractFlows = Flatted.parse(
       readFileSync(
         path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)
@@ -215,7 +213,8 @@ export function measureSite(args: {
 
   const trueOnlySyntacticFlows = _.intersectionWith(
     toAggregateFlows(trueSyntacticAbstractFlows),
-    onlySyntacticFlows
+    onlySyntacticFlows,
+    _.isEqual
   );
 
   const toOutputFlows = (
