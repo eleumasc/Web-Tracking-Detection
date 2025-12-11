@@ -14,13 +14,15 @@ export type Token<T> =
 
 export type OperationToken = Token<string>;
 
-export function removeValuesFromOperationToken(token: OperationToken): any {
-  if (!token.input) {
-    return { input: null };
-  }
+export function truncateValuesInOperationToken(token: OperationToken): any {
   const { input, value, ...tokenRest } = token;
   return {
     ...tokenRest,
-    input: removeValuesFromOperationToken(input),
+    input: input && truncateValuesInOperationToken(input),
+    value: truncateValue(value),
   };
+
+  function truncateValue(value: string): string {
+    return value.substring(0, 500);
+  }
 }

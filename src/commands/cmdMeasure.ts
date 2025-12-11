@@ -16,8 +16,8 @@ import { makeTaskFromFunction } from "../worker/Task";
 import { processFlows } from "../core/processFlows";
 import { processTaskQueue } from "../util/TaskQueue";
 import { readFileSync } from "fs";
-import { removeValuesFromOperationToken } from "../core/syntacticMatching/Token";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
+import { truncateValuesInOperationToken } from "../core/syntacticMatching/Token";
 import { verifySyntacticAbstractFlows } from "../core/syntacticMatching/verifySyntacticAbstractFlows";
 
 export default async function cmdMeasure(args: {
@@ -234,8 +234,8 @@ export function measureSite(args: {
         storageId: `${storageId.storageType}:${storageId.key}`,
         receiverOrigin,
         matches: matches.map(({ storageToken, requestToken }) => ({
-          storageToken: removeValuesFromOperationToken(storageToken),
-          requestToken: removeValuesFromOperationToken(requestToken),
+          storageToken: truncateValuesInOperationToken(storageToken),
+          requestToken: truncateValuesInOperationToken(requestToken),
         })),
       };
     });
