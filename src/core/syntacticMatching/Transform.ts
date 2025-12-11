@@ -141,9 +141,7 @@ export const fromQueryValues = createTransform({
 export const split = createTransform({
   name: "split",
   transformValue: function* (whole) {
-    for (const { 0: value, index: begin } of whole.matchAll(
-      /[A-Za-z0-9\-_]+/g
-    )) {
+    for (const { 0: value, index: begin } of whole.matchAll(/[A-Za-z0-9]+/g)) {
       yield {
         value,
         range: { begin, end: begin + value.length },
