@@ -5,16 +5,23 @@ import { StorageTransformTreeEntry } from "./getSyntacticAbstractFlows";
 export default function alterStorageTransformTreeEntries(
   storageTransformTreeEntries: StorageTransformTreeEntry[]
 ): StorageTransformTreeEntry[] {
-  return storageTransformTreeEntries.map(
-    ({ storageItem, transformTree }): StorageTransformTreeEntry => {
-      const alteredTransformTree = alterTransformTree(transformTree);
-      return {
-        storageItem: {
-          ...storageItem,
-          value: alteredTransformTree.token.value,
-        },
-        transformTree: alteredTransformTree,
-      };
+  return storageTransformTreeEntries.flatMap(
+    ({ storageItem, transformTree }): StorageTransformTreeEntry[] => {
+      try {
+        const alteredTransformTree = alterTransformTree(transformTree);
+        return [
+          {
+            storageItem: {
+              ...storageItem,
+              value: alteredTransformTree.token.value,
+            },
+            transformTree: alteredTransformTree,
+          },
+        ];
+      } catch (e) {
+        console.error(e);
+        return [];
+      }
     }
   );
 }
