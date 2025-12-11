@@ -1,5 +1,7 @@
+import { fromJSON, fromQueryValues } from "./Transform";
 import { HarController } from "../../util/HarController";
 import { originFromUrl } from "../AbstractFlow";
+import { toArray } from "iter-tools";
 
 export type RequestEntry = {
   param: string;
@@ -12,29 +14,61 @@ export function getRequestEntriesFromHar(
 ): RequestEntry[] {
   return harController.entries().flatMap((harEntry) => {
     const {
-      request: { url: requestUrl, postData },
+      request: { url: requestUrl, postData, headers },
     } = harEntry;
     const requestURL = new URL(requestUrl);
     const receiverOrigin = originFromUrl(requestURL);
 
-    const requestEntries: RequestEntry[] = [];
-    requestEntries.push({
-      param: "urlPath",
-      value: requestURL.pathname,
-      receiverOrigin,
-    });
-    requestEntries.push({
-      param: "urlQuery",
-      value: requestURL.search,
-      receiverOrigin,
-    });
+    let requestEntries: RequestEntry[] = [];
+    const addRequestEntries = (param: string, values: string[]) => {
+      requestEntries = requestEntries.concat(
+        values.map((value) => ({
+          param,
+          value,
+          receiverOrigin,
+        }))
+      );
+    };
+
+    addRequestEntries(
+      "urlPathname",
+      extractUrlPathnameComponents(requestURL.pathname)
+    );
+    addRequestEntries(
+      "urlSearch",
+      extractUrlSearchComponents(requestURL.search)
+    );
     if (postData) {
-      requestEntries.push({
-        param: "postData",
-        value: harController.readPostData(postData),
-        receiverOrigin,
-      });
+      addRequestEntries(
+        "postData",
+        extractPostDataComponents(
+          harController.readPostData(postData),
+          headers.find(({ name }) => name === "content-type")?.value
+        )
+      );
     }
+
     return requestEntries;
   });
+}
+
+function extractUrlPathnameComponents(input: string): string[] {
+  return input.split("/").filter((x) => x);
+}
+
+function extractUrlSearchComponents(input: string): string[] {
+  return toArray(fromQueryValues.transformValue(input)).map((x) => x.value);
+}
+
+function extractPostDataComponents(
+  input: string,
+  contentType?: string
+): string[] {
+  if (contentType?.includes("application/json")) {
+    return toArray(fromJSON.transformValue(input)).map((x) => x.value);
+  } else if (contentType?.includes("application/x-www-form-urlencoded")) {
+    return toArray(fromQueryValues.transformValue(input)).map((x) => x.value);
+  } else {
+    return [input];
+  }
 }

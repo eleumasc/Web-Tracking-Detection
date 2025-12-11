@@ -150,72 +150,90 @@ export function storageValueTransSteps(): Iterable<TransformTreeFactoryStep> {
   ];
   const Encoders = [toBase64, toURLEncoding, MD5, SHA1];
 
-  function decodeStep(depth: number): TransformTreeFactoryStep {
+  function decodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
     return {
       *execute(input) {
-        if (!(depth > 0)) return;
         yield* pipe(
           flatMap((transform: Transform) => applyTransform(transform, input)),
           tokenBarrier()
         )(Decoders);
       },
       getNextSteps() {
-        return depth > 0 ? layerSteps(depth - 1) : [];
+        return next();
       },
     };
   }
 
-  function encodeStep(depth: number): TransformTreeFactoryStep {
+  function encodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
     return {
       *execute(input) {
-        if (!(depth > 0)) return;
         yield* pipe(
           flatMap((transform: Transform) => applyTransform(transform, input)),
           tokenBarrier()
         )(Encoders);
       },
       getNextSteps() {
-        return depth > 0 ? [encodeStep(depth - 1)] : [];
+        return next();
       },
     };
   }
 
-  function layerSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return [decodeStep(depth), encodeStep(2)];
+  function encodeSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return depth > 0 ? [encodeStep(() => encodeSteps(depth - 1))] : [];
   }
 
-  return layerSteps(3);
+  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return [decodeStep(() => levelSteps(depth - 1)), ...encodeSteps(3)];
+  }
+
+  return levelSteps(3);
 }
 
 export function requestValueParseSteps(): Iterable<TransformTreeFactoryStep> {
-  const Decoders = [
-    split,
-    fromBase64,
-    fromURLEncoding,
-    fromJSON,
-    fromQueryValues,
-  ];
+  const Decoders = [fromBase64, fromURLEncoding];
+  const Parsers = [split, fromJSON, fromQueryValues];
 
-  function decodeStep(depth: number): TransformTreeFactoryStep {
+  function decodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
     return {
       *execute(input) {
-        if (!(depth > 0)) return;
         yield* pipe(
           flatMap((transform: Transform) => applyTransform(transform, input)),
           tokenBarrier()
         )(Decoders);
       },
       getNextSteps() {
-        return depth > 0 ? layerSteps(depth - 1) : [];
+        return next();
       },
     };
   }
 
-  function layerSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return [decodeStep(depth)];
+  function parseStep(): TransformTreeFactoryStep {
+    return {
+      *execute(input) {
+        yield* pipe(
+          flatMap((transform: Transform) => applyTransform(transform, input)),
+          tokenBarrier()
+        )(Parsers);
+      },
+      getNextSteps() {
+        return [];
+      },
+    };
   }
 
-  return layerSteps(3);
+  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return depth > 0
+      ? [decodeStep(() => levelSteps(depth - 1)), parseStep()]
+      : [];
+  }
+
+  return levelSteps(3);
 }
 
 function createRedundantMatchSet() {
