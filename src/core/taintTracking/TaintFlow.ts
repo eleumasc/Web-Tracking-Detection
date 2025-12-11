@@ -122,7 +122,6 @@ function toNetworkTaintOperation(
     // location (SINK-ONLY)
     case "location.pathname":
     case "location.search":
-    case "location.hash":
     case "location.href":
     case "location.assign":
     case "location.replace": {
@@ -170,7 +169,7 @@ function toNetworkTaintOperation(
     return null;
   }
   if (!URL.canParse(requestUrl, baseURI)) {
-    console.log(
+    console.error(
       `[toNetworkTaintOperation.ParseURL] ${foxhoundOperation.operation} ${requestUrl}`
     );
     return null;
@@ -281,7 +280,7 @@ function getLocation(foxhoundLocation: FoxhoundLocation): string | null {
       return moduleFilename;
     }
   }
-  console.log(`[getLocation.ParseURL] ${filename}`);
+  console.error(`[getLocation.ParseURL] ${filename}`);
   return null;
 }
 

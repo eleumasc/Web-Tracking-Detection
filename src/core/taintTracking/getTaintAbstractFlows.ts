@@ -1,12 +1,18 @@
 import _ from "lodash";
 import assert from "assert";
+import Interval from "../../util/Interval";
 import { AbstractFlow, AbstractMatch, originFromUrl } from "../AbstractFlow";
 import { Cookie, StorageItem } from "../StorageItem";
+import { enumerate } from "iter-tools";
 import { FoxhoundReport } from "../../foxhound/types";
-import { getTaintFlowsFromFoxhoundReports, StorageTaintOperation, TaintRange } from "./TaintFlow";
 import { HarController } from "../../util/HarController";
+import { isIdentifiable } from "../identifierDetection/identifiable";
 import { OperationToken } from "../syntacticMatching/Token";
-
+import { Range } from "../../util/Range";
+import {
+  getTaintFlowsFromFoxhoundReports,
+  StorageTaintOperation,
+} from "./TaintFlow";
 
 export function getTaintAbstractFlows(
   foxhoundReports: FoxhoundReport[],
@@ -20,7 +26,8 @@ export function getTaintAbstractFlows(
   ): StorageItem | undefined => {
     const { storageType, key, value, locUrl } = op;
     let foundArray = storageItems.filter(
-      ({ id: storageId, value: storageValue }) => storageType === storageId.storageType &&
+      ({ id: storageId, value: storageValue }) =>
+        storageType === storageId.storageType &&
         key === storageId.key &&
         value === storageValue &&
         ((storageId.storageType === "cookie"
@@ -44,11 +51,11 @@ export function getTaintAbstractFlows(
   };
 
   const abstractFlows: AbstractFlow[] = [];
-  for (const flow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
-    const { ranges, sink } = flow;
+  for (const taintFlow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
+    const { ranges: taintRanges, sink } = taintFlow;
 
     if (sink.type !== "Network") continue;
-    const { str: requestValue } = flow;
+    const { str: requestValue } = taintFlow;
     const { requestUrl } = sink;
 
     // Consider only taint flows such that there is an HAR entry whose
@@ -56,68 +63,107 @@ export function getTaintAbstractFlows(
     // This especially helps to remove taint flows whose network sink do not
     // initiate a network request (e.g., set img.src to data URIs).
     if (!harController.hasRequestWithUrl(requestUrl)) {
-      console.log(requestUrl);
+      // console.error(`[Non-Commit TaintFlow] ${requestUrl}`);
       continue;
     }
 
-    const receiverUrl = requestUrl;
-    const receiverOrigin = originFromUrl(receiverUrl);
+    const receiverOrigin = originFromUrl(requestUrl);
 
-    const storageItemsSent = _.values(
-      _.groupBy(
-        ranges
-          .filter(
-            (range): range is TaintRange & { source: { type: "Storage"; }; } => range.source.type === "Storage"
-          )
-          .flatMap((range) => {
-            const { source } = range;
-            const storageItem = findSingleStorageItemByTaintOperation(source);
-            return storageItem ? [{ range, storageItem }] : [];
-          }),
-        ({ storageItem }) => JSON.stringify(storageItem)
-      )
-    ).map((group) => {
-      const { storageItem } = group[0];
-      const { value: storageValue } = storageItem;
-      const rootStorageToken: OperationToken = {
-        input: null,
-        value: storageValue,
-      };
-      const rootRequestToken: OperationToken = {
-        input: null,
-        value: requestValue,
-      };
-      const matches = group.map(
-        ({
-          range: {
-            begin: requestBegin, end: requestEnd, source: {
-              valueRange: { begin: storageBegin, end: storageEnd },
-            },
-          },
-        }): AbstractMatch => {
-          const storageToken: OperationToken = {
-            input: rootStorageToken,
-            operation: "slice",
-            range: { begin: storageBegin, end: storageEnd },
-            value: storageValue.substring(storageBegin, storageEnd),
-          };
-          const requestToken: OperationToken = {
-            input: rootRequestToken,
-            operation: "arbitrary",
-            range: { begin: requestBegin, end: requestEnd },
-            value: requestValue.substring(requestBegin, requestEnd),
-          };
-          return { storageToken, requestToken };
-        }
+    const individualMatches = [];
+    for (const taintRange of taintRanges) {
+      if (taintRange.source.type !== "Storage") continue;
+
+      const storageItem = findSingleStorageItemByTaintOperation(
+        taintRange.source
       );
-      return { storageItem, matches };
-    });
+      if (!storageItem) continue;
 
-    for (const { storageItem, matches } of storageItemsSent) {
+      const {
+        begin: requestBegin,
+        end: requestEnd,
+        source: {
+          valueRange: { begin: storageBegin, end: storageEnd },
+        },
+      } = taintRange;
+      individualMatches.push({
+        storageItem,
+        storageRange: <Range>{ begin: storageBegin, end: storageEnd },
+        requestRange: <Range>{ begin: requestBegin, end: requestEnd },
+      });
+    }
+
+    for (const group of _.values(
+      _.groupBy(individualMatches, ({ storageItem: { id } }) => id)
+    )) {
+      const {
+        0: { storageItem },
+      } = group;
+      const { value: storageValue } = storageItem;
+
+      const extractValue = (target: "Storage" | "Request") => {
+        const interval = new Interval();
+        for (const { begin, end } of group.map(
+          target === "Storage" ? (x) => x.storageRange : (x) => x.requestRange
+        )) {
+          interval.addRange(begin, end);
+        }
+        const ranges = interval.getRanges();
+        const displayRange: Range = {
+          begin: ranges[0].begin,
+          end: ranges[ranges.length - 1].end,
+        };
+        let checkValue = "";
+        let displayValue = "";
+        for (const [i, range] of enumerate(ranges)) {
+          if (i > 0) {
+            displayValue += "|".repeat(range.begin - ranges[i - 1].end);
+          }
+          const s = (
+            target === "Storage" ? storageValue : requestValue
+          ).substring(range.begin, range.end);
+          checkValue += s;
+          displayValue += s;
+        }
+        return { range: displayRange, checkValue, displayValue };
+      };
+
+      const {
+        range: storageRange,
+        checkValue: storageCheckValue,
+        displayValue: storageDisplayValue,
+      } = extractValue("Storage");
+      if (!isIdentifiable(storageCheckValue)) continue;
+      const {
+        range: requestRange,
+        checkValue: requestCheckValue,
+        displayValue: requestDisplayValue,
+      } = extractValue("Request");
+      if (!isIdentifiable(requestCheckValue)) continue;
+
+      const storageToken: OperationToken = {
+        input: {
+          input: null,
+          value: storageValue,
+        },
+        operation: "slice",
+        range: storageRange,
+        value: storageDisplayValue,
+      };
+      const requestToken: OperationToken = {
+        input: {
+          input: null,
+          value: requestValue,
+        },
+        operation: "arbitrary",
+        range: requestRange,
+        value: requestDisplayValue,
+      };
+      const match: AbstractMatch = { storageToken, requestToken };
+
       abstractFlows.push({
         storageItem,
         receiverOrigin,
-        matches,
+        matches: [match],
       });
     }
   }
