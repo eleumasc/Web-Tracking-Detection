@@ -23,34 +23,28 @@ export function verifySyntacticAbstractFlows(
 ): AbstractFlow[] {
   const requestEntries = getRequestEntriesFromHar(verifHarReader);
 
-  const trueAbstractFlows: AbstractFlow[] = [];
+  let trueAbstractFlowSet = new Set<AbstractFlow>();
   for (const { value: requestValue, receiverOrigin } of requestEntries) {
     traverseTransformTree(
       new DefaultTransformTreeFactory(requestValue, requestValueParseSteps),
       (path) => {
         const { value: requestValue } = path.token;
         for (const { storageItem, canaries } of storageCanariesEntries) {
-          for (const canary of canaries) {
-            const selectedAbstractFlows = _.difference(
-              abstractFlows.filter(
+          if (canaries.some((canary) => requestValue.includes(canary))) {
+            trueAbstractFlowSet = new Set([
+              ...trueAbstractFlowSet,
+              ...abstractFlows.filter(
                 (abstractFlow) =>
                   _.isEqual(abstractFlow.storageItem.id, storageItem.id) &&
                   abstractFlow.receiverOrigin === receiverOrigin
               ),
-              trueAbstractFlows
-            );
-            if (
-              selectedAbstractFlows.length > 0 &&
-              requestValue.includes(canary)
-            ) {
-              trueAbstractFlows.push(...selectedAbstractFlows);
-            }
+            ]);
           }
         }
       }
     );
   }
-  return trueAbstractFlows;
+  return [...trueAbstractFlowSet];
 }
 
 export function extractStorageCanariesEntries(
