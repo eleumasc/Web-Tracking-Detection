@@ -1,13 +1,13 @@
 import alterStorageTransformTreeEntries from "./syntacticMatching/alterStorageTransformTreeEntries";
 import detectIdentifiers from "./identifierDetection/detectIdentifiers";
-import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
+import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
 import { extractStorageCanariesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
 import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticAbstractFlows } from "./syntacticMatching/getSyntacticAbstractFlows";
 import { getTaintAbstractFlows } from "./taintTracking/getTaintAbstractFlows";
-import { HarController } from "../util/HarController";
+import { HarReader } from "../util/HarReader";
 import { SimulateConnectResult } from "./simulateConnect";
 
 export function processFlows(args: {
@@ -29,21 +29,21 @@ export function processFlows(args: {
     getStorageItemsFromStorageState(preConnectResult.storageState),
     getStorageItemsFromStorageState(auxConnectResult.storageState)
   );
-  const taintHarController = new HarController(
+  const taintHarReader = new HarReader(
     path.join(getOutputPath(analysisName), taintHarFile)
   );
-  const taintFoxhoundReports = FoxhoundTaintStore.open(
+  const taintFoxhoundReports = new FoxhoundTaintArchive(
     path.join(getOutputPath(analysisName), taintTaintFile)
   ).getReports();
   const { abstractFlows: taintAbstractFlows } = getTaintAbstractFlows(
     taintFoxhoundReports,
     identifiers,
-    taintHarController
+    taintHarReader
   );
   const {
     abstractFlows: syntacticAbstractFlows,
     storageTransformTreeEntries: taintStorageTransformTreeEntries,
-  } = getSyntacticAbstractFlows(identifiers, taintHarController);
+  } = getSyntacticAbstractFlows(identifiers, taintHarReader);
   const verifStorageTransformTreeEntries = alterStorageTransformTreeEntries(
     taintStorageTransformTreeEntries
   );

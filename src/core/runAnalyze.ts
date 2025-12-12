@@ -1,8 +1,7 @@
 import assert from "assert";
-import BufferedCallback from "../util/BufferedCallback";
 import execContainer from "../worker/execContainer";
 import Flatted from "flatted";
-import FoxhoundTaintStore from "../foxhound/FoxhoundTaintStore";
+import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import path from "path";
 import simulateConnect, { SimulateConnectResult } from "./simulateConnect";
@@ -203,22 +202,12 @@ export async function runSimulateConnect(
         harPath,
       },
       async (browser) => {
-        let taintReportsInserter: BufferedCallback<FoxhoundReport> | undefined;
+        let foxhoundReports: FoxhoundReport[] | undefined;
         if (taintPath) {
-          const taintStore = FoxhoundTaintStore.open(taintPath);
-          let serial = 1;
-          taintReportsInserter = new BufferedCallback(50, (foxhoundReports) => {
-            taintStore.insertReports(
-              foxhoundReports.map((foxhoundReport, offset) => ({
-                serial: serial + offset,
-                foxhoundReport,
-              }))
-            );
-            serial += foxhoundReports.length;
-          });
+          foxhoundReports = [];
           await installFoxhoundTaintReporter(browser, {
             onReport(foxhoundReport) {
-              taintReportsInserter!.add(foxhoundReport);
+              foxhoundReports!.push(foxhoundReport);
             },
           });
         }
@@ -228,7 +217,9 @@ export async function runSimulateConnect(
             screenshotPath,
           });
         } finally {
-          taintReportsInserter?.flush();
+          if (taintPath) {
+            new FoxhoundTaintArchive(taintPath).insertReports(foxhoundReports!);
+          }
         }
       }
     )

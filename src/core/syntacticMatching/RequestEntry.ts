@@ -1,5 +1,5 @@
 import { fromJSON, fromQueryValues } from "./Transform";
-import { HarController } from "../../util/HarController";
+import { HarReader } from "../../util/HarReader";
 import { originFromUrl } from "../AbstractFlow";
 import { toArray } from "iter-tools";
 
@@ -10,9 +10,9 @@ export type RequestEntry = {
 };
 
 export function getRequestEntriesFromHar(
-  harController: HarController
+  harReader: HarReader
 ): RequestEntry[] {
-  return harController.entries().flatMap((harEntry) => {
+  return harReader.entries().flatMap((harEntry) => {
     const {
       request: { url: requestUrl, postData, headers },
     } = harEntry;
@@ -42,7 +42,7 @@ export function getRequestEntriesFromHar(
       addRequestEntries(
         "postData",
         extractPostDataComponents(
-          harController.readPostData(postData),
+          harReader.readPostData(postData),
           headers.find(({ name }) => name === "content-type")?.value
         )
       );

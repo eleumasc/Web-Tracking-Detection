@@ -1,7 +1,7 @@
 import _ from "lodash";
 import { AbstractFlow } from "../AbstractFlow";
 import { getRequestEntriesFromHar } from "./RequestEntry";
-import { HarController } from "../../util/HarController";
+import { HarReader } from "../../util/HarReader";
 import { requestValueParseSteps } from "./syntacticMatcher";
 import { StorageItem } from "../StorageItem";
 import { StorageTransformTreeEntry } from "./getSyntacticAbstractFlows";
@@ -19,9 +19,9 @@ export type StorageCanariesEntry = {
 export function verifySyntacticAbstractFlows(
   abstractFlows: AbstractFlow[],
   storageCanariesEntries: StorageCanariesEntry[],
-  verifHarController: HarController
+  verifHarReader: HarReader
 ): AbstractFlow[] {
-  const requestEntries = getRequestEntriesFromHar(verifHarController);
+  const requestEntries = getRequestEntriesFromHar(verifHarReader);
 
   const trueAbstractFlows: AbstractFlow[] = [];
   for (const { value: requestValue, receiverOrigin } of requestEntries) {

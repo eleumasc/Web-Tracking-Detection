@@ -2,7 +2,7 @@ import assert from "assert";
 import { AbstractFlow } from "../AbstractFlow";
 import { createSyntacticMatcher, SyntacticMatcher } from "./syntacticMatcher";
 import { getRequestEntriesFromHar } from "./RequestEntry";
-import { HarController } from "../../util/HarController";
+import { HarReader } from "../../util/HarReader";
 import { mergeTransformTrees, TransformTree } from "./TransformTree";
 import { StorageItem } from "../StorageItem";
 
@@ -13,7 +13,7 @@ export type StorageTransformTreeEntry = {
 
 export function getSyntacticAbstractFlows(
   storageItems: StorageItem[],
-  harController: HarController
+  harReader: HarReader
 ): {
   abstractFlows: AbstractFlow[];
   storageTransformTreeEntries: StorageTransformTreeEntry[];
@@ -32,7 +32,7 @@ export function getSyntacticAbstractFlows(
     })
   );
 
-  const requestEntries = getRequestEntriesFromHar(harController);
+  const requestEntries = getRequestEntriesFromHar(harReader);
 
   const abstractFlows: AbstractFlow[] = [];
   for (const storageEntry of storageEntries) {

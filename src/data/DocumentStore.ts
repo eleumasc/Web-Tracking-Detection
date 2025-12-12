@@ -121,19 +121,13 @@ export default class DocumentStore {
     if (entries.length === 0) return;
     const { db } = this;
     const stmt = db.prepare(
-      `INSERT INTO documents (collection, name, data) VALUES ${Array(
-        entries.length
-      )
-        .fill("(?, ?, ?)")
-        .join(", ")}`
+      "INSERT INTO documents (collection, name, data) VALUES (?, ?, ?)"
     );
-    stmt.run(
-      entries.flatMap(({ name, data }) => [
-        collectionId,
-        name,
-        JSON.stringify(data),
-      ])
-    );
+    db.transaction(() => {
+      for (const { name, data } of entries) {
+        stmt.run([collectionId, name, JSON.stringify(data)]);
+      }
+    })();
   }
 
   getDocumentData<T = any>(documentId: number): T {

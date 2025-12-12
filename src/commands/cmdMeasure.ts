@@ -10,7 +10,7 @@ import { AggregateFlow, toAggregateFlows } from "../core/AggregateFlow";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
-import { HarController } from "../util/HarController";
+import { HarReader } from "../util/HarReader";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
 import { processFlows } from "../core/processFlows";
@@ -162,7 +162,7 @@ export function measureSite(args: {
     trueSyntacticAbstractFlows = verifySyntacticAbstractFlows(
       syntacticAbstractFlows,
       storageCanariesEntries,
-      new HarController(
+      new HarReader(
         path.join(getOutputPath(analysisName), staResult.verif.harFile)
       )
     );

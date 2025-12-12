@@ -7,7 +7,7 @@ import {
   PostData
   } from "har-format";
 
-export class HarController {
+export class HarReader {
   protected _data: Har | undefined;
 
   constructor(readonly zipFile: string) {}

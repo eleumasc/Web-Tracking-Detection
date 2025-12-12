@@ -5,7 +5,7 @@ import { AbstractFlow, AbstractMatch, originFromUrl } from "../AbstractFlow";
 import { Cookie, StorageItem } from "../StorageItem";
 import { enumerate } from "iter-tools";
 import { FoxhoundReport } from "../../foxhound/types";
-import { HarController } from "../../util/HarController";
+import { HarReader } from "../../util/HarReader";
 import { isIdentifiable } from "../identifierDetection/identifiable";
 import { OperationToken } from "../syntacticMatching/Token";
 import { Range } from "../../util/Range";
@@ -17,7 +17,7 @@ import {
 export function getTaintAbstractFlows(
   foxhoundReports: FoxhoundReport[],
   storageItems: StorageItem[],
-  harController: HarController
+  harReader: HarReader
 ): {
   abstractFlows: AbstractFlow[];
 } {
@@ -62,7 +62,7 @@ export function getTaintAbstractFlows(
     // request URL corresponds to that of the network sink.
     // This especially helps to remove taint flows whose network sink do not
     // initiate a network request (e.g., set img.src to data URIs).
-    if (!harController.hasRequestWithUrl(requestUrl)) {
+    if (!harReader.hasRequestWithUrl(requestUrl)) {
       // console.error(`[Non-Commit TaintFlow] ${requestUrl}`);
       continue;
     }
