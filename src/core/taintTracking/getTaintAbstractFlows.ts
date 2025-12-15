@@ -93,7 +93,9 @@ export function getTaintAbstractFlows(
     }
 
     for (const group of _.values(
-      _.groupBy(individualMatches, ({ storageItem: { id } }) => id)
+      _.groupBy(individualMatches, ({ storageItem: { id } }) =>
+        JSON.stringify(id)
+      )
     )) {
       const {
         0: { storageItem },
