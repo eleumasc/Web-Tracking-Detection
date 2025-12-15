@@ -1,8 +1,8 @@
 import significantlyDifferent from "./significantlyDifferent";
-import { isZxcvbnIdentifiable } from "./identifiable";
+import { isIdentifiable } from "./identifiable";
 import { joinStorageItemsById, StorageItem } from "../StorageItem";
 
-export default function detectIdentifiers(
+export default function detectIdentifiableStorageItems(
   storageItemsA: StorageItem[],
   storageItemsB: StorageItem[]
 ): StorageItem[] {
@@ -16,5 +16,5 @@ export default function detectIdentifiers(
         significantlyDifferent(aValue, bValue)
     )
     .map(([a]) => a)
-    .filter(({ value }) => isZxcvbnIdentifiable(value));
+    .filter(({ value }) => isIdentifiable(value));
 }

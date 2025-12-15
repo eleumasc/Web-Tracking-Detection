@@ -1,5 +1,5 @@
 import alterStorageTransformTreeEntries from "./syntacticMatching/alterStorageTransformTreeEntries";
-import detectIdentifiers from "./identifierDetection/detectIdentifiers";
+import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
 import { extractStorageCanariesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
@@ -25,7 +25,7 @@ export function processFlows(args: {
     taintTaintFile,
   } = args;
 
-  const identifiers = detectIdentifiers(
+  const identifiers = detectIdentifiableStorageItems(
     getStorageItemsFromStorageState(preConnectResult.storageState),
     getStorageItemsFromStorageState(auxConnectResult.storageState)
   );
