@@ -131,13 +131,14 @@ export function measureSite(args: {
   analysisName: string;
   outputName: string;
   staResult: StatefulTrackingAnalysisResult;
+  forceNoVerif?: boolean;
 }) {
-  const { siteName, analysisName, outputName, staResult } = args;
+  const { siteName, analysisName, outputName, staResult, forceNoVerif } = args;
 
   let taintAbstractFlows: AbstractFlow[];
   let syntacticAbstractFlows: AbstractFlow[];
   let trueSyntacticAbstractFlows: AbstractFlow[];
-  if (staResult.verif) {
+  if (staResult.verif && !forceNoVerif) {
     taintAbstractFlows = Flatted.parse(
       readFileSync(
         path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)

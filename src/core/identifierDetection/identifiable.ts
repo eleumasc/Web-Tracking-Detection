@@ -1,13 +1,11 @@
 import zxcvbn from "zxcvbn";
-import { countAlphanumChars } from "../../util/countChars";
 
 export function isIdentifiable(value: string): boolean {
   return isLengthIdentifiable(value) && isZxcvbnIdentifiable(value);
 }
 
 export function isLengthIdentifiable(value: string): boolean {
-  // formerly: value.length >= 8
-  return countAlphanumChars(value) >= 8;
+  return value.length >= 8;
 }
 
 export function isZxcvbnIdentifiable(value: string): boolean {

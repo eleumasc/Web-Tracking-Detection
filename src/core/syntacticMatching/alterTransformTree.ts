@@ -1,7 +1,6 @@
 import _ from "lodash";
 import assert from "assert";
 import { applyTransform, TransformToken, TransformTree } from "./TransformTree";
-import { countAlphanumChars } from "../../util/countChars";
 import { enumerate, toArray } from "iter-tools";
 
 export default function alterTransformTree(
@@ -166,13 +165,6 @@ function recomputeTree(
       if (!token) {
         throw new AlterTransformTreeInvariantError(
           "oldToken must have a corresponding token"
-        );
-      }
-      if (
-        countAlphanumChars(oldToken.value) !== countAlphanumChars(token.value)
-      ) {
-        throw new AlterTransformTreeInvariantError(
-          "Values of oldToken and token must have the same number of alphanum chars"
         );
       }
       return traverse(token, oldChild);

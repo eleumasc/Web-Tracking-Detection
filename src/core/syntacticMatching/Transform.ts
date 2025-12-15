@@ -7,6 +7,7 @@ export type Transform = {
   name: string;
   transformValue: (value: string) => Iterable<TransformedValue>;
   rebuildRange?: (value: string, requiredLength: number) => string;
+  inverts?: (transform: Transform) => boolean;
 };
 
 export type TransformedValue = {
@@ -18,8 +19,9 @@ function createTransform(args: {
   name: string;
   transformValue: (value: string) => Iterable<string | TransformedValue>;
   rebuildRange?: (value: string, requiredLength: number) => string;
+  inverts?: (other: Transform) => boolean;
 }): Transform {
-  const { name, transformValue, rebuildRange } = args;
+  const { name, transformValue, rebuildRange, inverts } = args;
 
   return {
     name,
@@ -34,6 +36,7 @@ function createTransform(args: {
       }
     },
     rebuildRange,
+    inverts,
   };
 }
 
@@ -48,6 +51,9 @@ export const fromBase64 = createTransform({
   },
   rebuildRange: function (value, requiredLength) {
     return btoa(value).substring(0, requiredLength);
+  },
+  inverts: function (other) {
+    return other === toBase64;
   },
 });
 
@@ -65,6 +71,9 @@ export const fromURLEncoding = createTransform({
   },
   rebuildRange: function (value) {
     return encodeURIComponent(value);
+  },
+  inverts: function (other) {
+    return other === toURLEncoding;
   },
 });
 
@@ -165,6 +174,9 @@ export const toBase64 = createTransform({
   rebuildRange: function (value) {
     return atob(value);
   },
+  inverts: function (other) {
+    return other === fromBase64;
+  },
 });
 
 export const toURLEncoding = createTransform({
@@ -174,6 +186,9 @@ export const toURLEncoding = createTransform({
   },
   rebuildRange: function (value) {
     return decodeURIComponent(value);
+  },
+  inverts: function (other) {
+    return other === fromURLEncoding;
   },
 });
 

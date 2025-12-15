@@ -1,4 +1,5 @@
 import assert from "assert";
+import { countAlphanumChars } from "../../util/countChars";
 import { filter, flatMap, pipe } from "iter-tools";
 import { OperationToken } from "./Token";
 import {
@@ -47,13 +48,6 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
   );
 
   return (requestValue: string) => {
-    if (
-      !isLengthIdentifiable(storageValue) ||
-      !isLengthIdentifiable(requestValue)
-    ) {
-      return { matches: [], transformTree: null };
-    }
-
     const requestTransformTreeFactory = new LazyTransformTreeFactory(
       new DefaultTransformTreeFactory(requestValue, requestValueParseSteps)
     );
@@ -71,9 +65,14 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
             requestPath.skip();
             return;
           }
+          const isReliableMatchValue = (value: string): boolean =>
+            countAlphanumChars(value) > 0;
           let index: number;
           if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
-            if (isIdentifiable(storageToken.value)) {
+            if (
+              isReliableMatchValue(storageToken.value) &&
+              isIdentifiable(storageToken.value)
+            ) {
               // storageToken (identifier) is substring of requestToken
               const [storageSliceToken] = applyTransform(
                 slice(0, storageToken.value.length),
@@ -97,7 +96,10 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
           } else if (
             (index = storageToken.value.indexOf(requestToken.value)) !== -1
           ) {
-            if (isIdentifiable(requestToken.value)) {
+            if (
+              isReliableMatchValue(requestToken.value) &&
+              isIdentifiable(requestToken.value)
+            ) {
               // requestToken (identifier) is substring of storageToken
               const [storageSliceToken] = applyTransform(
                 slice(index, index + requestToken.value.length),
@@ -118,122 +120,6 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
     );
     return { matches, transformTree };
   };
-}
-
-function* distinctValueInInputChain(
-  tokens: Iterable<TransformToken>
-): IterableIterator<TransformToken> {
-  mainLoop: for (const token of tokens) {
-    const { value } = token;
-    for (let t = token.input; t; t = t.input) {
-      if (t.value === value) {
-        continue mainLoop;
-      }
-    }
-    yield token;
-  }
-}
-
-const tokenBarrier = () =>
-  pipe(
-    filter(({ value }: TransformToken) => isLengthIdentifiable(value)),
-    distinctValueInInputChain
-  );
-
-export function storageValueTransSteps(): Iterable<TransformTreeFactoryStep> {
-  const Decoders = [
-    split,
-    fromBase64,
-    fromURLEncoding,
-    fromJSON,
-    fromQueryValues,
-  ];
-  const Encoders = [toBase64, toURLEncoding, MD5, SHA1];
-
-  function decodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      *execute(input) {
-        yield* pipe(
-          flatMap((transform: Transform) => applyTransform(transform, input)),
-          tokenBarrier()
-        )(Decoders);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function encodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      *execute(input) {
-        yield* pipe(
-          flatMap((transform: Transform) => applyTransform(transform, input)),
-          tokenBarrier()
-        )(Encoders);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function encodeSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return depth > 0 ? [encodeStep(() => encodeSteps(depth - 1))] : [];
-  }
-
-  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return [decodeStep(() => levelSteps(depth - 1)), ...encodeSteps(3)];
-  }
-
-  return levelSteps(3);
-}
-
-export function requestValueParseSteps(): Iterable<TransformTreeFactoryStep> {
-  const Decoders = [fromBase64, fromURLEncoding];
-  const Parsers = [split, fromJSON, fromQueryValues];
-
-  function decodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      *execute(input) {
-        yield* pipe(
-          flatMap((transform: Transform) => applyTransform(transform, input)),
-          tokenBarrier()
-        )(Decoders);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function parseStep(): TransformTreeFactoryStep {
-    return {
-      *execute(input) {
-        yield* pipe(
-          flatMap((transform: Transform) => applyTransform(transform, input)),
-          tokenBarrier()
-        )(Parsers);
-      },
-      getNextSteps() {
-        return [];
-      },
-    };
-  }
-
-  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return depth > 0
-      ? [decodeStep(() => levelSteps(depth - 1)), parseStep()]
-      : [];
-  }
-
-  return levelSteps(3);
 }
 
 function createRedundantMatchSet() {
@@ -271,4 +157,118 @@ function createRedundantMatchSet() {
   };
 
   return { add, has };
+}
+
+export function storageValueTransSteps(): Iterable<TransformTreeFactoryStep> {
+  const Decoders = [
+    split,
+    fromBase64,
+    fromURLEncoding,
+    fromJSON,
+    fromQueryValues,
+  ];
+  const Encoders = [toBase64, toURLEncoding, MD5, SHA1];
+
+  function decodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
+    return {
+      execute(input) {
+        return executeTransform(Decoders, input);
+      },
+      getNextSteps() {
+        return next();
+      },
+    };
+  }
+
+  function encodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
+    return {
+      execute(input) {
+        return executeTransform(Encoders, input);
+      },
+      getNextSteps() {
+        return next();
+      },
+    };
+  }
+
+  function encodeSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return depth > 0 ? [encodeStep(() => encodeSteps(depth - 1))] : [];
+  }
+
+  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return [decodeStep(() => levelSteps(depth - 1)), ...encodeSteps(3)];
+  }
+
+  return levelSteps(3);
+}
+
+export function requestValueParseSteps(): Iterable<TransformTreeFactoryStep> {
+  const Decoders = [fromBase64, fromURLEncoding];
+  const Parsers = [split, fromJSON, fromQueryValues];
+
+  function decodeStep(
+    next: () => Iterable<TransformTreeFactoryStep>
+  ): TransformTreeFactoryStep {
+    return {
+      execute(input) {
+        return executeTransform(Decoders, input);
+      },
+      getNextSteps() {
+        return next();
+      },
+    };
+  }
+
+  function parseStep(): TransformTreeFactoryStep {
+    return {
+      execute(input) {
+        return executeTransform(Parsers, input);
+      },
+      getNextSteps() {
+        return [];
+      },
+    };
+  }
+
+  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
+    return depth > 0
+      ? [decodeStep(() => levelSteps(depth - 1)), parseStep()]
+      : [];
+  }
+
+  return levelSteps(3);
+}
+
+function executeTransform(
+  transforms: Transform[],
+  token: TransformToken
+): Iterable<TransformToken> {
+  return pipe(
+    filter(
+      (transform: Transform) =>
+        !(transform.inverts && token.input) ||
+        !transform.inverts(token.operation)
+    ),
+    flatMap((transform: Transform) => applyTransform(transform, token)),
+    filter(({ value }: TransformToken) => isLengthIdentifiable(value)),
+    distinctValueInInputChain
+  )(transforms);
+
+  function* distinctValueInInputChain(
+    tokens: Iterable<TransformToken>
+  ): IterableIterator<TransformToken> {
+    mainLoop: for (const token of tokens) {
+      const { value } = token;
+      for (let t = token.input; t; t = t.input) {
+        if (t.value === value) {
+          continue mainLoop;
+        }
+      }
+      yield token;
+    }
+  }
 }
