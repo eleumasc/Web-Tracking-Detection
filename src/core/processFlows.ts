@@ -1,8 +1,7 @@
-import alterStorageTransformTreeEntries from "./syntacticMatching/alterStorageTransformTreeEntries";
+import computeStorageCanariesEntries from "./syntacticMatching/computeStorageCanariesEntries";
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
-import { extractStorageCanariesEntries } from "./syntacticMatching/verifySyntacticAbstractFlows";
 import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticAbstractFlows } from "./syntacticMatching/getSyntacticAbstractFlows";
@@ -44,11 +43,8 @@ export function processFlows(args: {
     abstractFlows: syntacticAbstractFlows,
     storageTransformTreeEntries: taintStorageTransformTreeEntries,
   } = getSyntacticAbstractFlows(identifiers, taintHarReader);
-  const verifStorageTransformTreeEntries = alterStorageTransformTreeEntries(
+  const storageCanariesEntries = computeStorageCanariesEntries(
     taintStorageTransformTreeEntries
-  );
-  const storageCanariesEntries = extractStorageCanariesEntries(
-    verifStorageTransformTreeEntries
   );
 
   return {

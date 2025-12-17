@@ -4,10 +4,8 @@ import { getRequestEntriesFromHar } from "./RequestEntry";
 import { HarReader } from "../../util/HarReader";
 import { requestValueParseSteps } from "./syntacticMatcher";
 import { StorageItem } from "../StorageItem";
-import { StorageTransformTreeEntry } from "./getSyntacticAbstractFlows";
 import {
   DefaultTransformTreeFactory,
-  TransformTree,
   traverseTransformTree,
 } from "./TransformTree";
 
@@ -45,22 +43,4 @@ export function verifySyntacticAbstractFlows(
     );
   }
   return [...trueAbstractFlowSet];
-}
-
-export function extractStorageCanariesEntries(
-  storageTransformTreeEntries: StorageTransformTreeEntry[]
-): StorageCanariesEntry[] {
-  return storageTransformTreeEntries.flatMap(
-    ({ storageItem, transformTree }) => ({
-      storageItem,
-      canaries: traverse(transformTree),
-    })
-  );
-
-  function traverse(tree: TransformTree): string[] {
-    if (tree.children.length === 0) {
-      return [tree.token.value];
-    }
-    return _.uniq(tree.children.flatMap((child) => traverse(child)));
-  }
 }

@@ -1,62 +1,52 @@
 import _ from "lodash";
 import assert from "assert";
 import { applyTransform, TransformToken, TransformTree } from "./TransformTree";
-import { enumerate, toArray } from "iter-tools";
+import { enumerate, first, toArray } from "iter-tools";
 
 export default function alterTransformTree(
-  originalTree: TransformTree
+  originalTree: TransformTree,
+  predicate?: (tree: TransformTree) => boolean
 ): TransformTree {
   let tree = originalTree;
-  let alterableTree: TransformTree | undefined;
+  let alterableNode: TransformTree | undefined;
   let ttl = 1000;
-  while ((alterableTree = findAlterableTree(tree, originalTree))) {
+  while ((alterableNode = findAlterableNode(tree, originalTree))) {
     if (ttl === 0) {
       throw new Error(`Failed alterTransformTree: ${originalTree.token.value}`);
     }
     ttl -= 1;
-    const { token: alterableToken } = alterableTree;
-    let newTree: TransformTree | undefined;
-    let g = alterValue(alterableToken.value);
-    let it;
-    while (!newTree && !(it = g.next()).done) {
-      try {
-        newTree = recomputeTree(rebuildValue(it.value, alterableToken), tree);
-      } catch (e) {
-        if (e instanceof AlterTransformTreeInvariantError) {
-          continue;
-        }
-        throw e;
-      }
-    }
-    if (!newTree) {
+    const { token: alterableToken } = alterableNode;
+    const alteredTree = first(
+      generateAlteredTree(tree, alterableToken, predicate)
+    );
+    if (!alteredTree) {
       throw new Error(`Unsatisfiable alterValue: ${alterableToken.value}`);
     }
-    tree = newTree;
+    tree = alteredTree;
   }
   return tree;
 }
 
-function findAlterableTree(
+function findAlterableNode(
   tree: TransformTree,
   originalTree: TransformTree
 ): TransformTree | undefined {
   if (tree.token.value === originalTree.token.value) {
-    return getHighestRebuildableTree(tree);
+    return getHighestRebuildableNode(tree);
   }
   const { children } = tree;
   const { children: originalChildren } = originalTree;
   for (const [i, child] of enumerate(children)) {
     const originalChild = originalChildren[i];
     assert(originalChild);
-    const alterableTree = findAlterableTree(child, originalChild);
+    const alterableTree = findAlterableNode(child, originalChild);
     if (alterableTree) {
       return alterableTree;
     }
   }
-  return undefined;
 }
 
-function getHighestRebuildableTree(tree: TransformTree): TransformTree {
+function getHighestRebuildableNode(tree: TransformTree): TransformTree {
   return traverse(tree, 0).tree;
 
   function traverse(tree: TransformTree, height: number) {
@@ -171,6 +161,29 @@ function recomputeTree(
     });
 
     return { token: input, children };
+  }
+}
+
+function* generateAlteredTree(
+  tree: TransformTree,
+  alterableToken: TransformToken,
+  predicate?: (tree: TransformTree) => boolean
+): Generator<TransformTree> {
+  for (const alteredValue of alterValue(alterableToken.value)) {
+    try {
+      const alteredTree = recomputeTree(
+        rebuildValue(alteredValue, alterableToken),
+        tree
+      );
+      if (!predicate || predicate(alteredTree)) {
+        yield alteredTree;
+      }
+    } catch (e) {
+      if (e instanceof AlterTransformTreeInvariantError) {
+        continue;
+      }
+      throw e;
+    }
   }
 }
 
