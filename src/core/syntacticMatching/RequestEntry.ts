@@ -9,9 +9,7 @@ export type RequestEntry = {
   receiverOrigin: string;
 };
 
-export function getRequestEntriesFromHar(
-  harReader: HarReader
-): RequestEntry[] {
+export function getRequestEntriesFromHar(harReader: HarReader): RequestEntry[] {
   return harReader.entries().flatMap((harEntry) => {
     const {
       request: { url: requestUrl, postData, headers },

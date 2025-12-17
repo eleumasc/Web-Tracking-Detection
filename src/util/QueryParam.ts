@@ -23,13 +23,9 @@ export function parseQueryParams(input: string): QueryParam[] {
     const keyStart = match.index;
     const keyEnd = keyStart + keyRaw.length;
 
-    void decodeURIComponent(keyRaw);
-
     let valuePart: Part | undefined;
     if (valueRaw !== null) {
       const valueStart = keyEnd + 1;
-
-      void decodeURIComponent(valueRaw);
 
       valuePart = {
         raw: valueRaw,
