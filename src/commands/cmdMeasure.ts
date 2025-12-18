@@ -6,10 +6,10 @@ import Flatted from "flatted";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { AbstractFlow } from "../core/AbstractFlow";
-import { AggregateFlow, toAggregateFlows } from "../core/AggregateFlow";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
+import { getSiteByUrl } from "../util/site";
 import { HarReader } from "../util/HarReader";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
@@ -19,6 +19,11 @@ import { readFileSync } from "fs";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { truncateValuesInOperationToken } from "../core/syntacticMatching/Token";
 import { verifySyntacticAbstractFlows } from "../core/syntacticMatching/verifySyntacticAbstractFlows";
+import {
+  AggregateFlow,
+  toAggregateFlow,
+  toAggregateFlows,
+} from "../core/AggregateFlow";
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -193,8 +198,16 @@ export function measureSite(args: {
     );
   }
 
-  const taintFlows = toAggregateFlows(taintAbstractFlows);
-  const syntacticFlows = toAggregateFlows(syntacticAbstractFlows);
+  const firstParty = getSiteByUrl(staResult.taint.connectResult.landingPageUrl);
+  const toThirdPartyAggregateFlows = (
+    abstractFlows: AbstractFlow[]
+  ): AggregateFlow[] =>
+    toAggregateFlows(abstractFlows).filter(
+      ({ receiverSite }) => receiverSite !== firstParty
+    );
+
+  const taintFlows = toThirdPartyAggregateFlows(taintAbstractFlows);
+  const syntacticFlows = toThirdPartyAggregateFlows(syntacticAbstractFlows);
 
   const intersectFlows = _.intersectionWith(
     taintFlows,
@@ -218,39 +231,17 @@ export function measureSite(args: {
     _.isEqual
   );
 
-  const toOutputFlows = (
-    flows: AggregateFlow[],
-    abstractFlows: AbstractFlow[]
-  ) =>
-    flows.map((flow) => {
-      const { storageId, receiverOrigin } = flow;
-      const groupAbstractFlows = abstractFlows.filter(
-        (af) =>
-          _.isEqual(af.storageItem.id, storageId) &&
-          af.receiverOrigin === receiverOrigin
-      );
-      const matches = groupAbstractFlows.flatMap((x) => x.matches);
-      return {
-        storageId: `${storageId.storageType}:${storageId.key}`,
-        receiverOrigin,
-        matches: matches.map(({ storageToken, requestToken }) => ({
-          storageToken: truncateValuesInOperationToken(storageToken),
-          requestToken: truncateValuesInOperationToken(requestToken),
-        })),
-      };
-    });
-
   writeOutputFileSync(
     path.join(outputName, `${siteName}.json`),
     JSON.stringify({
       site: siteName,
-      intersectFlows: toOutputFlows(intersectFlows, taintAbstractFlows),
-      onlyTaintFlows: toOutputFlows(onlyTaintFlows, taintAbstractFlows),
-      onlySyntacticFlows: toOutputFlows(
+      intersectFlows: toReportFlows(intersectFlows, taintAbstractFlows),
+      onlyTaintFlows: toReportFlows(onlyTaintFlows, taintAbstractFlows),
+      onlySyntacticFlows: toReportFlows(
         onlySyntacticFlows,
         syntacticAbstractFlows
       ),
-      trueOnlySyntacticFlows: toOutputFlows(
+      trueOnlySyntacticFlows: toReportFlows(
         trueOnlySyntacticFlows,
         trueSyntacticAbstractFlows
       ),
@@ -277,4 +268,35 @@ export function measureSite(args: {
       intersectFlows.length > 0 || trueOnlySyntacticFlows.length > 0
     ),
   };
+}
+
+function toReportFlows(flows: AggregateFlow[], abstractFlows: AbstractFlow[]) {
+  return flows.map((flow) => {
+    const { receiverSite } = flow;
+    const groupAbstractFlows = abstractFlows.filter((abstractFlow) =>
+      _.isEqual(toAggregateFlow(abstractFlow), flow)
+    );
+
+    const matches = _.uniqWith(
+      groupAbstractFlows.map(({ storageItem: { id } }) => id),
+      _.isEqual
+    ).map((storageId) => {
+      const { storageType, key } = storageId;
+      return {
+        storageId: `${storageType}:${key}`,
+        matches: groupAbstractFlows
+          .filter(({ storageItem }) => _.isEqual(storageItem.id, storageId))
+          .flatMap(({ matches }) => matches)
+          .map(({ storageToken, requestToken }) => ({
+            storageToken: truncateValuesInOperationToken(storageToken),
+            requestToken: truncateValuesInOperationToken(requestToken),
+          })),
+      };
+    });
+
+    return {
+      receiverSite,
+      matches,
+    };
+  });
 }

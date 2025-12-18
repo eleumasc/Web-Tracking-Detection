@@ -1,20 +1,23 @@
 import _ from "lodash";
 import { AbstractFlow } from "./AbstractFlow";
-import { StorageItem } from "./StorageItem";
+import { getSiteByUrl } from "../util/site";
 
 export type AggregateFlow = {
-  storageId: StorageItem["id"];
-  receiverOrigin: string;
+  receiverSite: string;
 };
 
 export function toAggregateFlows(
   abstractFlows: AbstractFlow[]
 ): AggregateFlow[] {
   return _.uniqWith(
-    abstractFlows.map(({ storageItem, receiverOrigin }) => ({
-      storageId: storageItem.id,
-      receiverOrigin,
-    })),
+    abstractFlows.map((abstractFlow) => toAggregateFlow(abstractFlow)),
     _.isEqual
   );
+}
+
+export function toAggregateFlow(abstractFlow: AbstractFlow): AggregateFlow {
+  const { receiverOrigin } = abstractFlow;
+  return {
+    receiverSite: getSiteByUrl(receiverOrigin),
+  };
 }
