@@ -143,6 +143,7 @@ export function measureSite(args: {
   let taintAbstractFlows: AbstractFlow[];
   let syntacticAbstractFlows: AbstractFlow[];
   let trueSyntacticAbstractFlows: AbstractFlow[];
+  let verifSites = new Set<string>();
   if (staResult.verif && !forceNoVerif) {
     taintAbstractFlows = Flatted.parse(
       readFileSync(
@@ -165,12 +166,16 @@ export function measureSite(args: {
         )
       ).toString()
     );
+    const verifHarReader = new HarReader(
+      path.join(getOutputPath(analysisName), staResult.verif.harFile)
+    );
     trueSyntacticAbstractFlows = verifySyntacticAbstractFlows(
       syntacticAbstractFlows,
       storageCanariesEntries,
-      new HarReader(
-        path.join(getOutputPath(analysisName), staResult.verif.harFile)
-      )
+      verifHarReader
+    );
+    verifSites = new Set(
+      verifHarReader.entries().map((entry) => getSiteByUrl(entry.request.url))
     );
   } else {
     const processed = processFlows({
@@ -231,6 +236,19 @@ export function measureSite(args: {
     _.isEqual
   );
 
+  const unverifiedOnlySyntacticFlows = _.differenceWith(
+    onlySyntacticFlows,
+    trueOnlySyntacticFlows,
+    _.isEqual
+  );
+  const ffOnlySyntacticFlows = unverifiedOnlySyntacticFlows.filter((flow) =>
+    verifSites.has(flow.receiverSite)
+  );
+  const unknownOnlySyntacticFlows = _.difference(
+    unverifiedOnlySyntacticFlows,
+    ffOnlySyntacticFlows
+  );
+
   writeOutputFileSync(
     path.join(outputName, `${siteName}.json`),
     JSON.stringify({
@@ -245,6 +263,7 @@ export function measureSite(args: {
         trueOnlySyntacticFlows,
         trueSyntacticAbstractFlows
       ),
+      unknownOnlySyntacticFlows,
     })
   );
 
