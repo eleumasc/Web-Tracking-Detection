@@ -16,8 +16,8 @@ export function toAggregateFlows(
 }
 
 export function toAggregateFlow(abstractFlow: AbstractFlow): AggregateFlow {
-  const { receiverOrigin } = abstractFlow;
+  const { requestUrl } = abstractFlow;
   return {
-    receiverSite: getSiteByUrl(receiverOrigin),
+    receiverSite: getSiteByUrl(requestUrl),
   };
 }

@@ -1,7 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
 import Interval from "../../util/Interval";
-import { AbstractFlow, AbstractMatch, originFromUrl } from "../AbstractFlow";
+import { AbstractFlow, AbstractMatch } from "../AbstractFlow";
 import { Cookie, StorageItem } from "../StorageItem";
 import { enumerate } from "iter-tools";
 import { FoxhoundReport } from "../../foxhound/types";
@@ -66,8 +66,6 @@ export function getTaintAbstractFlows(
       // console.error(`[Non-Commit TaintFlow] ${requestUrl}`);
       continue;
     }
-
-    const receiverOrigin = originFromUrl(requestUrl);
 
     const individualMatches = [];
     for (const taintRange of taintRanges) {
@@ -164,7 +162,7 @@ export function getTaintAbstractFlows(
 
       abstractFlows.push({
         storageItem,
-        receiverOrigin,
+        requestUrl,
         matches: [match],
       });
     }

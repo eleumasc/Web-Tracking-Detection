@@ -38,12 +38,12 @@ export function getSyntacticAbstractFlows(
   for (const storageEntry of storageEntries) {
     const { storageItem, matcher } = storageEntry;
     for (const requestEntry of requestEntries) {
-      const { value: requestValue, receiverOrigin } = requestEntry;
+      const { value: requestValue, requestUrl } = requestEntry;
       const { matches, transformTree } = matcher(requestValue);
       if (matches.length > 0) {
         abstractFlows.push({
           storageItem,
-          receiverOrigin,
+          requestUrl,
           matches,
         });
         assert(transformTree);

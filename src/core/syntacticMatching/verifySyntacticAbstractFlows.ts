@@ -22,7 +22,7 @@ export function verifySyntacticAbstractFlows(
   const requestEntries = getRequestEntriesFromHar(verifHarReader);
 
   let trueAbstractFlowSet: AbstractFlow[] = [];
-  for (const { value: requestValue, receiverOrigin } of requestEntries) {
+  for (const { value: requestValue, requestUrl } of requestEntries) {
     traverseTransformTree(
       new DefaultTransformTreeFactory(requestValue, requestValueParseSteps),
       (path) => {
@@ -34,7 +34,7 @@ export function verifySyntacticAbstractFlows(
               ...abstractFlows.filter(
                 (abstractFlow) =>
                   _.isEqual(abstractFlow.storageItem.id, storageItem.id) &&
-                  abstractFlow.receiverOrigin === receiverOrigin
+                  abstractFlow.requestUrl === requestUrl
               ),
             ]);
           }

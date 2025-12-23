@@ -1,12 +1,11 @@
 import { fromJSON, fromQueryValues } from "./Transform";
 import { HarReader } from "../../util/HarReader";
-import { originFromUrl } from "../AbstractFlow";
 import { toArray } from "iter-tools";
 
 export type RequestEntry = {
   param: string;
   value: string;
-  receiverOrigin: string;
+  requestUrl: string;
 };
 
 export function getRequestEntriesFromHar(harReader: HarReader): RequestEntry[] {
@@ -14,8 +13,7 @@ export function getRequestEntriesFromHar(harReader: HarReader): RequestEntry[] {
     const {
       request: { url: requestUrl, postData, headers },
     } = harEntry;
-    const requestURL = new URL(requestUrl);
-    const receiverOrigin = originFromUrl(requestURL);
+    const parsedRequestURL = new URL(requestUrl);
 
     let requestEntries: RequestEntry[] = [];
     const addRequestEntries = (param: string, values: string[]) => {
@@ -23,18 +21,18 @@ export function getRequestEntriesFromHar(harReader: HarReader): RequestEntry[] {
         values.map((value) => ({
           param,
           value,
-          receiverOrigin,
+          requestUrl,
         }))
       );
     };
 
     addRequestEntries(
       "urlPathname",
-      extractUrlPathnameComponents(requestURL.pathname)
+      extractUrlPathnameComponents(parsedRequestURL.pathname)
     );
     addRequestEntries(
       "urlSearch",
-      extractUrlSearchComponents(requestURL.search)
+      extractUrlSearchComponents(parsedRequestURL.search)
     );
     if (postData) {
       addRequestEntries(
