@@ -1,11 +1,8 @@
 import assert from "assert";
 import { countAlphanumChars } from "../../util/countChars";
 import { filter, flatMap, pipe } from "iter-tools";
+import { isIdentifiable } from "../identifierDetection/identifiable";
 import { OperationToken } from "./Token";
-import {
-  isIdentifiable,
-  isLengthIdentifiable,
-} from "../identifierDetection/identifiable";
 import {
   DefaultTransformTreeFactory,
   traverseTransformTree,
@@ -65,14 +62,9 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
             requestPath.skip();
             return;
           }
-          const isReliableMatchValue = (value: string): boolean =>
-            countAlphanumChars(value) > 0;
           let index: number;
           if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
-            if (
-              isReliableMatchValue(storageToken.value) &&
-              isIdentifiable(storageToken.value)
-            ) {
+            if (isIdentifiable(storageToken.value)) {
               // storageToken (identifier) is substring of requestToken
               const [storageSliceToken] = applyTransform(
                 slice(0, storageToken.value.length),
@@ -96,10 +88,7 @@ export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
           } else if (
             (index = storageToken.value.indexOf(requestToken.value)) !== -1
           ) {
-            if (
-              isReliableMatchValue(requestToken.value) &&
-              isIdentifiable(requestToken.value)
-            ) {
+            if (isIdentifiable(requestToken.value)) {
               // requestToken (identifier) is substring of storageToken
               const [storageSliceToken] = applyTransform(
                 slice(index, index + requestToken.value.length),
@@ -254,7 +243,7 @@ function executeTransform(
         !transform.inverts(token.operation)
     ),
     flatMap((transform: Transform) => applyTransform(transform, token)),
-    filter(({ value }: TransformToken) => isLengthIdentifiable(value)),
+    filter(({ value }: TransformToken) => countAlphanumChars(value) >= 8),
     distinctValueInInputChain
   )(transforms);
 

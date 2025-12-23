@@ -6,7 +6,7 @@ import { HarReader } from "../../util/HarReader";
 import { mergeTransformTrees, TransformTree } from "./TransformTree";
 import { StorageItem } from "../StorageItem";
 
-export type StorageTransformTreeEntry = {
+export type StorageDerivationEntry = {
   storageItem: StorageItem;
   transformTree: TransformTree;
 };
@@ -16,7 +16,7 @@ export function getSyntacticAbstractFlows(
   harReader: HarReader
 ): {
   abstractFlows: AbstractFlow[];
-  storageTransformTreeEntries: StorageTransformTreeEntry[];
+  storageDerivationEntries: StorageDerivationEntry[];
 } {
   type StorageEntry = {
     storageItem: StorageItem;
@@ -53,9 +53,9 @@ export function getSyntacticAbstractFlows(
       }
     }
   }
-  const storageTransformTreeEntries = storageEntries.flatMap(
+  const storageDerivationEntries = storageEntries.flatMap(
     ({ storageItem, transformTree }) =>
       transformTree ? [{ storageItem, transformTree }] : []
   );
-  return { abstractFlows, storageTransformTreeEntries };
+  return { abstractFlows, storageDerivationEntries };
 }

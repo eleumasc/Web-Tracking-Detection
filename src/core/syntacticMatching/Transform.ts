@@ -6,7 +6,7 @@ import { Range } from "../../util/Range";
 export type Transform = {
   name: string;
   transformValue: (value: string) => Iterable<TransformedValue>;
-  rebuildRange?: (value: string, requiredLength: number) => string;
+  reverseRange?: (value: string, requiredLength: number) => string;
   inverts?: (transform: Transform) => boolean;
 };
 
@@ -18,10 +18,10 @@ export type TransformedValue = {
 function createTransform(args: {
   name: string;
   transformValue: (value: string) => Iterable<string | TransformedValue>;
-  rebuildRange?: (value: string, requiredLength: number) => string;
+  reverseRange?: (value: string, requiredLength: number) => string;
   inverts?: (other: Transform) => boolean;
 }): Transform {
-  const { name, transformValue, rebuildRange, inverts } = args;
+  const { name, transformValue, reverseRange, inverts } = args;
 
   return {
     name,
@@ -35,7 +35,7 @@ function createTransform(args: {
         yield { value, range };
       }
     },
-    rebuildRange,
+    reverseRange,
     inverts,
   };
 }
@@ -49,7 +49,7 @@ export const fromBase64 = createTransform({
       return;
     }
   },
-  rebuildRange: function (value, requiredLength) {
+  reverseRange: function (value, requiredLength) {
     return btoa(value).substring(0, requiredLength);
   },
   inverts: function (other) {
@@ -69,7 +69,7 @@ export const fromURLEncoding = createTransform({
       return;
     }
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return encodeURIComponent(value);
   },
   inverts: function (other) {
@@ -118,7 +118,7 @@ export const fromJSON = createTransform({
       }
     }
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return JSON.stringify(value);
   },
 });
@@ -142,7 +142,7 @@ export const fromQueryValues = createTransform({
       };
     }
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return value;
   },
 });
@@ -157,7 +157,7 @@ export const split = createTransform({
       };
     }
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return value;
   },
 });
@@ -171,7 +171,7 @@ export const toBase64 = createTransform({
       return;
     }
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return atob(value);
   },
   inverts: function (other) {
@@ -184,7 +184,7 @@ export const toURLEncoding = createTransform({
   transformValue: function* (value) {
     yield encodeURIComponent(value);
   },
-  rebuildRange: function (value) {
+  reverseRange: function (value) {
     return decodeURIComponent(value);
   },
   inverts: function (other) {
@@ -215,7 +215,7 @@ export const slice = (begin: number, end: number) =>
         range: { begin, end },
       };
     },
-    rebuildRange(value) {
+    reverseRange(value) {
       return value;
     },
   });

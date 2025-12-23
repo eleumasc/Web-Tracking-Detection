@@ -1,4 +1,4 @@
-import computeStorageCanariesEntries from "./syntacticMatching/computeStorageCanariesEntries";
+import computeCanariesForVerif from "./syntacticMatching/computeCanariesForVerif";
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
@@ -41,10 +41,10 @@ export function processFlows(args: {
   );
   const {
     abstractFlows: syntacticAbstractFlows,
-    storageTransformTreeEntries: taintStorageTransformTreeEntries,
+    storageDerivationEntries: taintStorageDerivationEntries,
   } = getSyntacticAbstractFlows(identifiers, taintHarReader);
-  const storageCanariesEntries = computeStorageCanariesEntries(
-    taintStorageTransformTreeEntries
+  const storageCanariesEntries = computeCanariesForVerif(
+    taintStorageDerivationEntries
   );
 
   return {

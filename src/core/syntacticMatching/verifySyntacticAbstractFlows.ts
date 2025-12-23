@@ -21,7 +21,7 @@ export function verifySyntacticAbstractFlows(
 ): AbstractFlow[] {
   const requestEntries = getRequestEntriesFromHar(verifHarReader);
 
-  let trueAbstractFlowSet = new Set<AbstractFlow>();
+  let trueAbstractFlowSet: AbstractFlow[] = [];
   for (const { value: requestValue, receiverOrigin } of requestEntries) {
     traverseTransformTree(
       new DefaultTransformTreeFactory(requestValue, requestValueParseSteps),
@@ -29,7 +29,7 @@ export function verifySyntacticAbstractFlows(
         const { value: requestValue } = path.token;
         for (const { storageItem, canaries } of storageCanariesEntries) {
           if (canaries.some((canary) => requestValue.includes(canary))) {
-            trueAbstractFlowSet = new Set([
+            trueAbstractFlowSet = _.uniq([
               ...trueAbstractFlowSet,
               ...abstractFlows.filter(
                 (abstractFlow) =>
@@ -42,5 +42,5 @@ export function verifySyntacticAbstractFlows(
       }
     );
   }
-  return [...trueAbstractFlowSet];
+  return trueAbstractFlowSet;
 }
