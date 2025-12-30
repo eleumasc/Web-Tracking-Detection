@@ -115,17 +115,14 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       if (options.analysis.noVerif) return;
 
-      const {
-        taintAbstractFlows,
-        syntacticAbstractFlows,
-        storageCanariesEntries,
-      } = processFlows({
-        analysisName: outputName,
-        auxConnectResult,
-        preConnectResult,
-        taintHarFile,
-        taintTaintFile,
-      });
+      const { taintFlows, syntacticFlows, storageCanariesEntries } =
+        processFlows({
+          analysisName: outputName,
+          auxConnectResult,
+          preConnectResult,
+          taintHarFile,
+          taintTaintFile,
+        });
 
       // patch firefox profile storage of profiles/verif using altered storage items
       patchFoxhoundProfileStorage(
@@ -156,11 +153,11 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       writeOutputFileSync(
         path.join(outputName, taintFlowsFile),
-        Flatted.stringify(taintAbstractFlows)
+        Flatted.stringify(taintFlows)
       );
       writeOutputFileSync(
         path.join(outputName, syntacticFlowsFile),
-        Flatted.stringify(syntacticAbstractFlows)
+        Flatted.stringify(syntacticFlows)
       );
       writeOutputFileSync(
         path.join(outputName, storageCanariesFile),

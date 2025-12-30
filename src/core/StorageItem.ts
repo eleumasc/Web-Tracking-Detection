@@ -53,14 +53,14 @@ export function getStorageItemsFromStorageState(
 }
 
 export function joinStorageItemsById(
-  storageItemsA: StorageItem[],
-  storageItemsB: StorageItem[]
+  thisStorageItems: StorageItem[],
+  thatStorageItems: StorageItem[]
 ): [StorageItem, StorageItem][] {
-  const storageItemsBKeyMap = new Map(
-    storageItemsB.map((b) => [JSON.stringify(b.id), b])
+  const thatStorageItemsKeyMap = new Map(
+    thatStorageItems.map((b) => [JSON.stringify(b.id), b])
   );
-  return storageItemsA.flatMap((a) => {
-    const b = storageItemsBKeyMap.get(JSON.stringify(a.id));
+  return thisStorageItems.flatMap((a) => {
+    const b = thatStorageItemsKeyMap.get(JSON.stringify(a.id));
     return b ? [[a, b]] : [];
   });
 }

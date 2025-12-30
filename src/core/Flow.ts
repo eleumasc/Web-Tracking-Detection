@@ -1,13 +1,13 @@
-import { OperationToken } from "./syntacticMatching/Token";
+import { OperationToken } from "./Token";
 import { StorageItem } from "./StorageItem";
 
-export type AbstractFlow = {
+export type Flow = {
   storageItem: StorageItem;
   requestUrl: string;
-  matches: AbstractMatch[];
+  matches: FlowMatch[];
 };
 
-export type AbstractMatch = {
+export type FlowMatch = {
   storageToken: OperationToken;
   requestToken: OperationToken;
 };

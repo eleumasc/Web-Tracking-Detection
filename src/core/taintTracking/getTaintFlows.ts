@@ -1,25 +1,25 @@
 import _ from "lodash";
 import assert from "assert";
 import Interval from "../../util/Interval";
-import { AbstractFlow, AbstractMatch } from "../AbstractFlow";
 import { Cookie, StorageItem } from "../StorageItem";
 import { enumerate } from "iter-tools";
+import { Flow, FlowMatch } from "../Flow";
 import { FoxhoundReport } from "../../foxhound/types";
 import { HarReader } from "../../util/HarReader";
 import { isIdentifiable } from "../identifierDetection/identifiable";
-import { OperationToken } from "../syntacticMatching/Token";
+import { OperationToken } from "../Token";
 import { Range } from "../../util/Range";
 import {
   getTaintFlowsFromFoxhoundReports,
   StorageTaintOperation,
 } from "./TaintFlow";
 
-export function getTaintAbstractFlows(
+export function getTaintFlows(
   foxhoundReports: FoxhoundReport[],
   storageItems: StorageItem[],
   harReader: HarReader
 ): {
-  abstractFlows: AbstractFlow[];
+  flows: Flow[];
 } {
   const findSingleStorageItemByTaintOperation = (
     op: StorageTaintOperation
@@ -50,7 +50,7 @@ export function getTaintAbstractFlows(
     return foundArray.length === 1 ? foundArray[0] : undefined;
   };
 
-  const abstractFlows: AbstractFlow[] = [];
+  const flows: Flow[] = [];
   for (const taintFlow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
     const { ranges: taintRanges, sink } = taintFlow;
 
@@ -158,14 +158,14 @@ export function getTaintAbstractFlows(
         range: requestRange,
         value: requestDisplayValue,
       };
-      const match: AbstractMatch = { storageToken, requestToken };
+      const match: FlowMatch = { storageToken, requestToken };
 
-      abstractFlows.push({
+      flows.push({
         storageItem,
         requestUrl,
         matches: [match],
       });
     }
   }
-  return { abstractFlows };
+  return { flows };
 }

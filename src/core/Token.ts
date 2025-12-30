@@ -1,4 +1,4 @@
-import { Range } from "../../util/Range";
+import { Range } from "../util/Range";
 
 export type Token<T> =
   | {
@@ -14,13 +14,13 @@ export type Token<T> =
 
 export type OperationToken = Token<string>;
 
-export function truncateValuesInOperationToken(token: OperationToken): any {
+export function truncateTokenValues<T>(token: Token<T>): Token<T> {
   const { input, value, ...tokenRest } = token;
   return {
     ...tokenRest,
-    input: input && truncateValuesInOperationToken(input),
+    input: input && truncateTokenValues(input),
     value: truncateValue(value),
-  };
+  } as Token<T>;
 
   function truncateValue(value: string): string {
     return value.substring(0, 500);

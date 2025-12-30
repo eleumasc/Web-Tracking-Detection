@@ -1,6 +1,6 @@
 import assert from "assert";
-import { AbstractFlow } from "../AbstractFlow";
 import { createSyntacticMatcher, SyntacticMatcher } from "./syntacticMatcher";
+import { Flow } from "../Flow";
 import { getRequestEntriesFromHar } from "./RequestEntry";
 import { HarReader } from "../../util/HarReader";
 import { mergeTransformTrees, TransformTree } from "./TransformTree";
@@ -11,11 +11,11 @@ export type StorageDerivationEntry = {
   transformTree: TransformTree;
 };
 
-export function getSyntacticAbstractFlows(
+export function getSyntacticFlows(
   storageItems: StorageItem[],
   harReader: HarReader
 ): {
-  abstractFlows: AbstractFlow[];
+  flows: Flow[];
   storageDerivationEntries: StorageDerivationEntry[];
 } {
   type StorageEntry = {
@@ -34,14 +34,14 @@ export function getSyntacticAbstractFlows(
 
   const requestEntries = getRequestEntriesFromHar(harReader);
 
-  const abstractFlows: AbstractFlow[] = [];
+  const flows: Flow[] = [];
   for (const storageEntry of storageEntries) {
     const { storageItem, matcher } = storageEntry;
     for (const requestEntry of requestEntries) {
       const { value: requestValue, requestUrl } = requestEntry;
       const { matches, transformTree } = matcher(requestValue);
       if (matches.length > 0) {
-        abstractFlows.push({
+        flows.push({
           storageItem,
           requestUrl,
           matches,
@@ -57,5 +57,5 @@ export function getSyntacticAbstractFlows(
     ({ storageItem, transformTree }) =>
       transformTree ? [{ storageItem, transformTree }] : []
   );
-  return { abstractFlows, storageDerivationEntries };
+  return { flows, storageDerivationEntries };
 }

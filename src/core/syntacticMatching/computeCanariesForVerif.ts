@@ -1,8 +1,7 @@
 import _ from "lodash";
 import { enumerate } from "iter-tools";
 import { Range } from "../../util/Range";
-import { StorageCanariesEntry } from "./verifySyntacticAbstractFlows";
-import { StorageDerivationEntry } from "./getSyntacticAbstractFlows";
+import { StorageDerivationEntry } from "./getSyntacticFlows";
 import { StorageItem } from "../StorageItem";
 import { TransformToken, TransformTree } from "./TransformTree";
 import {
@@ -12,7 +11,12 @@ import {
   reverseValue,
 } from "./alterTransformTree";
 
-export default function computeCanariesForVerif(
+export type StorageCanariesEntry = {
+  storageItem: StorageItem;
+  canaries: string[];
+};
+
+export function computeCanariesForVerif(
   storageDerivationEntries: StorageDerivationEntry[]
 ): StorageCanariesEntry[] {
   const originalCanaries = extractQuasiCanaries(storageDerivationEntries);

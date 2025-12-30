@@ -2,7 +2,8 @@ import assert from "assert";
 import { countAlphanumChars } from "../../util/countChars";
 import { filter, flatMap, pipe } from "iter-tools";
 import { isIdentifiable } from "../identifierDetection/identifiable";
-import { OperationToken } from "./Token";
+import { OperationToken } from "../Token";
+import { toOperationToken } from "./TransformTree";
 import {
   DefaultTransformTreeFactory,
   traverseTransformTree,
@@ -11,7 +12,6 @@ import {
   applyTransform,
   TransformToken,
   TransformTree,
-  toOperationToken,
 } from "./TransformTree";
 import {
   fromBase64,

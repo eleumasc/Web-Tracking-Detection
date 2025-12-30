@@ -1,7 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
 import { inspect } from "util";
-import { OperationToken, Token } from "./Token";
+import { OperationToken, Token } from "../Token";
 import { toArray } from "iter-tools";
 import { Transform } from "./Transform";
 
