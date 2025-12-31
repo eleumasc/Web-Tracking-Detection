@@ -1,9 +1,13 @@
 export function getCanonicalUrl(url: string): string {
   const { origin, pathname, searchParams } = new URL(url);
+  const pathSegments = pathname
+    .split("/")
+    .slice(1)
+    .map((segment) => (segment.length >= 8 ? "*" : segment));
   const paramNames = [...searchParams.entries()]
     .flatMap(([key, value]) => (value ? [key] : []))
     .sort();
-  return origin + pathname + "?" + paramNames.join("&");
+  return origin + "/" + pathSegments.join("/") + "?" + paramNames.join("&");
 }
 
 export function sameCanonicalUrl(a: string, b: string): boolean {
