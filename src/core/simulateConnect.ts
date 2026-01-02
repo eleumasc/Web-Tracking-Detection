@@ -24,36 +24,39 @@ export default async function simulateConnect(
   const timestamp = currentTime();
 
   const page = await browser.newPage();
-
-  // navigate to landing page
   try {
-    await page.goto(`http://${siteName}/`, {
-      timeout: LOAD_TIMEOUT_MS,
-    });
-  } catch (e) {
-    throw new SimulateConnectError(String(e));
+    // navigate to landing page
+    try {
+      await page.goto(`http://${siteName}/`, {
+        timeout: LOAD_TIMEOUT_MS,
+      });
+    } catch (e) {
+      throw new SimulateConnectError(String(e));
+    }
+    await timeout(WAIT_AFTER_LOAD_MS);
+
+    const landingPageUrl = page.url();
+
+    // take screenshot
+    if (screenshotPath) {
+      await page.screenshot({ path: screenshotPath });
+    }
+
+    // trigger late requests for capturing
+    try {
+      await page.goto("about:blank");
+    } catch {}
+
+    const storageState = await browser.storageState();
+
+    return {
+      landingPageUrl,
+      storageState,
+      timestamp,
+    };
+  } finally {
+    await page.close();
   }
-  await timeout(WAIT_AFTER_LOAD_MS);
-
-  const landingPageUrl = page.url();
-
-  // take screenshot
-  if (screenshotPath) {
-    await page.screenshot({ path: screenshotPath });
-  }
-
-  // trigger late requests for capturing
-  try {
-    await page.goto("about:blank");
-  } catch {}
-
-  const storageState = await browser.storageState();
-
-  return {
-    landingPageUrl,
-    storageState,
-    timestamp,
-  };
 }
 
 export class SimulateConnectError extends Error {

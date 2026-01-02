@@ -16,6 +16,7 @@ import { FoxhoundReport } from "../foxhound/types";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
 import { processFlows } from "./processFlows";
+import { range } from "iter-tools";
 import { toCompletion } from "../util/Completion";
 import {
   AnalysisResult,
@@ -138,6 +139,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             outputName,
             harFile: verifHarFile,
             taintFile: verifTaintFile,
+            reloadTimes: 1,
           },
         ]),
         { extraBinds: [profilesBind] }
@@ -180,10 +182,17 @@ export async function runSimulateConnect(
     harFile?: string;
     taintFile?: string;
     screenshotFile?: string;
+    reloadTimes?: number;
   }
 ) {
-  const { userDataDir, outputName, harFile, taintFile, screenshotFile } =
-    options;
+  const {
+    userDataDir,
+    outputName,
+    harFile,
+    taintFile,
+    screenshotFile,
+    reloadTimes,
+  } = options;
 
   const outputPath = createOutputDir(outputName);
   const harPath = harFile && path.join(outputPath, harFile);
@@ -209,10 +218,14 @@ export async function runSimulateConnect(
           });
         }
         try {
-          return await simulateConnect(browser, {
+          for (const _ of range(reloadTimes ?? 0)) {
+            await simulateConnect(browser, { siteName });
+          }
+          const result = await simulateConnect(browser, {
             siteName,
             screenshotPath,
           });
+          return result;
         } finally {
           if (taintPath) {
             new FoxhoundTaintArchive(taintPath).insertReports(foxhoundReports!);
