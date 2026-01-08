@@ -25,10 +25,10 @@ import {
 } from "../core/CanonicalFlow";
 import {
   Accumulator,
-  arrayLengthSumCountPair,
   assign,
-  nonZeroCount,
-  pairSum,
+  countIf,
+  createMapReducer,
+  createReducer,
 } from "../util/Accumulator";
 
 export default async function cmdMeasure(args: {
@@ -45,19 +45,28 @@ export default async function cmdMeasure(args: {
 
   const outputName = `${currentTime()}-Measure-${analysisId}`;
 
+  const countIfNonZero = () => countIf((value) => value !== 0);
+  const pairCasesSites = () =>
+    createReducer(
+      () => ({ cases: 0, sites: 0 }),
+      (acc, value: number) => ({
+        cases: acc.cases + value,
+        sites: acc.sites + (value !== 0 ? 1 : 0),
+      })
+    );
   const statsAccumulator = new Accumulator({
-    totalSites: nonZeroCount(),
-    successSites: nonZeroCount(),
-    intersectTrackers: pairSum(),
-    onlyTaintTrackers: pairSum(),
-    onlySyntacticTrackers: pairSum(),
-    trueOnlySyntacticTrackers: pairSum(),
-    intersectFlows: pairSum(),
-    onlyTaintFlows: pairSum(),
-    onlySyntacticFlows: pairSum(),
-    trueOnlySyntacticFlows: pairSum(),
-    fakeOnlySyntacticFlows: pairSum(),
-    unknownOnlySyntacticFlows: pairSum(),
+    totalSites: countIfNonZero(),
+    successSites: countIfNonZero(),
+    intersectTrackers: pairCasesSites(),
+    onlyTaintTrackers: pairCasesSites(),
+    onlySyntacticTrackers: pairCasesSites(),
+    trueOnlySyntacticTrackers: pairCasesSites(),
+    intersectFlows: pairCasesSites(),
+    onlyTaintFlows: pairCasesSites(),
+    onlySyntacticFlows: pairCasesSites(),
+    trueOnlySyntacticFlows: pairCasesSites(),
+    fakeOnlySyntacticFlows: pairCasesSites(),
+    unknownOnlySyntacticFlows: pairCasesSites(),
   });
 
   await processTaskQueue(
@@ -78,7 +87,7 @@ export default async function cmdMeasure(args: {
 
       statsAccumulator.add("successSites", 1);
 
-      const stats = await execThread<ReturnType<typeof measureSite>>(
+      const partialStats = await execThread<ReturnType<typeof measureSite>>(
         makeTaskFromFunction(measureSite, [
           {
             siteName,
@@ -89,7 +98,7 @@ export default async function cmdMeasure(args: {
         ])
       );
 
-      statsAccumulator.addAll(stats);
+      statsAccumulator.addAll(partialStats);
     }
   );
 
@@ -177,6 +186,8 @@ export function measureSite(args: {
   rawTaintFlows = filterThirdPartyFlows(rawTaintFlows);
   rawSyntacticFlows = filterThirdPartyFlows(rawSyntacticFlows);
 
+  const assignLength = () =>
+    createMapReducer(assign<number>(), (arr: any[]) => arr.length);
   const detailsAccumulator = new Accumulator({
     intersectTrackers: assign(),
     onlyTaintTrackers: assign(),
@@ -187,16 +198,16 @@ export function measureSite(args: {
     unknownOnlySyntacticFlows: assign(),
   });
   const statsAccumulator = new Accumulator({
-    intersectTrackers: arrayLengthSumCountPair(),
-    onlyTaintTrackers: arrayLengthSumCountPair(),
-    onlySyntacticTrackers: arrayLengthSumCountPair(),
-    trueOnlySyntacticTrackers: arrayLengthSumCountPair(),
-    intersectFlows: arrayLengthSumCountPair(),
-    onlyTaintFlows: arrayLengthSumCountPair(),
-    onlySyntacticFlows: arrayLengthSumCountPair(),
-    trueOnlySyntacticFlows: arrayLengthSumCountPair(),
-    fakeOnlySyntacticFlows: arrayLengthSumCountPair(),
-    unknownOnlySyntacticFlows: arrayLengthSumCountPair(),
+    intersectTrackers: assignLength(),
+    onlyTaintTrackers: assignLength(),
+    onlySyntacticTrackers: assignLength(),
+    trueOnlySyntacticTrackers: assignLength(),
+    intersectFlows: assignLength(),
+    onlyTaintFlows: assignLength(),
+    onlySyntacticFlows: assignLength(),
+    trueOnlySyntacticFlows: assignLength(),
+    fakeOnlySyntacticFlows: assignLength(),
+    unknownOnlySyntacticFlows: assignLength(),
   });
 
   const taintTrackers = TrackerEquivalence.getAllKeys(rawTaintFlows);

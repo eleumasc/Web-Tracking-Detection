@@ -4,6 +4,7 @@ import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { parseAnalysis } from "./core/Analysis";
+import cmdExplain from "./commands/cmdExplain";
 
 async function main() {
   console.log(`PID: ${process.pid}`);
@@ -79,6 +80,18 @@ async function main() {
             default: 1,
           }),
       (args) => cmdMeasure(args)
+    )
+
+    .command(
+      "explain <measureOutDir>",
+      "Explain the results with a pretty MarkDown",
+      (yargs) =>
+        yargs.positional("measureOutDir", {
+          type: "string",
+          describe: "Output directory of measure command to explain",
+          demandOption: true,
+        }),
+      (args) => cmdExplain(args)
     )
 
     .demandCommand(1, "You must provide a valid command.")

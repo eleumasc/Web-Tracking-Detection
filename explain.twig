@@ -1,0 +1,54 @@
+# Analysis Report
+
+## Overview
+
+- **Total Sites Analyzed:** {{ stats.totalSites }}
+- **Successfully Processed Sites:** {{ stats.successSites }}
+
+---
+
+## Tracker Analysis
+
+### Tracker Detections
+
+| Category | Cases | Sites |
+|---|---|---|
+| Intersection | {{ stats.intersectTrackers.cases }} | {{ stats.intersectTrackers.sites }} |
+| Only Taint | {{ stats.onlyTaintTrackers.cases }} | {{ stats.onlyTaintTrackers.sites }} |
+| Only Syntactic | {{ stats.onlySyntacticTrackers.cases }} | {{ stats.onlySyntacticTrackers.sites }} |
+| True Only Syntactic | {{ stats.trueOnlySyntacticTrackers.cases }} | {{ stats.trueOnlySyntacticTrackers.sites }} |
+
+---
+
+## Flow Analysis
+
+### Flow Detections
+
+| Category | Cases | Sites |
+|---|---|---|
+| Intersection | {{ stats.intersectFlows.cases }} | {{ stats.intersectFlows.sites }} |
+| Only Taint | {{ stats.onlyTaintFlows.cases }} | {{ stats.onlyTaintFlows.sites }} |
+| Only Syntactic | {{ stats.onlySyntacticFlows.cases }} | {{ stats.onlySyntacticFlows.sites }} |
+
+---
+
+### Only-Syntactic Flow Classification
+
+| Classification | Cases | Sites |
+|---|---|---|
+| True Positives | {{ stats.trueOnlySyntacticFlows.cases }} | {{ stats.trueOnlySyntacticFlows.sites }} |
+| False Positives | {{ stats.fakeOnlySyntacticFlows.cases }} | {{ stats.fakeOnlySyntacticFlows.sites }} |
+| Unknown | {{ stats.unknownOnlySyntacticFlows.cases }} | {{ stats.unknownOnlySyntacticFlows.sites }} |
+
+- **True Positives**: Only-syntactic flows which are verified using the canary technique.
+- **False Positives**: Only-syntactic flows which are not verified, but a similar network request occurs during the verification navigation.
+- **Unknown**: Only-syntactic flows which are not classified as True Positives or False Positives.
+
+---
+
+## Definitions
+
+- **Cases**: total number of detected instances.
+- **Sites**: number of distinct sites where at least one case was observed.
+- **Intersection**: detected by both taint-based and syntactic analysis.
+- **Only** categories: detected exclusively by the specified technique.

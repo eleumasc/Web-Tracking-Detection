@@ -1,6 +1,7 @@
+import _ from "lodash";
 import assert from "assert";
 
-export interface Reducer<TAcc, TVal> {
+export interface Reducer<TAcc, TVal = any> {
   initialValue(): TAcc;
   reduce(acc: TAcc, value: TVal): TAcc;
 }
@@ -59,42 +60,64 @@ export class Accumulator<M extends ReducerMap> {
   }
 }
 
-export function arrayLengthSumCountPair(): Reducer<[number, number], any[]> {
-  return {
-    initialValue() {
-      return [0, 0];
-    },
-    reduce(acc, value) {
-      return [acc[0] + value.length, acc[1] + Number(value.length !== 0)];
-    },
-  };
+export function createReducer<TAcc, TVal>(
+  initialValue: () => TAcc,
+  reduce: (acc: TAcc, value: TVal) => TAcc
+): Reducer<TAcc, TVal> {
+  return { initialValue, reduce };
+}
+
+export function createMapReducer<TAcc, TVal, TMappedVal>(
+  reducer: Reducer<TAcc, TMappedVal>,
+  mapFn: (value: TVal) => TMappedVal
+): Reducer<TAcc, TVal> {
+  return createReducer(
+    () => reducer.initialValue(),
+    (acc, value) => reducer.reduce(acc, mapFn(value))
+  );
+}
+
+export function arrayAdd<T>(): Reducer<T[], T> {
+  return createReducer(
+    (): T[] => [],
+    (acc, value) => [...acc, value]
+  );
+}
+
+export function arrayConcat<T>(): Reducer<T[], T[]> {
+  return createReducer(
+    (): T[] => [],
+    (acc, value) => [...acc, ...value]
+  );
 }
 
 export function assign<T>(): Reducer<T | undefined, T | undefined> {
-  return {
-    initialValue() {
-      return undefined;
-    },
-    reduce(_, value) {
-      return value;
-    },
-  };
+  return createReducer(
+    (): T | undefined => undefined,
+    (_, value): T | undefined => value
+  );
 }
 
-export function nonZeroCount(): Reducer<number, number> {
-  return {
-    initialValue: () => 0,
-    reduce: (acc, value) => acc + Number(value !== 0),
-  };
-}
-
-export function pairSum(): Reducer<[number, number], [number, number]> {
+export function sum(): Reducer<number, number> {
   return {
     initialValue() {
-      return [0, 0];
+      return 0;
     },
     reduce(acc, value) {
-      return [acc[0] + value[0], acc[1] + value[1]];
+      return acc + value;
     },
   };
+}
+
+export function union<T>(): Reducer<T[], T[]> {
+  return createReducer(
+    (): T[] => [],
+    (acc, value) => _.uniq([...acc, ...value])
+  );
+}
+
+export function countIf<TVal>(
+  predicate: (value: TVal) => boolean
+): Reducer<number, TVal> {
+  return createMapReducer(sum(), (value) => (predicate(value) ? 1 : 0));
 }
