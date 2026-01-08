@@ -22,7 +22,6 @@ export interface StatefulTrackingAnalysisResult extends AnalysisResult {
     storageCanariesFile: string;
     connectResult: SimulateConnectResult;
     harFile: string;
-    taintFile: string;
     taintFlowsFile: string;
     syntacticFlowsFile: string;
   };

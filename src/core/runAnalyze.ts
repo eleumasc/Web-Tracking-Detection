@@ -16,7 +16,6 @@ import { FoxhoundReport } from "../foxhound/types";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
 import { processFlows } from "./processFlows";
-import { range } from "iter-tools";
 import { toCompletion } from "../util/Completion";
 import {
   AnalysisResult,
@@ -51,7 +50,6 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const taintHarFile = `${siteName}+taint.har.zip`;
   const taintTaintFile = `${siteName}+taint.taint.sqlite`;
   const verifHarFile = `${siteName}+verif.har.zip`;
-  const verifTaintFile = `${siteName}+verif.taint.sqlite`;
   const taintFlowsFile = `${siteName}+TF.json`;
   const syntacticFlowsFile = `${siteName}+SF.json`;
   const storageCanariesFile = `${siteName}+C.json`;
@@ -138,8 +136,6 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             userDataDir: path.join(guestProfilesDir, "verif"),
             outputName,
             harFile: verifHarFile,
-            taintFile: verifTaintFile,
-            reloadTimes: 1,
           },
         ]),
         { extraBinds: [profilesBind] }
@@ -148,7 +144,6 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         storageCanariesFile,
         connectResult: verifConnectResult,
         harFile: verifHarFile,
-        taintFile: verifTaintFile,
         taintFlowsFile,
         syntacticFlowsFile,
       };
@@ -182,17 +177,10 @@ export async function runSimulateConnect(
     harFile?: string;
     taintFile?: string;
     screenshotFile?: string;
-    reloadTimes?: number;
   }
 ) {
-  const {
-    userDataDir,
-    outputName,
-    harFile,
-    taintFile,
-    screenshotFile,
-    reloadTimes,
-  } = options;
+  const { userDataDir, outputName, harFile, taintFile, screenshotFile } =
+    options;
 
   const outputPath = createOutputDir(outputName);
   const harPath = harFile && path.join(outputPath, harFile);
@@ -218,9 +206,6 @@ export async function runSimulateConnect(
           });
         }
         try {
-          for (const _ of range(reloadTimes ?? 0)) {
-            await simulateConnect(browser, { siteName });
-          }
           const result = await simulateConnect(browser, {
             siteName,
             screenshotPath,
