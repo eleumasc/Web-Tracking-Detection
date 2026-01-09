@@ -38,13 +38,21 @@ export function getSyntacticFlows(
   for (const storageEntry of storageEntries) {
     const { storageItem, matcher } = storageEntry;
     for (const requestEntry of requestEntries) {
-      const { value: requestValue, requestUrl } = requestEntry;
-      const { matches, transformTree } = matcher(requestValue);
-      if (matches.length > 0) {
+      const {
+        requestParameter: requestParameter,
+        value: requestValue,
+        requestUrl,
+      } = requestEntry;
+      const { matches: syntacticMatches, transformTree } =
+        matcher(requestValue);
+      if (syntacticMatches.length > 0) {
         flows.push({
           storageItem,
           requestUrl,
-          matches,
+          matches: syntacticMatches.map((syntacticMatch) => ({
+            ...syntacticMatch,
+            requestParameter,
+          })),
         });
         assert(transformTree);
         storageEntry.transformTree = storageEntry.transformTree

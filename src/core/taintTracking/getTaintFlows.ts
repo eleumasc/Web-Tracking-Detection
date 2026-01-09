@@ -3,7 +3,7 @@ import assert from "assert";
 import Interval from "../../util/Interval";
 import { Cookie, StorageItem } from "../StorageItem";
 import { enumerate } from "iter-tools";
-import { Flow, FlowMatch } from "../Flow";
+import { Flow, Match } from "../Flow";
 import { FoxhoundReport } from "../../foxhound/types";
 import { HarReader } from "../../util/HarReader";
 import { isIdentifiable } from "../identifierDetection/identifiable";
@@ -158,7 +158,11 @@ export function getTaintFlows(
         range: requestRange,
         value: requestDisplayValue,
       };
-      const match: FlowMatch = { storageToken, requestToken };
+      const match: Match = {
+        storageToken,
+        requestToken,
+        requestParameter: { type: "unknown" },
+      };
 
       flows.push({
         storageItem,
