@@ -7,7 +7,7 @@ import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { Flow } from "../core/Flow";
+import { Flow, SyntacticFlow, TaintFlow } from "../core/Flow";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { getSiteFromUrl } from "../util/site";
 import { HarReader } from "../util/HarReader";
@@ -21,7 +21,8 @@ import { TrackerEquivalence, viewTrackers } from "../core/Tracker";
 import { verifySyntacticFlows } from "../core/syntacticMatching/verifySyntacticFlows";
 import {
   CanonicalFlowEquivalence,
-  viewCanonicalFlows,
+  viewSyntacticCanonicalFlows,
+  viewTaintCanonicalFlows,
 } from "../core/CanonicalFlow";
 import {
   Accumulator,
@@ -121,8 +122,8 @@ export function measureSite(args: {
 }) {
   const { siteName, analysisName, outputName, staResult, forceNoVerif } = args;
 
-  let rawTaintFlows: Flow[];
-  let rawSyntacticFlows: Flow[];
+  let rawTaintFlows: TaintFlow[];
+  let rawSyntacticFlows: SyntacticFlow[];
   let verifyResult;
   if (staResult.verif && !forceNoVerif) {
     rawTaintFlows = Flatted.parse(
@@ -181,7 +182,7 @@ export function measureSite(args: {
   const firstParty = getSiteFromUrl(
     staResult.taint.connectResult.landingPageUrl
   );
-  const filterThirdPartyFlows = (flows: Flow[]): Flow[] =>
+  const filterThirdPartyFlows = <T extends Flow>(flows: T[]): T[] =>
     flows.filter((flow) => getSiteFromUrl(flow.requestUrl) !== firstParty);
   rawTaintFlows = filterThirdPartyFlows(rawTaintFlows);
   rawSyntacticFlows = filterThirdPartyFlows(rawSyntacticFlows);
@@ -193,6 +194,9 @@ export function measureSite(args: {
     onlyTaintTrackers: assign(),
     onlySyntacticTrackers: assign(),
     trueOnlySyntacticTrackers: assign(),
+    intersectFlows: assign(),
+    onlyTaintFlows: assign(),
+    onlySyntacticFlows: assign(),
     trueOnlySyntacticFlows: assign(),
     fakeOnlySyntacticFlows: assign(),
     unknownOnlySyntacticFlows: assign(),
@@ -275,6 +279,14 @@ export function measureSite(args: {
     taintFlows,
     _.isEqual
   );
+  detailsAccumulator.addAll({
+    intersectFlows: viewTaintCanonicalFlows(intersectFlows, rawTaintFlows),
+    onlyTaintFlows: viewTaintCanonicalFlows(onlyTaintFlows, rawTaintFlows),
+    onlySyntacticFlows: viewSyntacticCanonicalFlows(
+      onlySyntacticFlows,
+      rawSyntacticFlows
+    ),
+  });
   statsAccumulator.addAll({
     intersectFlows,
     onlyTaintFlows,
@@ -298,15 +310,15 @@ export function measureSite(args: {
       _.isEqual
     );
     detailsAccumulator.addAll({
-      trueOnlySyntacticFlows: viewCanonicalFlows(
+      trueOnlySyntacticFlows: viewSyntacticCanonicalFlows(
         trueOnlySyntacticFlows,
         verifyResult.trueFlows
       ),
-      fakeOnlySyntacticFlows: viewCanonicalFlows(
+      fakeOnlySyntacticFlows: viewSyntacticCanonicalFlows(
         fakeOnlySyntacticFlows,
         verifyResult.fakeFlows
       ),
-      unknownOnlySyntacticFlows: viewCanonicalFlows(
+      unknownOnlySyntacticFlows: viewSyntacticCanonicalFlows(
         unknownOnlySyntacticFlows,
         verifyResult.unknownFlows
       ),

@@ -1,9 +1,8 @@
 import _ from "lodash";
 import { Flow } from "./Flow";
 
-
 export class FlowEquivalence<T> {
-  constructor(readonly keyFunction: (flow: Flow) => T) { }
+  constructor(readonly keyFunction: (flow: Flow) => T) {}
 
   getAllKeys(flows: Flow[]): T[] {
     return _.uniqWith(
@@ -12,7 +11,7 @@ export class FlowEquivalence<T> {
     );
   }
 
-  filterFlowsByKey(key: T, flows: Flow[]): Flow[] {
+  filterFlowsByKey<U extends Flow>(key: T, flows: U[]): U[] {
     return flows.filter((flow) => _.isEqual(this.keyFunction(flow), key));
   }
 }

@@ -1,9 +1,9 @@
 import _ from "lodash";
-import { Flow } from "./Flow";
+import { Flow, SyntacticFlow, TaintFlow } from "./Flow";
 import { FlowEquivalence } from "./FlowEquivalence";
 import { getCanonicalUrl } from "./CanonicalURL";
 import { StorageItem } from "./StorageItem";
-import { truncateTokenValues } from "./Token";
+import { viewToken } from "./syntacticMatching/Token";
 
 export type CanonicalFlow = {
   storageId: StorageItem["id"];
@@ -23,9 +23,9 @@ export function toCanonicalFlow(flow: Flow): CanonicalFlow {
   };
 }
 
-export function viewCanonicalFlows(
+export function viewSyntacticCanonicalFlows(
   canonicalFlows: CanonicalFlow[],
-  flows: Flow[]
+  flows: SyntacticFlow[]
 ) {
   return canonicalFlows.map((canonicalFlow) => {
     const { storageId, requestId } = canonicalFlow;
@@ -37,14 +37,28 @@ export function viewCanonicalFlows(
     const matches = groupFlows
       .flatMap(({ matches }) => matches)
       .map(({ storageToken, requestToken }) => ({
-        storageToken: truncateTokenValues(storageToken),
-        requestToken: truncateTokenValues(requestToken),
+        storageToken: viewToken(storageToken),
+        requestToken: viewToken(requestToken),
       }));
 
     return {
       storageId: `${storageId.storageType}:${storageId.key}`,
       requestId,
       matches,
+    };
+  });
+}
+
+export function viewTaintCanonicalFlows(
+  canonicalFlows: CanonicalFlow[],
+  flows: TaintFlow[]
+) {
+  return canonicalFlows.map((canonicalFlow) => {
+    const { storageId, requestId } = canonicalFlow;
+
+    return {
+      storageId: `${storageId.storageType}:${storageId.key}`,
+      requestId,
     };
   });
 }

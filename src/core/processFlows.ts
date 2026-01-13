@@ -1,7 +1,7 @@
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
-import { computeCanariesForVerif } from "./syntacticMatching/computeCanariesForVerif";
+import { computeCanaries } from "./syntacticMatching/computeCanaries";
 import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticFlows } from "./syntacticMatching/getSyntacticFlows";
@@ -34,18 +34,13 @@ export function processFlows(args: {
   const taintFoxhoundReports = new FoxhoundTaintArchive(
     path.join(getOutputPath(analysisName), taintTaintFile)
   ).getReports();
-  const { flows: taintFlows } = getTaintFlows(
+  const taintFlows = getTaintFlows(
     taintFoxhoundReports,
     identifiers,
     taintHarReader
   );
-  const {
-    flows: syntacticFlows,
-    storageDerivationEntries: taintStorageDerivationEntries,
-  } = getSyntacticFlows(identifiers, taintHarReader);
-  const storageCanariesEntries = computeCanariesForVerif(
-    taintStorageDerivationEntries
-  );
+  const syntacticFlows = getSyntacticFlows(identifiers, taintHarReader);
+  const storageCanariesEntries = computeCanaries(syntacticFlows);
 
   return {
     taintFlows,

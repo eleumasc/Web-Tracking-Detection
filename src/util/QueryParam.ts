@@ -1,5 +1,5 @@
 export interface QueryParam {
-  key: Part;
+  name: Part;
   value?: Part;
 }
 
@@ -17,15 +17,15 @@ export function parseQueryParams(input: string): QueryParam[] {
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(input)) !== null) {
-    const keyRaw = match[1];
+    const nameRaw = match[1];
     const valueRaw = match[2] ?? null;
 
-    const keyStart = match.index;
-    const keyEnd = keyStart + keyRaw.length;
+    const nameStart = match.index;
+    const nameEnd = nameStart + nameRaw.length;
 
     let valuePart: Part | undefined;
     if (valueRaw !== null) {
-      const valueStart = keyEnd + 1;
+      const valueStart = nameEnd + 1;
 
       valuePart = {
         raw: valueRaw,
@@ -34,9 +34,9 @@ export function parseQueryParams(input: string): QueryParam[] {
     }
 
     params.push({
-      key: {
-        raw: keyRaw,
-        index: keyStart,
+      name: {
+        raw: nameRaw,
+        index: nameStart,
       },
       value: valuePart,
     });

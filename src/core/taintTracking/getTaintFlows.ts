@@ -3,26 +3,23 @@ import assert from "assert";
 import Interval from "../../util/Interval";
 import { Cookie, StorageItem } from "../StorageItem";
 import { enumerate } from "iter-tools";
-import { Flow, Match } from "../Flow";
 import { FoxhoundReport } from "../../foxhound/types";
 import { HarReader } from "../../util/HarReader";
 import { isIdentifiable } from "../identifierDetection/identifiable";
-import { OperationToken } from "../Token";
 import { Range } from "../../util/Range";
+import { TaintFlow } from "../Flow";
 import {
-  getTaintFlowsFromFoxhoundReports,
-  StorageTaintOperation,
-} from "./TaintFlow";
+  parseFoxhoundReports,
+  StorageEnhancedFoxhoundOperation,
+} from "./EnhancedFoxhoundFlow";
 
 export function getTaintFlows(
   foxhoundReports: FoxhoundReport[],
   storageItems: StorageItem[],
   harReader: HarReader
-): {
-  flows: Flow[];
-} {
+): TaintFlow[] {
   const findSingleStorageItemByTaintOperation = (
-    op: StorageTaintOperation
+    op: StorageEnhancedFoxhoundOperation
   ): StorageItem | undefined => {
     const { storageType, key, value, locUrl } = op;
     let foundArray = storageItems.filter(
@@ -50,12 +47,12 @@ export function getTaintFlows(
     return foundArray.length === 1 ? foundArray[0] : undefined;
   };
 
-  const flows: Flow[] = [];
-  for (const taintFlow of getTaintFlowsFromFoxhoundReports(foxhoundReports)) {
-    const { ranges: taintRanges, sink } = taintFlow;
+  const taintFlows: TaintFlow[] = [];
+  for (const enhancedFlow of parseFoxhoundReports(foxhoundReports)) {
+    const { ranges: taintRanges, sink } = enhancedFlow;
 
     if (sink.type !== "Network") continue;
-    const { str: requestValue } = taintFlow;
+    const { str: requestValue } = enhancedFlow;
     const { requestUrl } = sink;
 
     // Consider only taint flows such that there is an HAR entry whose
@@ -63,7 +60,7 @@ export function getTaintFlows(
     // This especially helps to remove taint flows whose network sink do not
     // initiate a network request (e.g., set img.src to data URIs).
     if (!harReader.hasRequestWithUrl(requestUrl)) {
-      // console.error(`[Non-Commit TaintFlow] ${requestUrl}`);
+      // console.error(`[Non-Commit Tainted Flow] ${requestUrl}`);
       continue;
     }
 
@@ -108,68 +105,49 @@ export function getTaintFlows(
           interval.addRange(begin, end);
         }
         const ranges = interval.getRanges();
-        const displayRange: Range = {
+        const matchRange: Range = {
           begin: ranges[0].begin,
           end: ranges[ranges.length - 1].end,
         };
         let checkValue = "";
-        let displayValue = "";
+        let matchValue = "";
         for (const [i, range] of enumerate(ranges)) {
           if (i > 0) {
-            displayValue += "|".repeat(range.begin - ranges[i - 1].end);
+            matchValue += "|".repeat(range.begin - ranges[i - 1].end);
           }
           const s = (
             target === "Storage" ? storageValue : requestValue
           ).substring(range.begin, range.end);
           checkValue += s;
-          displayValue += s;
+          matchValue += s;
         }
-        return { range: displayRange, checkValue, displayValue };
+        return { range: matchRange, checkValue, matchValue };
       };
 
       const {
         range: storageRange,
         checkValue: storageCheckValue,
-        displayValue: storageDisplayValue,
+        matchValue: storageMatchValue,
       } = extractValue("Storage");
       if (!isIdentifiable(storageCheckValue)) continue;
       const {
         range: requestRange,
         checkValue: requestCheckValue,
-        displayValue: requestDisplayValue,
+        matchValue: requestMatchValue,
       } = extractValue("Request");
       if (!isIdentifiable(requestCheckValue)) continue;
 
-      const storageToken: OperationToken = {
-        input: {
-          input: null,
-          value: storageValue,
-        },
-        operation: "slice",
-        range: storageRange,
-        value: storageDisplayValue,
-      };
-      const requestToken: OperationToken = {
-        input: {
-          input: null,
-          value: requestValue,
-        },
-        operation: "arbitrary",
-        range: requestRange,
-        value: requestDisplayValue,
-      };
-      const match: Match = {
-        storageToken,
-        requestToken,
-        requestParameter: { type: "unknown" },
-      };
-
-      flows.push({
+      taintFlows.push({
         storageItem,
         requestUrl,
-        matches: [match],
+        storageValue,
+        storageMatch: storageMatchValue,
+        storageRange,
+        requestValue,
+        requestMatch: requestMatchValue,
+        requestRange,
       });
     }
   }
-  return { flows };
+  return taintFlows;
 }

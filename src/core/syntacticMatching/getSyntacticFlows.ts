@@ -1,69 +1,62 @@
-import assert from "assert";
-import { createSyntacticMatcher, SyntacticMatcher } from "./syntacticMatcher";
-import { Flow } from "../Flow";
-import { getRequestEntriesFromHar } from "./RequestEntry";
+import { getRequestItemsFromHar } from "../RequestItem";
 import { HarReader } from "../../util/HarReader";
-import { mergeTransformTrees, TransformTree } from "./TransformTree";
+import { memoize } from "../../util/memoize";
+import { parseRequestValueEdges, transformStorageValueEdges } from "./edges";
 import { StorageItem } from "../StorageItem";
-
-export type StorageDerivationEntry = {
-  storageItem: StorageItem;
-  transformTree: TransformTree;
-};
+import { SyntacticFlow, SyntacticMatch } from "../Flow";
+import { syntacticMatcher } from "./syntacticMatcher";
+import { TransformTree } from "./TransformTree";
 
 export function getSyntacticFlows(
   storageItems: StorageItem[],
   harReader: HarReader
-): {
-  flows: Flow[];
-  storageDerivationEntries: StorageDerivationEntry[];
-} {
-  type StorageEntry = {
-    storageItem: StorageItem;
-    matcher: SyntacticMatcher;
-    transformTree: TransformTree | null;
-  };
+): SyntacticFlow[] {
+  const getStorageTransformTree = memoize(
+    (storageValue) =>
+      new TransformTree(transformStorageValueEdges, storageValue)
+  );
+  const storageEntries = storageItems.map((storageItem) => ({
+    storageItem,
+    transformTree: getStorageTransformTree(storageItem.value),
+  }));
 
-  const storageEntries = storageItems.map(
-    (storageItem): StorageEntry => ({
-      storageItem,
-      matcher: createSyntacticMatcher(storageItem.value),
-      transformTree: null,
+  const getRequestTransformTree = memoize(
+    (requestValue) => new TransformTree(parseRequestValueEdges, requestValue)
+  );
+  const requestEntries = getRequestItemsFromHar(harReader).map(
+    ({ url: requestUrl, params }) => ({
+      requestUrl,
+      params: params.map(({ key, value }) => ({
+        key,
+        transformTree: getRequestTransformTree(value),
+      })),
     })
   );
 
-  const requestEntries = getRequestEntriesFromHar(harReader);
-
-  const flows: Flow[] = [];
-  for (const storageEntry of storageEntries) {
-    const { storageItem, matcher } = storageEntry;
-    for (const requestEntry of requestEntries) {
-      const {
-        requestParameter: requestParameter,
-        value: requestValue,
-        requestUrl,
-      } = requestEntry;
-      const { matches: syntacticMatches, transformTree } =
-        matcher(requestValue);
-      if (syntacticMatches.length > 0) {
-        flows.push({
+  const syntacticFlows: SyntacticFlow[] = [];
+  for (const {
+    storageItem,
+    transformTree: storageTransformTree,
+  } of storageEntries) {
+    for (const { requestUrl, params: requestParamEntries } of requestEntries) {
+      const matches: SyntacticMatch[] = requestParamEntries.flatMap(
+        ({ key: requestParamKey, transformTree: requestTransformTree }) =>
+          syntacticMatcher(storageTransformTree, requestTransformTree).map(
+            (syntacticMatch): SyntacticMatch => ({
+              ...syntacticMatch,
+              requestParamKey,
+            })
+          )
+      );
+      if (matches.length > 0) {
+        syntacticFlows.push({
           storageItem,
           requestUrl,
-          matches: syntacticMatches.map((syntacticMatch) => ({
-            ...syntacticMatch,
-            requestParameter,
-          })),
+          matches,
         });
-        assert(transformTree);
-        storageEntry.transformTree = storageEntry.transformTree
-          ? mergeTransformTrees(storageEntry.transformTree, transformTree)
-          : transformTree;
       }
     }
   }
-  const storageDerivationEntries = storageEntries.flatMap(
-    ({ storageItem, transformTree }) =>
-      transformTree ? [{ storageItem, transformTree }] : []
-  );
-  return { flows, storageDerivationEntries };
+
+  return syntacticFlows;
 }

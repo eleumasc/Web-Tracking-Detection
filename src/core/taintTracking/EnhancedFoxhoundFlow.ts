@@ -6,29 +6,31 @@ import {
   FoxhoundReport,
 } from "../../foxhound/types";
 
-export type TaintFlow = {
+export type EnhancedFoxhoundFlow = {
   str: string;
-  sink: TaintOperation;
-  ranges: TaintRange[];
+  sink: EnhancedFoxhoundOperation;
+  ranges: EnhancedFoxhoundRange[];
 };
 
-export type TaintRange = {
+export type EnhancedFoxhoundRange = {
   begin: number;
   end: number;
-  source: TaintOperation;
+  source: EnhancedFoxhoundOperation;
 };
 
-export interface BaseTaintOperation {
+export interface BaseEnhancedFoxhoundOperation {
   type: string;
   location: string;
 }
 
-export interface NetworkTaintOperation extends BaseTaintOperation {
+export interface NetworkEnhancedFoxhoundOperation
+  extends BaseEnhancedFoxhoundOperation {
   type: "Network";
   requestUrl: string;
 }
 
-export interface StorageTaintOperation extends BaseTaintOperation {
+export interface StorageEnhancedFoxhoundOperation
+  extends BaseEnhancedFoxhoundOperation {
   type: "Storage";
   storageType: string;
   key: string;
@@ -37,43 +39,45 @@ export interface StorageTaintOperation extends BaseTaintOperation {
   locUrl: URL;
 }
 
-export type TaintOperation = NetworkTaintOperation | StorageTaintOperation;
+export type EnhancedFoxhoundOperation =
+  | NetworkEnhancedFoxhoundOperation
+  | StorageEnhancedFoxhoundOperation;
 
-export function getTaintFlowsFromFoxhoundReports(
+export function parseFoxhoundReports(
   foxhoundReports: FoxhoundReport[]
-): TaintFlow[] {
-  const cx: ToTaintOperationContext = {
+): EnhancedFoxhoundFlow[] {
+  const cx: ToEnhancedOperationContext = {
     storageMap: createStorageMap(foxhoundReports),
   };
-  const flows: TaintFlow[] = [];
-  for (const report of foxhoundReports) {
-    const { str, sink: foxhoundSink, taint } = report;
-    const sink = toTaintOperation(cx, foxhoundSink, report);
+  const enhancedFlows: EnhancedFoxhoundFlow[] = [];
+  for (const foxhoundReport of foxhoundReports) {
+    const { str, sink: foxhoundSink, taint } = foxhoundReport;
+    const sink = toEnhancedOperation(cx, foxhoundSink, foxhoundReport);
     if (!sink) continue;
-    const ranges: TaintRange[] = [];
+    const ranges: EnhancedFoxhoundRange[] = [];
     for (const { begin, end, flow: foxhoundSource } of taint) {
-      const source = toTaintOperation(cx, foxhoundSource, report);
+      const source = toEnhancedOperation(cx, foxhoundSource, foxhoundReport);
       if (!source) continue;
       ranges.push({ begin, end, source });
     }
-    flows.push({ str, sink, ranges });
+    enhancedFlows.push({ str, sink, ranges });
   }
-  return flows;
+  return enhancedFlows;
 }
 
-interface ToTaintOperationContext {
+interface ToEnhancedOperationContext {
   storageMap: Map<string, string>;
 }
 
-function toTaintOperation(
-  cx: ToTaintOperationContext,
+function toEnhancedOperation(
+  cx: ToEnhancedOperationContext,
   foxhoundOperation: FoxhoundOperation,
   foxhoundReport: FoxhoundReport
-): TaintOperation | null {
+): EnhancedFoxhoundOperation | null {
   try {
-    for (const fn of [toNetworkTaintOperation, toStorageTaintOperation]) {
-      const taintOperation = fn(cx, foxhoundOperation, foxhoundReport);
-      if (taintOperation) return taintOperation;
+    for (const fn of [toNetworkEnhancedOperation, toStorageEnhancedOperation]) {
+      const enhancedOperation = fn(cx, foxhoundOperation, foxhoundReport);
+      if (enhancedOperation) return enhancedOperation;
     }
   } catch (e) {
     console.error(e);
@@ -81,11 +85,11 @@ function toTaintOperation(
   return null;
 }
 
-function toNetworkTaintOperation(
-  cx: ToTaintOperationContext,
+function toNetworkEnhancedOperation(
+  cx: ToEnhancedOperationContext,
   foxhoundOperation: FoxhoundOperation,
   { str, baseURI }: FoxhoundReport
-): NetworkTaintOperation | null {
+): NetworkEnhancedFoxhoundOperation | null {
   let requestUrl: string;
   switch (foxhoundOperation.operation) {
     // SINKS
@@ -113,10 +117,10 @@ function toNetworkTaintOperation(
       break;
     // WebSocket
     // case "WebSocket":
-    //   requestUrl = taintOperation.arguments[0];
+    //   requestUrl = foxhoundOperation.arguments[0];
     //   break;
     // case "WebSocket.send":
-    //   requestUrl = taintOperation.arguments[0];
+    //   requestUrl = foxhoundOperation.arguments[0];
     //   break;
     //
     // location (SINK-ONLY)
@@ -184,15 +188,15 @@ function toNetworkTaintOperation(
   };
 }
 
-function toStorageTaintOperation(
-  cx: ToTaintOperationContext,
+function toStorageEnhancedOperation(
+  cx: ToEnhancedOperationContext,
   foxhoundOperation: FoxhoundOperation,
   { loc, str, taint: foxhoundTaint }: FoxhoundReport
-): StorageTaintOperation | null {
+): StorageEnhancedFoxhoundOperation | null {
   let storageType: string;
   let key: string;
   let value: string;
-  let valueRange: StorageTaintOperation["valueRange"];
+  let valueRange: StorageEnhancedFoxhoundOperation["valueRange"];
   const getValueRangeForSource = (): typeof valueRange => {
     const { arguments: taintArgs } = foxhoundOperation;
     const foxhoundRange = foxhoundTaint.find(
@@ -298,7 +302,7 @@ export type StorageOperation = {
 export function getStorageOperationsFromFoxhoundReports(
   taintReports: FoxhoundReport[]
 ): StorageOperation[] {
-  const cx: ToTaintOperationContext = {
+  const cx: ToEnhancedOperationContext = {
     storageMap: createStorageMap(taintReports),
   };
   const storageOperations: StorageOperation[] = [];
@@ -311,10 +315,10 @@ export function getStorageOperationsFromFoxhoundReports(
     assert(!isNaN(timestamp));
     if (taintSink.operation === "StorageRead") {
       for (const { begin, end, flow: taintSource } of taint) {
-        const source = toStorageTaintOperation(cx, taintSource, taintReport);
+        const source = toStorageEnhancedOperation(cx, taintSource, taintReport);
         if (!source) continue;
         const { location, storageType, key, value } =
-          source as StorageTaintOperation;
+          source as StorageEnhancedFoxhoundOperation;
         storageOperations.push({
           type: "Read",
           location,
@@ -325,10 +329,10 @@ export function getStorageOperationsFromFoxhoundReports(
         });
       }
     } else {
-      const sink = toStorageTaintOperation(cx, taintSink, taintReport);
+      const sink = toStorageEnhancedOperation(cx, taintSink, taintReport);
       if (!sink) continue;
       const { location, storageType, key, value } =
-        sink as StorageTaintOperation;
+        sink as StorageEnhancedFoxhoundOperation;
       storageOperations.push({
         type: "Write",
         location,

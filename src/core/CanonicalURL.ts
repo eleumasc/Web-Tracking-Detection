@@ -1,9 +1,6 @@
 export function getCanonicalUrl(url: string): string {
   const { origin, pathname, searchParams } = new URL(url);
-  const pathSegments = pathname
-    .split("/")
-    .slice(1)
-    .map((segment) => (segment.length >= 8 ? "*" : segment));
+  const pathSegments = pathname.split("/").slice(1);
   const paramNames = [...searchParams.entries()]
     .flatMap(([key, value]) => (value ? [key] : []))
     .sort();

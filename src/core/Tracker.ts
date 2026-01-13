@@ -2,7 +2,6 @@ import _ from "lodash";
 import { Flow } from "./Flow";
 import { FlowEquivalence } from "./FlowEquivalence";
 import { getSiteFromUrl } from "../util/site";
-import { truncateTokenValues } from "./Token";
 
 export type Tracker = {
   site: string;

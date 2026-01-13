@@ -1,263 +1,119 @@
 import assert from "assert";
-import { countAlphanumChars } from "../../util/countChars";
-import { filter, flatMap, pipe } from "iter-tools";
 import { isIdentifiable } from "../identifierDetection/identifiable";
-import { OperationToken } from "../Token";
-import { toOperationToken } from "./TransformTree";
-import {
-  DefaultTransformTreeFactory,
-  traverseTransformTree,
-  LazyTransformTreeFactory,
-  TransformTreeFactoryStep,
-  applyTransform,
-  TransformToken,
-  TransformTree,
-} from "./TransformTree";
-import {
-  fromBase64,
-  fromJSON,
-  fromQueryValues,
-  fromURLEncoding,
-  MD5,
-  SHA1,
-  slice,
-  split,
-  toBase64,
-  toURLEncoding,
-  Transform,
-} from "./Transform";
+import { sliceToken } from "./transforms/slice";
+import { Token, tokenChain } from "./Token";
+import { TransformTree, traverseTransformTree } from "./TransformTree";
 
-export type SyntacticMatcher = (requestValue: string) => SyntacticMatcherResult;
-
-export type SyntacticMatcherResult = {
-  matches: SyntacticMatch[];
-  transformTree: TransformTree | null;
+export type SyntacticMatcherMatch = {
+  storageToken: Token;
+  requestToken: Token;
 };
 
-export type SyntacticMatch = {
-  storageToken: OperationToken;
-  requestToken: OperationToken;
-};
+export function syntacticMatcher(
+  storageTransformTree: TransformTree,
+  requestTransformTree: TransformTree
+): SyntacticMatcherMatch[] {
+  const matches: SyntacticMatcherMatch[] = [];
 
-export function createSyntacticMatcher(storageValue: string): SyntacticMatcher {
-  const storageTransformTreeFactory = new LazyTransformTreeFactory(
-    new DefaultTransformTreeFactory(storageValue, storageValueTransSteps)
-  );
-
-  return (requestValue: string) => {
-    const requestTransformTreeFactory = new LazyTransformTreeFactory(
-      new DefaultTransformTreeFactory(requestValue, requestValueParseSteps)
-    );
-
-    const redundantMatchSet = createRedundantMatchSet();
-
-    const matches: SyntacticMatch[] = [];
-    const transformTree = traverseTransformTree(
-      storageTransformTreeFactory,
-      (storagePath) => {
-        const { token: storageToken } = storagePath;
-        traverseTransformTree(requestTransformTreeFactory, (requestPath) => {
-          const { token: requestToken } = requestPath;
-          if (redundantMatchSet.has(requestToken, storageToken)) {
-            requestPath.skip();
-            return;
-          }
-          let index: number;
-          if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
-            if (isIdentifiable(storageToken.value)) {
-              // storageToken (identifier) is substring of requestToken
-              const [storageSliceToken] = applyTransform(
-                slice(0, storageToken.value.length),
-                storageToken
-              );
-              const [requestSliceToken] = applyTransform(
-                slice(index, index + storageToken.value.length),
-                requestToken
-              );
-              assert(storageToken.value === requestSliceToken.value);
-              matches.push({
-                storageToken: toOperationToken(storageToken),
-                requestToken: toOperationToken(requestSliceToken),
-              });
-              // By using drawChild(storageSliceToken) instead of draw(),
-              // every leaf in the transform tree is a matched storage identifier
-              storagePath.drawChild(storageSliceToken);
-              redundantMatchSet.add(storageToken, requestToken);
-              requestPath.skip();
-            }
-          } else if (
-            (index = storageToken.value.indexOf(requestToken.value)) !== -1
-          ) {
-            if (isIdentifiable(requestToken.value)) {
-              // requestToken (identifier) is substring of storageToken
-              const [storageSliceToken] = applyTransform(
-                slice(index, index + requestToken.value.length),
-                storageToken
-              );
-              assert(storageSliceToken.value === requestToken.value);
-              matches.push({
-                storageToken: toOperationToken(storageSliceToken),
-                requestToken: toOperationToken(requestToken),
-              });
-              storagePath.drawChild(storageSliceToken);
-              redundantMatchSet.add(storageToken, requestToken);
-              requestPath.skip();
-            }
-          }
-        });
-      }
-    );
-    return { matches, transformTree };
-  };
-}
-
-function createRedundantMatchSet() {
-  const redundantMatchMap = new WeakMap<
-    TransformToken,
-    WeakSet<TransformToken>
-  >();
-
-  const add = (
-    storageToken: TransformToken,
-    requestToken: TransformToken
-  ): void => {
-    let storageTokenSet = redundantMatchMap.get(requestToken);
-    if (!storageTokenSet) {
-      storageTokenSet = new WeakSet();
-      redundantMatchMap.set(requestToken, storageTokenSet);
-    }
-    storageTokenSet.add(storageToken);
+  const isTokenValueMatchable = (token: Token): boolean => {
+    const { value } = token;
+    return /[\x20-\x7E]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
   };
 
-  const has = (
-    storageToken: TransformToken,
-    requestToken: TransformToken
-  ): boolean => {
-    const storageTokenSet = redundantMatchMap.get(requestToken);
-    if (!storageTokenSet) {
+  const redundantMatchSet = new RedundantMatchSet();
+
+  traverseTransformTree(storageTransformTree, (storageToken) => {
+    if (!isTokenValueMatchable(storageToken)) {
+      // skip: storageToken is not matchable
       return false;
     }
-    for (let s: TransformToken | null = storageToken; s; s = s.input) {
-      if (storageTokenSet.has(s)) {
+
+    const isRedundantMatch = redundantMatchSet.createChecker(storageToken);
+
+    traverseTransformTree(requestTransformTree, (requestToken) => {
+      if (isRedundantMatch(requestToken)) {
+        // skip: a simpler match was already found
         return false;
       }
-    }
-    return true;
-  };
-
-  return { add, has };
-}
-
-export function storageValueTransSteps(): Iterable<TransformTreeFactoryStep> {
-  const Decoders = [
-    split,
-    fromBase64,
-    fromURLEncoding,
-    fromJSON,
-    fromQueryValues,
-  ];
-  const Encoders = [toBase64, toURLEncoding, MD5, SHA1];
-
-  function decodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      execute(input) {
-        return executeTransform(Decoders, input);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function encodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      execute(input) {
-        return executeTransform(Encoders, input);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function encodeSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return depth > 0 ? [encodeStep(() => encodeSteps(depth - 1))] : [];
-  }
-
-  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return [decodeStep(() => levelSteps(depth - 1)), ...encodeSteps(3)];
-  }
-
-  return levelSteps(3);
-}
-
-export function requestValueParseSteps(): Iterable<TransformTreeFactoryStep> {
-  const Decoders = [fromBase64, fromURLEncoding];
-  const Parsers = [split, fromJSON, fromQueryValues];
-
-  function decodeStep(
-    next: () => Iterable<TransformTreeFactoryStep>
-  ): TransformTreeFactoryStep {
-    return {
-      execute(input) {
-        return executeTransform(Decoders, input);
-      },
-      getNextSteps() {
-        return next();
-      },
-    };
-  }
-
-  function parseStep(): TransformTreeFactoryStep {
-    return {
-      execute(input) {
-        return executeTransform(Parsers, input);
-      },
-      getNextSteps() {
-        return [];
-      },
-    };
-  }
-
-  function levelSteps(depth: number): Iterable<TransformTreeFactoryStep> {
-    return depth > 0
-      ? [decodeStep(() => levelSteps(depth - 1)), parseStep()]
-      : [];
-  }
-
-  return levelSteps(3);
-}
-
-function executeTransform(
-  transforms: Transform[],
-  token: TransformToken
-): Iterable<TransformToken> {
-  return pipe(
-    filter(
-      (transform: Transform) =>
-        !(transform.inverts && token.input) ||
-        !transform.inverts(token.operation)
-    ),
-    flatMap((transform: Transform) => applyTransform(transform, token)),
-    filter(({ value }: TransformToken) => countAlphanumChars(value) >= 8),
-    distinctValueInInputChain
-  )(transforms);
-
-  function* distinctValueInInputChain(
-    tokens: Iterable<TransformToken>
-  ): IterableIterator<TransformToken> {
-    mainLoop: for (const token of tokens) {
-      const { value } = token;
-      for (let t = token.input; t; t = t.input) {
-        if (t.value === value) {
-          continue mainLoop;
-        }
+      if (!isTokenValueMatchable(requestToken)) {
+        // skip: storageToken is not matchable
+        return false;
       }
-      yield token;
+
+      let index: number;
+      if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
+        if (isIdentifiable(storageToken.value)) {
+          // storageToken (identifiable) is substring of requestToken
+          const requestSliceToken = sliceToken(
+            requestToken,
+            index,
+            index + storageToken.value.length
+          );
+          assert(storageToken.value === requestSliceToken.value);
+          matches.push({
+            storageToken,
+            requestToken: requestSliceToken,
+          });
+        }
+        redundantMatchSet.add(storageToken, requestToken);
+
+        // skip: matches involving descendants of requestToken are redundant
+        return false;
+      } else if (
+        (index = storageToken.value.indexOf(requestToken.value)) !== -1
+      ) {
+        if (isIdentifiable(requestToken.value)) {
+          // requestToken (identifiable) is substring of storageToken
+          const storageSliceToken = sliceToken(
+            storageToken,
+            index,
+            index + requestToken.value.length
+          );
+          assert(storageSliceToken.value === requestToken.value);
+          matches.push({
+            storageToken: storageSliceToken,
+            requestToken,
+          });
+        }
+        redundantMatchSet.add(storageToken, requestToken);
+
+        // skip: matches involving derivations of requestToken are redundant
+        return false;
+      } else {
+        // continue: a derived Token may yield a match
+        return true;
+      }
+    });
+
+    // continue: traverse the whole storageTransformTree
+    return true;
+  });
+
+  return matches;
+}
+
+class RedundantMatchSet {
+  readonly matchMap = new WeakMap<Token, Set<Token>>();
+
+  add(storageToken: Token, requestToken: Token): void {
+    let matchRequestTokenSet = this.matchMap.get(storageToken);
+    if (!matchRequestTokenSet) {
+      matchRequestTokenSet = new Set();
+      this.matchMap.set(storageToken, matchRequestTokenSet);
     }
+    matchRequestTokenSet.add(requestToken);
+  }
+
+  createChecker(storageToken: Token) {
+    const requestTokenSet = new Set<Token>();
+    for (const chainStorageToken of tokenChain(storageToken)) {
+      const matchRequestTokenSet = this.matchMap.get(chainStorageToken);
+      if (!matchRequestTokenSet) continue;
+      for (const matchRequestToken of matchRequestTokenSet) {
+        requestTokenSet.add(matchRequestToken);
+      }
+    }
+
+    return (requestToken: Token): boolean => requestTokenSet.has(requestToken);
   }
 }

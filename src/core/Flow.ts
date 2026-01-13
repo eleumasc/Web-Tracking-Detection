@@ -1,28 +1,28 @@
-import { OperationToken } from "./Token";
+import { Range } from "../util/Range";
+import { RequestParameterKey } from "./RequestItem";
 import { StorageItem } from "./StorageItem";
+import { Token } from "./syntacticMatching/Token";
 
 export type Flow = {
   storageItem: StorageItem;
   requestUrl: string;
-  matches: Match[];
 };
 
-export type Match = {
-  storageToken: OperationToken;
-  requestToken: OperationToken;
-  requestParameter: RequestParameter;
+export type TaintFlow = Flow & {
+  storageValue: string;
+  storageMatch: string;
+  storageRange: Range;
+  requestValue: string;
+  requestMatch: string;
+  requestRange: Range;
 };
 
-export type RequestParameter =
-  | { type: "unknown" }
-  | {
-      type: "urlPathSegment";
-      segmentIndex: number;
-    }
-  | {
-      type: "urlQueryParam";
-      paramKey: string;
-    }
-  | {
-      type: "postData";
-    };
+export type SyntacticFlow = Flow & {
+  matches: SyntacticMatch[];
+};
+
+export type SyntacticMatch = {
+  storageToken: Token;
+  requestToken: Token;
+  requestParamKey: RequestParameterKey;
+};
