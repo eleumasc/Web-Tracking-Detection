@@ -20,10 +20,16 @@ async function main(args: { filename: string }) {
   process.exit(0);
 }
 
-const argv = yargs(hideBin(process.argv))
-  .option("filename", { type: "string", demandOption: true })
-  .parseSync();
-
-main({
-  filename: argv.filename,
-});
+yargs(hideBin(process.argv))
+  .command(
+    "$0 <filename>",
+    "Inspect a Flatted JSON file",
+    (yargs) =>
+      yargs.positional("filename", {
+        describe: "Input file",
+        type: "string",
+        demandOption: true,
+      }),
+    (args) => main(args)
+  )
+  .parse();
