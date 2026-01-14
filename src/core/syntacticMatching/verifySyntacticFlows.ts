@@ -95,12 +95,33 @@ export function verifySyntacticFlows(
     }
   }
 
+  const moreMatchingRequestsFlows = _.difference(
+    flows,
+    zeroMatchingRequestsFlows,
+    oneMatchingRequestFlows
+  );
+  const trueMoreMatchingRequestsFlows = _.intersection(
+    moreMatchingRequestsFlows,
+    trueFlows
+  );
+  const fakeMoreMatchingRequestsFlows = _.intersection(
+    moreMatchingRequestsFlows,
+    fakeFlows
+  );
+  const unknownMoreMatchingRequestsFlows = _.intersection(
+    moreMatchingRequestsFlows,
+    unknownFlows
+  );
+
   return {
     trueFlows,
     fakeFlows,
     unknownFlows,
     zeroMatchingRequestsFlows,
     oneMatchingRequestFlows,
+    trueMoreMatchingRequestsFlows,
+    fakeMoreMatchingRequestsFlows,
+    unknownMoreMatchingRequestsFlows,
   };
 }
 

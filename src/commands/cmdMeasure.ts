@@ -20,15 +20,17 @@ import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { TrackerEquivalence, viewTrackers } from "../core/Tracker";
 import { verifySyntacticFlows } from "../core/syntacticMatching/verifySyntacticFlows";
 import {
+  casesCount,
+  createStatsReducer,
+  LocalStats,
+  Stats,
+  subLocalStats,
+} from "../core/Stats";
+import {
   CanonicalFlowEquivalence,
   viewSyntacticCanonicalFlows,
   viewTaintCanonicalFlows,
 } from "../core/CanonicalFlow";
-
-type CasesSitesEntry = {
-  cases: number;
-  sites: number;
-};
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -46,21 +48,8 @@ export default async function cmdMeasure(args: {
 
   let totalSites = 0;
   let successSites = 0;
-  let stats: Record<string, CasesSitesEntry> = {};
-  const addStats = (src: Record<string, number>) => {
-    _.assignWith(
-      stats,
-      src,
-      (
-        { cases, sites }: CasesSitesEntry = { cases: 0, sites: 0 },
-        value: number,
-        key: string
-      ) => ({
-        cases: cases + value,
-        sites: sites + (value !== 0 ? 1 : 0),
-      })
-    );
-  };
+  let stats: Stats = {};
+  const statsReducer = createStatsReducer();
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
@@ -80,7 +69,7 @@ export default async function cmdMeasure(args: {
 
       successSites += 1;
 
-      const partialStats = await execThread<ReturnType<typeof measureSite>>(
+      const localStats = await execThread<ReturnType<typeof measureSite>>(
         makeTaskFromFunction(measureSite, [
           {
             siteName,
@@ -91,7 +80,7 @@ export default async function cmdMeasure(args: {
         ])
       );
 
-      addStats(partialStats);
+      stats = statsReducer(stats, localStats);
     }
   );
 
@@ -190,12 +179,12 @@ export function measureSite(args: {
   const addDetails = (src: Record<string, any>) => {
     details = _.assign(details, src);
   };
-  let stats: Record<string, number> = {};
-  const addStats = (src: Record<string, any[]>) => {
-    stats = _.assign(
-      stats,
-      _.mapValues(src, (elements) => elements.length)
-    );
+  let stats: LocalStats = {};
+  const addStats = (localStats: LocalStats) => {
+    stats = _.assign(stats, localStats);
+  };
+  const addCasesCountStats = (obj: { [key: string]: any[] }) => {
+    addStats(_.mapValues(obj, (x) => casesCount(x)));
   };
 
   const taintTrackers = TrackerEquivalence.getAllKeys(rawTaintFlows);
@@ -223,7 +212,7 @@ export function measureSite(args: {
       rawSyntacticFlows
     ),
   });
-  addStats({
+  addCasesCountStats({
     intersectTrackers,
     onlyTaintTrackers,
     onlySyntacticTrackers,
@@ -241,7 +230,7 @@ export function measureSite(args: {
         verifyResult.trueFlows
       ),
     });
-    addStats({
+    addCasesCountStats({
       trueOnlySyntacticTrackers,
     });
   }
@@ -271,60 +260,38 @@ export function measureSite(args: {
       rawSyntacticFlows
     ),
   });
-  addStats({
+  addCasesCountStats({
     intersectFlows,
     onlyTaintFlows,
     onlySyntacticFlows,
   });
 
   if (verifyResult) {
-    const trueOnlySyntacticFlows = _.intersectionWith(
-      CanonicalFlowEquivalence.getAllKeys(verifyResult.trueFlows),
-      onlySyntacticFlows,
-      _.isEqual
-    );
-    const fakeOnlySyntacticFlows = _.intersectionWith(
-      CanonicalFlowEquivalence.getAllKeys(verifyResult.fakeFlows),
-      onlySyntacticFlows,
-      _.isEqual
-    );
-    const unknownOnlySyntacticFlows = _.intersectionWith(
-      CanonicalFlowEquivalence.getAllKeys(verifyResult.unknownFlows),
-      onlySyntacticFlows,
-      _.isEqual
-    );
-    const zeroMatchingRequestsOnlySyntacticFlows = _.intersectionWith(
-      CanonicalFlowEquivalence.getAllKeys(
-        verifyResult.zeroMatchingRequestsFlows
-      ),
-      onlySyntacticFlows,
-      _.isEqual
-    );
-    const oneMatchingRequestOnlySyntacticFlows = _.intersectionWith(
-      CanonicalFlowEquivalence.getAllKeys(verifyResult.oneMatchingRequestFlows),
-      onlySyntacticFlows,
-      _.isEqual
+    const onlySyntacticFlowsClasses = _.mapValues(verifyResult, (flows) =>
+      _.intersectionWith(
+        CanonicalFlowEquivalence.getAllKeys(flows),
+        onlySyntacticFlows,
+        _.isEqual
+      )
     );
     addDetails({
       trueOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        trueOnlySyntacticFlows,
+        onlySyntacticFlowsClasses.trueFlows,
         verifyResult.trueFlows
       ),
       fakeOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        fakeOnlySyntacticFlows,
+        onlySyntacticFlowsClasses.fakeFlows,
         verifyResult.fakeFlows
       ),
       unknownOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        unknownOnlySyntacticFlows,
+        onlySyntacticFlowsClasses.unknownFlows,
         verifyResult.unknownFlows
       ),
     });
     addStats({
-      trueOnlySyntacticFlows,
-      fakeOnlySyntacticFlows,
-      unknownOnlySyntacticFlows,
-      zeroMatchingRequestsOnlySyntacticFlows,
-      oneMatchingRequestOnlySyntacticFlows,
+      onlySyntacticFlowsClasses: subLocalStats(
+        _.mapValues(onlySyntacticFlowsClasses, (x) => casesCount(x))
+      ),
     });
   }
 
