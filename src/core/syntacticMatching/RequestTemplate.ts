@@ -95,9 +95,9 @@ export class RequestTemplate {
       holes.some((hole) => _.isEqual(hole, key)) ? undefined : value
     );
 
-    const urlQueryParamNames = extractUrlQueryParams(
-      parsedRequestUrl.search
-    ).map(({ key }) => (assert(key.type === "urlQueryParam"), key.name));
+    const urlQueryParamNames = extractUrlQueryParams(parsedRequestUrl.search)
+      .map(({ key }) => (assert(key.type === "urlQueryParam"), key.name))
+      .sort();
 
     return new RequestTemplate(
       holes,
