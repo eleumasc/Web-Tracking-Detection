@@ -53,12 +53,14 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const taintFlowsFile = `${siteName}+TF.json`;
   const syntacticFlowsFile = `${siteName}+SF.json`;
   const storageCanariesFile = `${siteName}+C.json`;
+  const auxVerifHarFile = `${siteName}+auxVerif.har.zip`;
 
   return toCompletion(async () => {
     let aux: StatefulTrackingAnalysisResult["aux"];
     let pre: StatefulTrackingAnalysisResult["pre"];
     let taint: StatefulTrackingAnalysisResult["taint"];
     let verif: StatefulTrackingAnalysisResult["verif"];
+    let auxVerif: StatefulTrackingAnalysisResult["auxVerif"];
 
     await useTempPath({ localTmpDir: true }, async (profilesDir) => {
       const guestProfilesDir = "/profiles";
@@ -123,12 +125,10 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
           taintTaintFile,
         });
 
-      // patch firefox profile storage of profiles/verif using altered storage items
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
         storageCanariesEntries.map(({ storageItem }) => storageItem)
       );
-
       const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           siteName,
@@ -141,13 +141,12 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         { extraBinds: [profilesBind] }
       );
       verif = {
-        storageCanariesFile,
         connectResult: verifConnectResult,
         harFile: verifHarFile,
         taintFlowsFile,
         syntacticFlowsFile,
+        storageCanariesFile,
       };
-
       writeOutputFileSync(
         path.join(outputName, taintFlowsFile),
         Flatted.stringify(taintFlows)
@@ -160,12 +159,38 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         path.join(outputName, storageCanariesFile),
         Flatted.stringify(storageCanariesEntries)
       );
+
+      patchFoxhoundProfileStorage(
+        path.join(profilesDir, "aux"),
+        storageCanariesEntries.map(({ storageItem }) => storageItem)
+      );
+      const auxVerifConnectResult: SimulateConnectResult = await execContainer(
+        makeTaskFromFunction(runSimulateConnect, [
+          siteName,
+          {
+            userDataDir: path.join(guestProfilesDir, "aux"),
+            outputName,
+            harFile: auxVerifHarFile,
+          },
+        ]),
+        { extraBinds: [profilesBind] }
+      );
+      auxVerif = {
+        connectResult: auxVerifConnectResult,
+        harFile: auxVerifHarFile,
+      };
     });
     assert(aux!);
     assert(pre!);
     assert(taint!);
 
-    return <StatefulTrackingAnalysisResult>{ aux, pre, taint, verif };
+    return <StatefulTrackingAnalysisResult>{
+      aux,
+      pre,
+      taint,
+      verif,
+      auxVerif,
+    };
   });
 }
 

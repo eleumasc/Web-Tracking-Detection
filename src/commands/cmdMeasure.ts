@@ -24,13 +24,11 @@ import {
   viewSyntacticCanonicalFlows,
   viewTaintCanonicalFlows,
 } from "../core/CanonicalFlow";
-import {
-  Accumulator,
-  assign,
-  countIf,
-  createMapReducer,
-  createReducer,
-} from "../util/Accumulator";
+
+type CasesSitesEntry = {
+  cases: number;
+  sites: number;
+};
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -46,29 +44,23 @@ export default async function cmdMeasure(args: {
 
   const outputName = `${currentTime()}-Measure-${analysisId}`;
 
-  const countIfNonZero = () => countIf((value) => value !== 0);
-  const pairCasesSites = () =>
-    createReducer(
-      () => ({ cases: 0, sites: 0 }),
-      (acc, value: number) => ({
-        cases: acc.cases + value,
-        sites: acc.sites + (value !== 0 ? 1 : 0),
+  let totalSites = 0;
+  let successSites = 0;
+  let stats: Record<string, CasesSitesEntry> = {};
+  const addStats = (src: Record<string, number>) => {
+    _.assignWith(
+      stats,
+      src,
+      (
+        { cases, sites }: CasesSitesEntry = { cases: 0, sites: 0 },
+        value: number,
+        key: string
+      ) => ({
+        cases: cases + value,
+        sites: sites + (value !== 0 ? 1 : 0),
       })
     );
-  const statsAccumulator = new Accumulator({
-    totalSites: countIfNonZero(),
-    successSites: countIfNonZero(),
-    intersectTrackers: pairCasesSites(),
-    onlyTaintTrackers: pairCasesSites(),
-    onlySyntacticTrackers: pairCasesSites(),
-    trueOnlySyntacticTrackers: pairCasesSites(),
-    intersectFlows: pairCasesSites(),
-    onlyTaintFlows: pairCasesSites(),
-    onlySyntacticFlows: pairCasesSites(),
-    trueOnlySyntacticFlows: pairCasesSites(),
-    fakeOnlySyntacticFlows: pairCasesSites(),
-    unknownOnlySyntacticFlows: pairCasesSites(),
-  });
+  };
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
@@ -77,7 +69,7 @@ export default async function cmdMeasure(args: {
       const siteName = analysisDocument.name;
       console.log(siteName, queueIndex);
 
-      statsAccumulator.add("totalSites", 1);
+      totalSites += 1;
 
       const analysisLogEntry = store.getDocumentData<
         AnalysisLogEntry<StatefulTrackingAnalysisResult>
@@ -86,7 +78,7 @@ export default async function cmdMeasure(args: {
       if (isFailure(analysisLogEntry)) return;
       const { value: staResult } = analysisLogEntry;
 
-      statsAccumulator.add("successSites", 1);
+      successSites += 1;
 
       const partialStats = await execThread<ReturnType<typeof measureSite>>(
         makeTaskFromFunction(measureSite, [
@@ -99,11 +91,15 @@ export default async function cmdMeasure(args: {
         ])
       );
 
-      statsAccumulator.addAll(partialStats);
+      addStats(partialStats);
     }
   );
 
-  const report = statsAccumulator.snapshot();
+  const report = {
+    totalSites,
+    successSites,
+    ...stats,
+  };
   console.log(report);
   writeOutputFileSync(
     path.join(outputName, "report.json"),
@@ -152,6 +148,9 @@ export function measureSite(args: {
       storageCanariesEntries,
       new HarReader(
         path.join(getOutputPath(analysisName), staResult.verif.harFile)
+      ),
+      new HarReader(
+        path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile)
       )
     );
   } else {
@@ -187,32 +186,17 @@ export function measureSite(args: {
   rawTaintFlows = filterThirdPartyFlows(rawTaintFlows);
   rawSyntacticFlows = filterThirdPartyFlows(rawSyntacticFlows);
 
-  const assignLength = () =>
-    createMapReducer(assign<number>(), (arr: any[]) => arr.length);
-  const detailsAccumulator = new Accumulator({
-    intersectTrackers: assign(),
-    onlyTaintTrackers: assign(),
-    onlySyntacticTrackers: assign(),
-    trueOnlySyntacticTrackers: assign(),
-    intersectFlows: assign(),
-    onlyTaintFlows: assign(),
-    onlySyntacticFlows: assign(),
-    trueOnlySyntacticFlows: assign(),
-    fakeOnlySyntacticFlows: assign(),
-    unknownOnlySyntacticFlows: assign(),
-  });
-  const statsAccumulator = new Accumulator({
-    intersectTrackers: assignLength(),
-    onlyTaintTrackers: assignLength(),
-    onlySyntacticTrackers: assignLength(),
-    trueOnlySyntacticTrackers: assignLength(),
-    intersectFlows: assignLength(),
-    onlyTaintFlows: assignLength(),
-    onlySyntacticFlows: assignLength(),
-    trueOnlySyntacticFlows: assignLength(),
-    fakeOnlySyntacticFlows: assignLength(),
-    unknownOnlySyntacticFlows: assignLength(),
-  });
+  let details: Record<string, any> = {};
+  const addDetails = (src: Record<string, any>) => {
+    details = _.assign(details, src);
+  };
+  let stats: Record<string, number> = {};
+  const addStats = (src: Record<string, any[]>) => {
+    stats = _.assign(
+      stats,
+      _.mapValues(src, (elements) => elements.length)
+    );
+  };
 
   const taintTrackers = TrackerEquivalence.getAllKeys(rawTaintFlows);
   const syntacticTrackers = TrackerEquivalence.getAllKeys(rawSyntacticFlows);
@@ -231,7 +215,7 @@ export function measureSite(args: {
     taintTrackers,
     _.isEqual
   );
-  detailsAccumulator.addAll({
+  addDetails({
     intersectTrackers: viewTrackers(intersectTrackers, rawTaintFlows),
     onlyTaintTrackers: viewTrackers(onlyTaintTrackers, rawTaintFlows),
     onlySyntacticTrackers: viewTrackers(
@@ -239,7 +223,7 @@ export function measureSite(args: {
       rawSyntacticFlows
     ),
   });
-  statsAccumulator.addAll({
+  addStats({
     intersectTrackers,
     onlyTaintTrackers,
     onlySyntacticTrackers,
@@ -251,13 +235,13 @@ export function measureSite(args: {
       onlySyntacticTrackers,
       _.isEqual
     );
-    detailsAccumulator.addAll({
+    addDetails({
       trueOnlySyntacticTrackers: viewTrackers(
         trueOnlySyntacticTrackers,
         verifyResult.trueFlows
       ),
     });
-    statsAccumulator.addAll({
+    addStats({
       trueOnlySyntacticTrackers,
     });
   }
@@ -279,7 +263,7 @@ export function measureSite(args: {
     taintFlows,
     _.isEqual
   );
-  detailsAccumulator.addAll({
+  addDetails({
     intersectFlows: viewTaintCanonicalFlows(intersectFlows, rawTaintFlows),
     onlyTaintFlows: viewTaintCanonicalFlows(onlyTaintFlows, rawTaintFlows),
     onlySyntacticFlows: viewSyntacticCanonicalFlows(
@@ -287,7 +271,7 @@ export function measureSite(args: {
       rawSyntacticFlows
     ),
   });
-  statsAccumulator.addAll({
+  addStats({
     intersectFlows,
     onlyTaintFlows,
     onlySyntacticFlows,
@@ -309,7 +293,19 @@ export function measureSite(args: {
       onlySyntacticFlows,
       _.isEqual
     );
-    detailsAccumulator.addAll({
+    const zeroMatchingRequestsOnlySyntacticFlows = _.intersectionWith(
+      CanonicalFlowEquivalence.getAllKeys(
+        verifyResult.zeroMatchingRequestsFlows
+      ),
+      onlySyntacticFlows,
+      _.isEqual
+    );
+    const oneMatchingRequestOnlySyntacticFlows = _.intersectionWith(
+      CanonicalFlowEquivalence.getAllKeys(verifyResult.oneMatchingRequestFlows),
+      onlySyntacticFlows,
+      _.isEqual
+    );
+    addDetails({
       trueOnlySyntacticFlows: viewSyntacticCanonicalFlows(
         trueOnlySyntacticFlows,
         verifyResult.trueFlows
@@ -323,10 +319,12 @@ export function measureSite(args: {
         verifyResult.unknownFlows
       ),
     });
-    statsAccumulator.addAll({
+    addStats({
       trueOnlySyntacticFlows,
       fakeOnlySyntacticFlows,
       unknownOnlySyntacticFlows,
+      zeroMatchingRequestsOnlySyntacticFlows,
+      oneMatchingRequestOnlySyntacticFlows,
     });
   }
 
@@ -334,9 +332,9 @@ export function measureSite(args: {
     path.join(outputName, `${siteName}.json`),
     JSON.stringify({
       site: siteName,
-      ...detailsAccumulator.snapshot(),
+      ...details,
     })
   );
 
-  return statsAccumulator.snapshot();
+  return stats;
 }

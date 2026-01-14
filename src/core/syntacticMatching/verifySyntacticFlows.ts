@@ -1,18 +1,13 @@
 import _ from "lodash";
 import assert from "assert";
 import { Flow, SyntacticFlow } from "../Flow";
+import { getRequestItemsFromHar, RequestItem } from "../RequestItem";
 import { HarReader } from "../../util/HarReader";
 import { memoize } from "../../util/memoize";
 import { parseRequestValueEdges } from "./edges";
+import { RequestTemplate } from "./RequestTemplate";
 import { StorageCanariesEntry } from "./computeCanaries";
 import { TransformTree, traverseTransformTree } from "./TransformTree";
-import { URLTemplate } from "./URLTemplate";
-import {
-  getRequestItemsFromHar,
-  RequestItem,
-  RequestParameter,
-  RequestParameterKey,
-} from "../RequestItem";
 
 export type VerifySyntacticFlowsResult = {
   trueFlows: Flow[];
@@ -23,15 +18,19 @@ export type VerifySyntacticFlowsResult = {
 export function verifySyntacticFlows(
   flows: SyntacticFlow[],
   storageCanariesEntries: StorageCanariesEntry[],
-  verifHarReader: HarReader
+  verifHarReader: HarReader,
+  auxVerifHarReader: HarReader
 ) {
   const trueFlows: SyntacticFlow[] = [];
   const fakeFlows: SyntacticFlow[] = [];
   const unknownFlows: SyntacticFlow[] = [];
 
-  const requestItems = getRequestItemsFromHar(verifHarReader);
+  const zeroMatchingRequestsFlows: SyntacticFlow[] = [];
+  const oneMatchingRequestFlows: SyntacticFlow[] = [];
 
-  const transformRequestValue = memoize((initialValue: string): string[] => {
+  const verifRequestItems = getRequestItemsFromHar(verifHarReader);
+  const auxVerifRequestItems = getRequestItemsFromHar(auxVerifHarReader);
+  const parseRequestValue = memoize((initialValue: string): string[] => {
     const requestValues: string[] = [];
     traverseTransformTree(
       new TransformTree(parseRequestValueEdges, initialValue),
@@ -47,44 +46,52 @@ export function verifySyntacticFlows(
     const {
       storageItem: { id: storageId },
     } = flow;
-    const { canaries, originalCanaries } = storageCanariesEntries.find(
-      (entry) => _.isEqual(entry.storageItem.id, storageId)
-    )!;
+
+    const canaries = storageCanariesEntries.find((entry) =>
+      _.isEqual(entry.storageItem.id, storageId)
+    )?.canaries;
     assert(canaries);
 
-    const urlTemplate = URLTemplate.fromSyntacticFlow(flow);
-    const fittingRequestItems = requestItems.filter(({ url: requestUrl }) =>
-      urlTemplate.fits(requestUrl)
+    const requestTemplate = RequestTemplate.fromSyntacticFlow(flow);
+
+    const matchingVerifRequestItems = getMatchingRequestItems(
+      verifRequestItems,
+      requestTemplate
     );
-    if (fittingRequestItems.length === 0) {
+    const matchingAuxVerifRequestItems = getMatchingRequestItems(
+      auxVerifRequestItems,
+      requestTemplate
+    );
+    if (matchingVerifRequestItems.length === 0) {
       unknownFlows.push(flow);
+    } else if (
+      matchingVerifRequestItems.some(({ params }) =>
+        params.some(({ value: initialRequestValue }) =>
+          parseRequestValue(initialRequestValue).some((requestValue) =>
+            canaries.some((canary) => requestValue.includes(canary.modified))
+          )
+        )
+      )
+    ) {
+      trueFlows.push(flow);
+    } else if (
+      matchingAuxVerifRequestItems.every(({ params }) =>
+        params.some(({ value: initialRequestValue }) =>
+          parseRequestValue(initialRequestValue).some((requestValue) =>
+            canaries.some((canary) => requestValue.includes(canary.original))
+          )
+        )
+      )
+    ) {
+      fakeFlows.push(flow);
     } else {
-      const urlPlaceholders = urlTemplate.getPlaceholders();
-      if (
-        fittingRequestItems.some((requestItem) => {
-          const requestParams = getRequestParams(requestItem, urlPlaceholders);
-          return requestParams.some(({ value: initialRequestValue }) =>
-            transformRequestValue(initialRequestValue).some((requestValue) =>
-              canaries.some((canary) => requestValue.includes(canary))
-            )
-          );
-        })
-      ) {
-        trueFlows.push(flow);
-      } else if (
-        fittingRequestItems.every((requestItem) => {
-          const requestParams = getRequestParams(requestItem, urlPlaceholders);
-          return requestParams.some(({ value: initialRequestValue }) =>
-            transformRequestValue(initialRequestValue).some((requestValue) =>
-              originalCanaries.some((canary) => requestValue.includes(canary))
-            )
-          );
-        })
-      ) {
-        fakeFlows.push(flow);
-      } else {
-        unknownFlows.push(flow);
-      }
+      unknownFlows.push(flow);
+    }
+
+    if (matchingVerifRequestItems.length === 0) {
+      zeroMatchingRequestsFlows.push(flow);
+    } else if (matchingVerifRequestItems.length === 1) {
+      oneMatchingRequestFlows.push(flow);
     }
   }
 
@@ -92,16 +99,24 @@ export function verifySyntacticFlows(
     trueFlows,
     fakeFlows,
     unknownFlows,
+    zeroMatchingRequestsFlows,
+    oneMatchingRequestFlows,
   };
 }
 
-function getRequestParams(
-  requestItem: RequestItem,
-  urlPlaceholders: RequestParameterKey[]
-): RequestParameter[] {
-  return requestItem.params.filter(
-    ({ key }) =>
-      key.type === "postData" ||
-      urlPlaceholders.some((placeholder) => _.isEqual(placeholder, key))
-  );
+function getMatchingRequestItems(
+  requestItems: RequestItem[],
+  requestTemplate: RequestTemplate
+): RequestItem[] {
+  return requestItems
+    .filter((requestItem) => requestTemplate.matchesUrl(requestItem.url))
+    .map(
+      ({ url, params }): RequestItem => ({
+        url,
+        params: params.filter((param) =>
+          requestTemplate.includesHole(param.key)
+        ),
+      })
+    )
+    .filter(({ params }) => params.length > 0);
 }

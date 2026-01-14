@@ -9,8 +9,12 @@ import { Token, tokenChain } from "./Token";
 
 export type StorageCanariesEntry = {
   storageItem: StorageItem;
-  canaries: string[];
-  originalCanaries: string[];
+  canaries: Canary[];
+};
+
+export type Canary = {
+  modified: string;
+  original: string;
 };
 
 type StateEntry = {
@@ -113,14 +117,19 @@ export function computeCanaries(
     };
   });
 
-  return actualState.map(
-    (entry, index): StorageCanariesEntry => ({
-      storageItem: entry.storageItem,
-      canaries: entry.tokens.map((token) => token.value),
-      originalCanaries: actualOriginalState[index].tokens.map(
-        (token) => token.value
-      ),
-    })
+  return _.uniqWith(
+    actualState.map(
+      (entry, entryIndex): StorageCanariesEntry => ({
+        storageItem: entry.storageItem,
+        canaries: entry.tokens.map(
+          (token, tokenIndex): Canary => ({
+            modified: token.value,
+            original: actualOriginalState[entryIndex].tokens[tokenIndex].value,
+          })
+        ),
+      })
+    ),
+    _.isEqual
   );
 }
 

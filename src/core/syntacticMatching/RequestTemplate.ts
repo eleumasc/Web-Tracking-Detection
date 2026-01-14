@@ -7,19 +7,15 @@ import {
   RequestParameterKey,
 } from "../RequestItem";
 
-export class URLTemplate {
+export class RequestTemplate {
   constructor(
+    readonly holes: RequestParameterKey[],
     readonly origin: string,
-    readonly placeholders: RequestParameterKey[],
     readonly fixedUrlPathSegments: (string | undefined)[],
     readonly urlQueryParamNames: string[]
   ) {}
 
-  getPlaceholders(): RequestParameterKey[] {
-    return [...this.placeholders];
-  }
-
-  fits(url: string): boolean {
+  matchesUrl(url: string): boolean {
     const parsedUrl = new URL(url);
 
     const { origin } = parsedUrl;
@@ -58,35 +54,8 @@ export class URLTemplate {
     return true;
   }
 
-  static fromSyntacticFlow(flow: SyntacticFlow): URLTemplate {
-    const { requestUrl, matches } = flow;
-    const parsedRequestUrl = new URL(requestUrl);
-
-    const { origin } = parsedRequestUrl;
-
-    const placeholders = _.uniqWith(
-      matches.map((match) => match.requestParamKey),
-      _.isEqual
-    );
-
-    const fixedUrlPathSegments = extractUrlPathSegments(
-      parsedRequestUrl.pathname
-    ).map(({ key, value }) =>
-      placeholders.some((placeholder) => _.isEqual(placeholder, key))
-        ? undefined
-        : value
-    );
-
-    const urlQueryParamNames = extractUrlQueryParams(
-      parsedRequestUrl.search
-    ).map(({ key }) => (assert(key.type === "urlQueryParam"), key.name));
-
-    return new URLTemplate(
-      origin,
-      placeholders,
-      fixedUrlPathSegments,
-      urlQueryParamNames
-    );
+  includesHole(hole: RequestParameterKey): boolean {
+    return this.holes.some((thatHole) => _.isEqual(thatHole, hole));
   }
 
   toString() {
@@ -99,14 +68,42 @@ export class URLTemplate {
     s += "?";
     s += this.urlQueryParamNames
       .map((name) =>
-        this.placeholders.some(
-          (placeholder) =>
-            placeholder.type === "urlQueryParam" && placeholder.name === name
+        this.holes.some(
+          (hole) => hole.type === "urlQueryParam" && hole.name === name
         )
           ? `${name}=$ID`
           : name
       )
       .join("&");
     return s;
+  }
+
+  static fromSyntacticFlow(flow: SyntacticFlow): RequestTemplate {
+    const { requestUrl, matches } = flow;
+    const parsedRequestUrl = new URL(requestUrl);
+
+    const { origin } = parsedRequestUrl;
+
+    const holes = _.uniqWith(
+      matches.map((match) => match.requestParamKey),
+      _.isEqual
+    );
+
+    const fixedUrlPathSegments = extractUrlPathSegments(
+      parsedRequestUrl.pathname
+    ).map(({ key, value }) =>
+      holes.some((hole) => _.isEqual(hole, key)) ? undefined : value
+    );
+
+    const urlQueryParamNames = extractUrlQueryParams(
+      parsedRequestUrl.search
+    ).map(({ key }) => (assert(key.type === "urlQueryParam"), key.name));
+
+    return new RequestTemplate(
+      holes,
+      origin,
+      fixedUrlPathSegments,
+      urlQueryParamNames
+    );
   }
 }
