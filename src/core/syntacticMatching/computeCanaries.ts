@@ -28,7 +28,8 @@ type AlterStateTarget = {
   entry: StateEntry;
   entryIndex: number;
   token: Token;
-  newValue: string;
+  begin: number;
+  end: number;
 };
 
 export function computeCanaries(
@@ -64,49 +65,48 @@ export function computeCanaries(
   // We choose the shortest one, which might be included in other canaries
   let targetCanary: string | undefined;
   let it1 = 100;
-  targetCanaryLoop: while (
-    (targetCanary = findTargetCanary(state, originalCanaries))
-  ) {
+  while ((targetCanary = findTargetCanary(state, originalCanaries))) {
     if (it1 === 0) {
       throw new Error("findTargetCanary iteration limit reached");
     }
     it1 -= 1;
-    // Generate newCanary
-    newCanaryLoop: for (const newCanary of alterValue(targetCanary)) {
-      try {
-        // While there is a token whose value includes targetCanary
-        // Try to alter state using newCanary
-        let newState = state;
-        let alterStateTarget: AlterStateTarget | undefined;
-        let it2 = 100;
-        while (
-          (alterStateTarget = findAlterStateTarget(
-            newState,
-            targetCanary,
-            newCanary
-          ))
-        ) {
-          if (it2 === 0) {
-            throw new Error("findAlterStateTarget iteration limit reached");
-          }
-          it2 -= 1;
-          newState = alterState(newState, alterStateTarget);
-        }
-        // All occurrences of targetCanary are replaced with newCanary
-        // Continue with next targetCanary
-        state = newState;
-        continue targetCanaryLoop;
-      } catch (e) {
-        if (e instanceof StateInvariantError) {
-          // Try with another newCanary
+    // While there is a token whose value includes targetCanary
+    const usedNewCanarySet = new Set<string>();
+    let alterStateTarget: AlterStateTarget | undefined;
+    let it2 = 100;
+    alterStateTargetLoop: while (
+      (alterStateTarget = findAlterStateTarget(state, targetCanary))
+    ) {
+      if (it2 === 0) {
+        throw new Error("findAlterStateTarget iteration limit reached");
+      }
+      it2 -= 1;
+      // Generate newCanary
+      newCanaryLoop: for (const newCanary of alterValue(targetCanary)) {
+        if (usedNewCanarySet.has(newCanary)) {
+          // Do not reuse newCanary
           continue newCanaryLoop;
-        } else {
-          // Generic error, abort
-          throw e;
+        }
+        const newValue = computeNewValue(alterStateTarget, newCanary);
+        try {
+          // Try to alter state
+          state = alterState(state, alterStateTarget, newValue);
+          // This occurrence of targetCanary has been replaced with newCanary
+          // Continue with next alterStateTarget
+          usedNewCanarySet.add(newCanary);
+          continue alterStateTargetLoop;
+        } catch (e) {
+          if (e instanceof StateInvariantError) {
+            // Try with another newCanary
+            continue newCanaryLoop;
+          } else {
+            // Generic error, abort
+            throw e;
+          }
         }
       }
+      throw new Error("Cannot replace targetCanary with newCanary");
     }
-    throw new Error("Cannot replace targetCanary with newCanary");
   }
 
   const actualState: State = state.map((entry): StateEntry => {
@@ -175,8 +175,7 @@ function findTargetCanary(
 
 function findAlterStateTarget(
   state: State,
-  targetCanary: string,
-  newCanary: string
+  targetCanary: string
 ): AlterStateTarget | undefined {
   for (const [entryIndex, entry] of enumerate(state)) {
     for (const token of entry.tokens) {
@@ -186,12 +185,8 @@ function findAlterStateTarget(
           entry,
           entryIndex,
           token,
-          newValue: replaceStringAt(
-            token.value,
-            newCanary,
-            index,
-            index + targetCanary.length
-          ),
+          begin: index,
+          end: index + targetCanary.length,
         };
       }
     }
@@ -199,9 +194,17 @@ function findAlterStateTarget(
   return undefined;
 }
 
+function computeNewValue(
+  { token, begin, end }: AlterStateTarget,
+  newCanary: string
+) {
+  return replaceStringAt(token.value, newCanary, begin, end);
+}
+
 function alterState(
   state: State,
-  { entry, entryIndex, token, newValue }: AlterStateTarget
+  { entry, entryIndex, token }: AlterStateTarget,
+  newValue: string
 ): State {
   const newInitialValue = computeReverse(token, newValue);
 
