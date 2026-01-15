@@ -109,45 +109,47 @@ export function computeCanaries(
     }
   }
 
-  const actualState: State = state.map((entry): StateEntry => {
+  const actualState: State = state.map((entry, entryIndex): StateEntry => {
     const recomputeToken = createRecomputeToken(entry.storageItem.value);
     return {
       storageItem: entry.storageItem,
-      tokens: entry.tokens.map((token) => recomputeToken(token)),
+      tokens: actualOriginalState[entryIndex].tokens.map((token) =>
+        recomputeToken(token)
+      ),
     };
   });
 
-  return _.uniqWith(
-    actualState.map(
-      (entry, entryIndex): StorageCanariesEntry => ({
-        storageItem: entry.storageItem,
-        canaries: entry.tokens.map(
+  return actualState.map(
+    (entry, entryIndex): StorageCanariesEntry => ({
+      storageItem: entry.storageItem,
+      canaries: _.uniqWith(
+        entry.tokens.map(
           (token, tokenIndex): Canary => ({
             modified: token.value,
             original: actualOriginalState[entryIndex].tokens[tokenIndex].value,
           })
         ),
-      })
-    ),
-    _.isEqual
+        _.isEqual
+      ),
+    })
   );
 }
 
 function findReversibleToken(token: Token): Token {
-  const result = reduce(undefined, (acc: Token | undefined, cur: Token) => {
+  const result = reduce(null, (acc: Token | null, cur: Token) => {
     if (acc) {
-      // acc is not undefined: reset if cur is non-reversible
+      // acc is not null: reset if cur is non-reversible
       if (cur.chain && !cur.transform.reverse) {
-        return undefined;
+        return null;
       } else {
         return acc;
       }
     } else {
-      // acc is undefined: set if cur is reversible
+      // acc is null: set if cur is reversible
       if (!cur.chain || cur.transform.reverse) {
         return cur;
       } else {
-        return undefined;
+        return null;
       }
     }
   })(tokenChain(token));
