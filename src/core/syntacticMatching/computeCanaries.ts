@@ -227,7 +227,7 @@ function computeReverse(token: Token, newValue: string): string {
     try {
       newValue = transform.reverse(newValue, originalInput);
     } catch (e) {
-      throw new StateInvariantError(`Failed reverse: ${String(e)}`);
+      throw new StateInvariantError(`Failed transform.reverse(): ${String(e)}`);
     }
   }
   return newValue;
@@ -259,7 +259,12 @@ function createRecomputeToken(newInitialValue: string) {
 
     const newChain = recomputeToken(token.chain);
     const { transform } = token;
-    const newValue = transform.apply(newChain.value);
+    let newValue: string;
+    try {
+      newValue = transform.apply(newChain.value);
+    } catch (e) {
+      throw new StateInvariantError(`Failed transform.apply(): ${String(e)}`);
+    }
     return {
       chain: newChain,
       transform,
