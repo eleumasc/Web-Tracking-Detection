@@ -1,8 +1,4 @@
-import { FoxhoundReport } from "../foxhound/types";
 import { SimulateConnectResult } from "./simulateConnect";
-import { StorageCanariesEntry } from "./syntacticMatching/verifySyntacticFlows";
-import { StorageItem } from "./StorageItem";
-import { StorageState } from "./StorageState";
 
 export interface AnalysisResult {}
 

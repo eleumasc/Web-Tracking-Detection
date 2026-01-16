@@ -1,32 +1,28 @@
 import _ from "lodash";
 import assert from "assert";
-import { Flow, SyntacticFlow } from "../Flow";
 import { getRequestItemsFromHar, RequestItem } from "../RequestItem";
 import { HarReader } from "../../util/HarReader";
 import { memoize } from "../../util/memoize";
 import { parseRequestValueEdges } from "./edges";
 import { RequestTemplate } from "./RequestTemplate";
 import { StorageCanariesEntry } from "./computeCanaries";
+import { SyntacticFlow } from "../Flow";
 import { TransformTree, traverseTransformTree } from "./TransformTree";
+import {
+  TrackingRequest,
+  TrackingRequestEquivalence,
+} from "../TrackingRequest";
 
-export type VerifySyntacticFlowsResult = {
-  trueFlows: Flow[];
-  fakeFlows: Flow[];
-  unknownFlows: Flow[];
-};
-
-export function verifySyntacticFlows(
+export function verifySyntacticTrackingRequests(
+  trkRequests: TrackingRequest[],
   flows: SyntacticFlow[],
   storageCanariesEntries: StorageCanariesEntry[],
   verifHarReader: HarReader,
   auxVerifHarReader: HarReader
 ) {
-  const trueFlows: SyntacticFlow[] = [];
-  const fakeFlows: SyntacticFlow[] = [];
+  const verifiedFlows: SyntacticFlow[] = [];
+  const confutedFlows: SyntacticFlow[] = [];
   const unknownFlows: SyntacticFlow[] = [];
-
-  const zeroMatchingRequestsFlows: SyntacticFlow[] = [];
-  const oneMatchingRequestFlows: SyntacticFlow[] = [];
 
   const verifRequestItems = getRequestItemsFromHar(verifHarReader);
   const auxVerifRequestItems = getRequestItemsFromHar(auxVerifHarReader);
@@ -53,7 +49,6 @@ export function verifySyntacticFlows(
     assert(canaries);
 
     const requestTemplate = RequestTemplate.fromSyntacticFlow(flow);
-
     const matchingVerifRequestItems = getMatchingRequestItems(
       verifRequestItems,
       requestTemplate
@@ -62,6 +57,7 @@ export function verifySyntacticFlows(
       auxVerifRequestItems,
       requestTemplate
     );
+
     if (matchingVerifRequestItems.length === 0) {
       unknownFlows.push(flow);
     } else if (
@@ -73,7 +69,7 @@ export function verifySyntacticFlows(
         )
       )
     ) {
-      trueFlows.push(flow);
+      verifiedFlows.push(flow);
     } else if (
       matchingAuxVerifRequestItems.every(({ params }) =>
         params.some(({ value: initialRequestValue }) =>
@@ -83,45 +79,44 @@ export function verifySyntacticFlows(
         )
       )
     ) {
-      fakeFlows.push(flow);
+      confutedFlows.push(flow);
     } else {
       unknownFlows.push(flow);
     }
+  }
 
-    if (matchingVerifRequestItems.length === 0) {
-      zeroMatchingRequestsFlows.push(flow);
-    } else if (matchingVerifRequestItems.length === 1) {
-      oneMatchingRequestFlows.push(flow);
+  const verifiedRequests: TrackingRequest[] = [];
+  const confutedRequests: TrackingRequest[] = [];
+  const unknownRequests: TrackingRequest[] = [];
+
+  for (const trkRequest of trkRequests) {
+    const matchingFlows = TrackingRequestEquivalence.filterValuesByKey(
+      trkRequest,
+      flows
+    );
+    assert(matchingFlows.length > 0);
+    if (
+      matchingFlows.some((matchingFlow) => verifiedFlows.includes(matchingFlow))
+    ) {
+      verifiedRequests.push(trkRequest);
+    } else if (
+      matchingFlows.every((matchingFlow) =>
+        confutedFlows.includes(matchingFlow)
+      )
+    ) {
+      confutedRequests.push(trkRequest);
+    } else {
+      unknownRequests.push(trkRequest);
     }
   }
 
-  const moreMatchingRequestsFlows = _.difference(
-    flows,
-    zeroMatchingRequestsFlows,
-    oneMatchingRequestFlows
-  );
-  const trueMoreMatchingRequestsFlows = _.intersection(
-    moreMatchingRequestsFlows,
-    trueFlows
-  );
-  const fakeMoreMatchingRequestsFlows = _.intersection(
-    moreMatchingRequestsFlows,
-    fakeFlows
-  );
-  const unknownMoreMatchingRequestsFlows = _.intersection(
-    moreMatchingRequestsFlows,
-    unknownFlows
-  );
-
   return {
-    trueFlows,
-    fakeFlows,
+    verifiedFlows,
+    confutedFlows,
     unknownFlows,
-    zeroMatchingRequestsFlows,
-    oneMatchingRequestFlows,
-    trueMoreMatchingRequestsFlows,
-    fakeMoreMatchingRequestsFlows,
-    unknownMoreMatchingRequestsFlows,
+    verifiedRequests,
+    confutedRequests,
+    unknownRequests,
   };
 }
 

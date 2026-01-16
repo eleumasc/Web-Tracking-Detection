@@ -17,8 +17,7 @@ import { processFlows } from "../core/processFlows";
 import { processTaskQueue } from "../util/TaskQueue";
 import { readFileSync } from "fs";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
-import { TrackerEquivalence, viewTrackers } from "../core/Tracker";
-import { verifySyntacticFlows } from "../core/syntacticMatching/verifySyntacticFlows";
+import { verifySyntacticTrackingRequests } from "../core/syntacticMatching/verifySyntacticTrackingRequests";
 import {
   casesCount,
   createStatsReducer,
@@ -27,10 +26,11 @@ import {
   subLocalStats,
 } from "../core/Stats";
 import {
-  CanonicalFlowEquivalence,
-  viewSyntacticCanonicalFlows,
-  viewTaintCanonicalFlows,
-} from "../core/CanonicalFlow";
+  TrackingRequest,
+  TrackingRequestEquivalence,
+  viewSyntacticTrackingRequests,
+  viewTaintTrackingRequests,
+} from "../core/TrackingRequest";
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -107,16 +107,16 @@ export function measureSite(args: {
 }) {
   const { siteName, analysisName, outputName, staResult, forceNoVerif } = args;
 
-  let rawTaintFlows: TaintFlow[];
-  let rawSyntacticFlows: SyntacticFlow[];
-  let verifyResult;
+  let taintFlows: TaintFlow[];
+  let syntacticFlows: SyntacticFlow[];
+  let doVerify;
   if (staResult.verif && !forceNoVerif) {
-    rawTaintFlows = Flatted.parse(
+    taintFlows = Flatted.parse(
       readFileSync(
         path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)
       ).toString()
     );
-    rawSyntacticFlows = Flatted.parse(
+    syntacticFlows = Flatted.parse(
       readFileSync(
         path.join(
           getOutputPath(analysisName),
@@ -132,16 +132,18 @@ export function measureSite(args: {
         )
       ).toString()
     );
-    verifyResult = verifySyntacticFlows(
-      rawSyntacticFlows,
-      storageCanariesEntries,
-      new HarReader(
-        path.join(getOutputPath(analysisName), staResult.verif.harFile)
-      ),
-      new HarReader(
-        path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile)
-      )
-    );
+    doVerify = (trkRequests: TrackingRequest[]) =>
+      verifySyntacticTrackingRequests(
+        trkRequests,
+        syntacticFlows,
+        storageCanariesEntries,
+        new HarReader(
+          path.join(getOutputPath(analysisName), staResult.verif!.harFile)
+        ),
+        new HarReader(
+          path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile)
+        )
+      );
   } else {
     const processed = processFlows({
       analysisName,
@@ -150,16 +152,16 @@ export function measureSite(args: {
       taintHarFile: staResult.taint.harFile,
       taintTaintFile: staResult.taint.taintFile,
     });
-    rawTaintFlows = processed.taintFlows;
-    rawSyntacticFlows = processed.syntacticFlows;
+    taintFlows = processed.taintFlows;
+    syntacticFlows = processed.syntacticFlows;
     const storageCanariesEntries = processed.storageCanariesEntries;
     writeOutputFileSync(
       path.join(outputName, `${siteName}+TF.json`),
-      Flatted.stringify(rawTaintFlows)
+      Flatted.stringify(taintFlows)
     );
     writeOutputFileSync(
       path.join(outputName, `${siteName}+SF.json`),
-      Flatted.stringify(rawSyntacticFlows)
+      Flatted.stringify(syntacticFlows)
     );
     writeOutputFileSync(
       path.join(outputName, `${siteName}+C.json`),
@@ -172,8 +174,8 @@ export function measureSite(args: {
   );
   const filterThirdPartyFlows = <T extends Flow>(flows: T[]): T[] =>
     flows.filter((flow) => getSiteFromUrl(flow.requestUrl) !== firstParty);
-  rawTaintFlows = filterThirdPartyFlows(rawTaintFlows);
-  rawSyntacticFlows = filterThirdPartyFlows(rawSyntacticFlows);
+  taintFlows = filterThirdPartyFlows(taintFlows);
+  syntacticFlows = filterThirdPartyFlows(syntacticFlows);
 
   let details: Record<string, any> = {};
   const addDetails = (src: Record<string, any>) => {
@@ -187,110 +189,68 @@ export function measureSite(args: {
     addStats(_.mapValues(obj, (x) => casesCount(x)));
   };
 
-  const taintTrackers = TrackerEquivalence.getAllKeys(rawTaintFlows);
-  const syntacticTrackers = TrackerEquivalence.getAllKeys(rawSyntacticFlows);
-  const intersectTrackers = _.intersectionWith(
-    taintTrackers,
-    syntacticTrackers,
+  const taintRequests = TrackingRequestEquivalence.getAllKeys(taintFlows);
+  const syntacticRequests =
+    TrackingRequestEquivalence.getAllKeys(syntacticFlows);
+  const intersectRequests = _.intersectionWith(
+    taintRequests,
+    syntacticRequests,
     _.isEqual
   );
-  const onlyTaintTrackers = _.differenceWith(
-    taintTrackers,
-    syntacticTrackers,
+  const onlyTaintRequests = _.differenceWith(
+    taintRequests,
+    syntacticRequests,
     _.isEqual
   );
-  const onlySyntacticTrackers = _.differenceWith(
-    syntacticTrackers,
-    taintTrackers,
-    _.isEqual
-  );
-  addDetails({
-    intersectTrackers: viewTrackers(intersectTrackers, rawTaintFlows),
-    onlyTaintTrackers: viewTrackers(onlyTaintTrackers, rawTaintFlows),
-    onlySyntacticTrackers: viewTrackers(
-      onlySyntacticTrackers,
-      rawSyntacticFlows
-    ),
-  });
-  addCasesCountStats({
-    intersectTrackers,
-    onlyTaintTrackers,
-    onlySyntacticTrackers,
-  });
-
-  if (verifyResult) {
-    const trueOnlySyntacticTrackers = _.intersectionWith(
-      TrackerEquivalence.getAllKeys(verifyResult.trueFlows),
-      onlySyntacticTrackers,
-      _.isEqual
-    );
-    addDetails({
-      trueOnlySyntacticTrackers: viewTrackers(
-        trueOnlySyntacticTrackers,
-        verifyResult.trueFlows
-      ),
-    });
-    addCasesCountStats({
-      trueOnlySyntacticTrackers,
-    });
-  }
-
-  const taintFlows = CanonicalFlowEquivalence.getAllKeys(rawTaintFlows);
-  const syntacticFlows = CanonicalFlowEquivalence.getAllKeys(rawSyntacticFlows);
-  const intersectFlows = _.intersectionWith(
-    taintFlows,
-    syntacticFlows,
-    _.isEqual
-  );
-  const onlyTaintFlows = _.differenceWith(
-    taintFlows,
-    syntacticFlows,
-    _.isEqual
-  );
-  const onlySyntacticFlows = _.differenceWith(
-    syntacticFlows,
-    taintFlows,
+  const onlySyntacticRequests = _.differenceWith(
+    syntacticRequests,
+    taintRequests,
     _.isEqual
   );
   addDetails({
-    intersectFlows: viewTaintCanonicalFlows(intersectFlows, rawTaintFlows),
-    onlyTaintFlows: viewTaintCanonicalFlows(onlyTaintFlows, rawTaintFlows),
-    onlySyntacticFlows: viewSyntacticCanonicalFlows(
-      onlySyntacticFlows,
-      rawSyntacticFlows
+    intersectRequests: viewTaintTrackingRequests(intersectRequests, taintFlows),
+    onlyTaintRequests: viewTaintTrackingRequests(onlyTaintRequests, taintFlows),
+    onlySyntacticRequests: viewSyntacticTrackingRequests(
+      onlySyntacticRequests,
+      syntacticFlows
     ),
   });
   addCasesCountStats({
-    intersectFlows,
-    onlyTaintFlows,
-    onlySyntacticFlows,
+    taintRequests,
+    syntacticRequests,
+    intersectRequests,
+    onlyTaintRequests,
+    onlySyntacticRequests,
   });
 
+  const verifyResult = doVerify?.(onlySyntacticRequests);
   if (verifyResult) {
-    const onlySyntacticFlowsClasses = _.mapValues(verifyResult, (flows) =>
-      _.intersectionWith(
-        CanonicalFlowEquivalence.getAllKeys(flows),
-        onlySyntacticFlows,
-        _.isEqual
-      )
-    );
+    const { verifiedRequests, confutedRequests, unknownRequests } =
+      verifyResult;
     addDetails({
-      trueOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        onlySyntacticFlowsClasses.trueFlows,
-        verifyResult.trueFlows
+      verifiedRequests: viewSyntacticTrackingRequests(
+        verifiedRequests,
+        verifyResult.verifiedFlows
       ),
-      fakeOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        onlySyntacticFlowsClasses.fakeFlows,
-        verifyResult.fakeFlows
+      confutedRequests: viewSyntacticTrackingRequests(
+        confutedRequests,
+        verifyResult.confutedFlows
       ),
-      unknownOnlySyntacticFlows: viewSyntacticCanonicalFlows(
-        onlySyntacticFlowsClasses.unknownFlows,
-        verifyResult.unknownFlows
+      unknownRequests: viewSyntacticTrackingRequests(
+        unknownRequests,
+        _.union(verifyResult.unknownFlows, verifyResult.confutedFlows)
       ),
     });
     addStats({
-      onlySyntacticFlowsClasses: subLocalStats(
-        _.mapValues(onlySyntacticFlowsClasses, (x) => casesCount(x))
+      onlySyntacticRequestsClasses: subLocalStats(
+        _.mapValues(
+          {
+            verifiedRequests,
+            confutedRequests,
+            unknownRequests,
+          },
+          (x) => casesCount(x)
+        )
       ),
     });
   }
