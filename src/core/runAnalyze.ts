@@ -23,7 +23,7 @@ import {
 } from "./AnalysisResult";
 
 export type RunAnalyzeOptions<T extends Analysis> = {
-  siteName: string;
+  site: string;
   outputName: string;
   analysis: T;
 };
@@ -45,15 +45,15 @@ export async function runAnalyze(
 export async function runAnalyzeForStatefulTrackingAnalysis(
   options: RunAnalyzeOptions<StatefulTrackingAnalysis>
 ): Promise<AnalysisLogEntry<StatefulTrackingAnalysisResult>> {
-  const { siteName, outputName } = options;
+  const { site, outputName } = options;
 
-  const taintHarFile = `${siteName}+taint.har.zip`;
-  const taintTaintFile = `${siteName}+taint.taint.sqlite`;
-  const verifHarFile = `${siteName}+verif.har.zip`;
-  const taintFlowsFile = `${siteName}+TF.json`;
-  const syntacticFlowsFile = `${siteName}+SF.json`;
-  const storageCanariesFile = `${siteName}+C.json`;
-  const auxVerifHarFile = `${siteName}+auxVerif.har.zip`;
+  const taintHarFile = `${site}+taint.har.zip`;
+  const taintTaintFile = `${site}+taint.taint.sqlite`;
+  const verifHarFile = `${site}+verif.har.zip`;
+  const taintFlowsFile = `${site}+TF.json`;
+  const syntacticFlowsFile = `${site}+SF.json`;
+  const storageCanariesFile = `${site}+C.json`;
+  const auxVerifHarFile = `${site}+auxVerif.har.zip`;
 
   return toCompletion(async () => {
     let aux: StatefulTrackingAnalysisResult["aux"];
@@ -68,7 +68,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       const auxConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
-          siteName,
+          site,
           {
             userDataDir: path.join(guestProfilesDir, "aux"),
             outputName,
@@ -80,7 +80,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       const preConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
-          siteName,
+          site,
           {
             userDataDir: path.join(guestProfilesDir, "taint"),
             outputName,
@@ -97,13 +97,13 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       const taintConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
-          siteName,
+          site,
           {
             userDataDir: path.join(guestProfilesDir, "taint"),
             outputName,
             harFile: taintHarFile,
             taintFile: taintTaintFile,
-            screenshotFile: `${siteName}.png`,
+            screenshotFile: `${site}.png`,
           },
         ]),
         { extraBinds: [profilesBind] }
@@ -131,7 +131,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
       );
       const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
-          siteName,
+          site,
           {
             userDataDir: path.join(guestProfilesDir, "verif"),
             outputName,
@@ -166,7 +166,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
       );
       const auxVerifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
-          siteName,
+          site,
           {
             userDataDir: path.join(guestProfilesDir, "aux"),
             outputName,
@@ -195,7 +195,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 }
 
 export async function runSimulateConnect(
-  siteName: string,
+  site: string,
   options: {
     userDataDir: string;
     outputName: string;
@@ -232,7 +232,7 @@ export async function runSimulateConnect(
         }
         try {
           const result = await simulateConnect(browser, {
-            siteName,
+            site,
             screenshotPath,
           });
           return result;

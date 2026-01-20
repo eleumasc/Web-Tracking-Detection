@@ -6,14 +6,14 @@ import { makeTaskFromFunction } from "../worker/Task";
 import { runAnalyze } from "../core/runAnalyze";
 import { toFlatCompletion } from "../util/Completion";
 
-async function main(args: { siteName: string }) {
-  const { siteName } = args;
+async function main(args: { site: string }) {
+  const { site } = args;
 
   const completion = await toFlatCompletion(() =>
     execContainer<ReturnType<typeof runAnalyze>>(
       makeTaskFromFunction(runAnalyze, [
         {
-          siteName,
+          site,
           outputName: `${currentTime()}-testAnalyze`,
           analysis: {
             type: "StatefulTracking",
@@ -30,9 +30,9 @@ async function main(args: { siteName: string }) {
 }
 
 const argv = yargs(hideBin(process.argv))
-  .option("siteName", { type: "string", demandOption: true })
+  .option("site", { type: "string", demandOption: true })
   .parseSync();
 
 main({
-  siteName: argv.siteName,
+  site: argv.site,
 });

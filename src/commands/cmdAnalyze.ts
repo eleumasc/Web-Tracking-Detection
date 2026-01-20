@@ -26,7 +26,7 @@ export default async function cmdAnalyze(
       }
   ) & {
     maxTasks: number;
-  }
+  },
 ) {
   const store = openDocumentStore();
 
@@ -42,7 +42,7 @@ export default async function cmdAnalyze(
           {
             type: ANALYSIS_LOGS_COLL_TYPE,
             analysis: args.analysis,
-          }
+          },
         )
       : store.getCollectionById(args.outputId);
   assert(outputCollection.meta.type === ANALYSIS_LOGS_COLL_TYPE);
@@ -59,7 +59,7 @@ export default async function cmdAnalyze(
     store
       .getDocumentsByCollection(outputCollection.id)
       .map((document) => document.name),
-    (x, y) => x.name === y
+    (x, y) => x.name === y,
   );
 
   console.log(`Analysis: ${JSON.stringify(analysis)}`);
@@ -78,23 +78,23 @@ export default async function cmdAnalyze(
       abortSignal: abortController.signal,
     },
     (siteEntry, queueIndex) => async () => {
-      const { name: siteName } = siteEntry;
-      console.log(`begin analysis ${siteName} [${queueIndex}]`);
+      const { name: site } = siteEntry;
+      console.log(`begin analysis ${site} [${queueIndex}]`);
       const completion = await toFlatCompletion(() =>
         execThread<ReturnType<typeof runAnalyze>>(
           makeTaskFromFunction(runAnalyze, [
             {
-              siteName,
+              site,
               outputName: outputCollection.name,
               analysis,
             },
-          ])
-        )
+          ]),
+        ),
       );
-      console.log(`end analysis ${siteName} [${queueIndex}]`);
+      console.log(`end analysis ${site} [${queueIndex}]`);
 
-      store.createDocument(outputCollection.id, siteName, completion);
-    }
+      store.createDocument(outputCollection.id, site, completion);
+    },
   );
 
   process.exit(0);

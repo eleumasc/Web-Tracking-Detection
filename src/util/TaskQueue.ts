@@ -12,13 +12,13 @@ export async function useTaskQueue<T>(
         abortSignal?: AbortSignal;
       }
     | undefined,
-  use: (taskQueue: TaskQueue) => Promise<T>
+  use: (taskQueue: TaskQueue) => Promise<T>,
 ): Promise<T> {
   options = _.defaults(
     { ...options },
     {
       maxTasks: 1,
-    }
+    },
   );
   const taskQueue = queue<Task, unknown>(async (task, callback) => {
     try {
@@ -45,7 +45,7 @@ export async function useTaskQueue<T>(
 export function processTaskQueue<T>(
   inputs: T[],
   taskQueueOptions: Parameters<typeof useTaskQueue>[0],
-  taskFactory: (input: T, queueIndex: number) => Task
+  taskFactory: (input: T, queueIndex: number) => Task,
 ): Promise<void> {
   return useTaskQueue(taskQueueOptions, async (taskQueue) => {
     taskQueue.push(inputs.map(taskFactory));

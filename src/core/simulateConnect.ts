@@ -15,11 +15,11 @@ const WAIT_AFTER_LOAD_MS: number = 10 * 1000; // 10 seconds
 export default async function simulateConnect(
   browser: BrowserContext,
   options: {
-    siteName: string;
+    site: string;
     screenshotPath?: string;
   }
 ): Promise<SimulateConnectResult> {
-  const { siteName, screenshotPath } = options;
+  const { site, screenshotPath } = options;
 
   const timestamp = currentTime();
 
@@ -27,7 +27,7 @@ export default async function simulateConnect(
 
   // navigate to landing page
   try {
-    await page.goto(`http://${siteName}/`, {
+    await page.goto(`http://${site}/`, {
       timeout: LOAD_TIMEOUT_MS,
     });
   } catch (e) {

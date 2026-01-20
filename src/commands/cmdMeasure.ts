@@ -2,35 +2,20 @@ import _ from "lodash";
 import assert from "assert";
 import currentTime from "../util/currentTime";
 import execThread from "../worker/execThread";
-import Flatted from "flatted";
 import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { Flow, SyntacticFlow, TaintFlow } from "../core/Flow";
-import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
-import { getSiteFromUrl } from "../util/site";
-import { HarReader } from "../util/HarReader";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
-import { processFlows } from "../core/processFlows";
 import { processTaskQueue } from "../util/TaskQueue";
-import { readFileSync } from "fs";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
-import { verifySyntacticTrackingRequests } from "../core/syntacticMatching/verifySyntacticTrackingRequests";
+import { TrackingRequest } from "../core/TrackingRequest";
+import { writeOutputFileSync } from "../data/outputDir";
 import {
-  casesCount,
-  createStatsReducer,
-  LocalStats,
-  Stats,
-  subLocalStats,
-} from "../core/Stats";
-import {
-  TrackingRequest,
-  TrackingRequestEquivalence,
-  viewSyntacticTrackingRequests,
-  viewTaintTrackingRequests,
-} from "../core/TrackingRequest";
+  processTrackingRequests,
+  SiteTrackingRequestsEntry,
+} from "../core/processTrackingRequests";
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -48,15 +33,14 @@ export default async function cmdMeasure(args: {
 
   let totalSites = 0;
   let successSites = 0;
-  let stats: Stats = {};
-  const statsReducer = createStatsReducer();
+  const entries: SiteTrackingRequestsEntry[] = [];
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
     { maxTasks: args.maxTasks },
     (analysisDocument, queueIndex) => async () => {
-      const siteName = analysisDocument.name;
-      console.log(siteName, queueIndex);
+      const site = analysisDocument.name;
+      console.log(site, queueIndex);
 
       totalSites += 1;
 
@@ -69,199 +53,162 @@ export default async function cmdMeasure(args: {
 
       successSites += 1;
 
-      const localStats = await execThread<ReturnType<typeof measureSite>>(
-        makeTaskFromFunction(measureSite, [
+      const entry = await execThread<
+        ReturnType<typeof processTrackingRequests>
+      >(
+        makeTaskFromFunction(processTrackingRequests, [
           {
-            siteName,
+            site,
             analysisName,
             outputName,
             staResult,
           },
-        ])
+        ]),
       );
 
-      stats = statsReducer(stats, localStats);
-    }
+      entries.push(entry);
+    },
   );
 
-  const report = {
+  const reportRecord = {
     totalSites,
     successSites,
-    ...stats,
+    ...getStats(entries),
   };
-  console.log(report);
+  console.log(reportRecord);
   writeOutputFileSync(
     path.join(outputName, "report.json"),
-    JSON.stringify(report)
+    JSON.stringify(reportRecord),
   );
 
   process.exit(0);
 }
 
-export function measureSite(args: {
-  siteName: string;
-  analysisName: string;
-  outputName: string;
-  staResult: StatefulTrackingAnalysisResult;
-  forceNoVerif?: boolean;
-}) {
-  const { siteName, analysisName, outputName, staResult, forceNoVerif } = args;
-
-  let taintFlows: TaintFlow[];
-  let syntacticFlows: SyntacticFlow[];
-  let doVerify;
-  if (staResult.verif && !forceNoVerif) {
-    taintFlows = Flatted.parse(
-      readFileSync(
-        path.join(getOutputPath(analysisName), staResult.verif.taintFlowsFile)
-      ).toString()
-    );
-    syntacticFlows = Flatted.parse(
-      readFileSync(
-        path.join(
-          getOutputPath(analysisName),
-          staResult.verif.syntacticFlowsFile
-        )
-      ).toString()
-    );
-    const storageCanariesEntries = Flatted.parse(
-      readFileSync(
-        path.join(
-          getOutputPath(analysisName),
-          staResult.verif.storageCanariesFile
-        )
-      ).toString()
-    );
-    doVerify = (trkRequests: TrackingRequest[]) =>
-      verifySyntacticTrackingRequests(
-        trkRequests,
-        syntacticFlows,
-        storageCanariesEntries,
-        new HarReader(
-          path.join(getOutputPath(analysisName), staResult.verif!.harFile)
-        ),
-        new HarReader(
-          path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile)
-        )
-      );
-  } else {
-    const processed = processFlows({
-      analysisName,
-      auxConnectResult: staResult.aux.connectResult,
-      preConnectResult: staResult.pre.connectResult,
-      taintHarFile: staResult.taint.harFile,
-      taintTaintFile: staResult.taint.taintFile,
-    });
-    taintFlows = processed.taintFlows;
-    syntacticFlows = processed.syntacticFlows;
-    const storageCanariesEntries = processed.storageCanariesEntries;
-    writeOutputFileSync(
-      path.join(outputName, `${siteName}+TF.json`),
-      Flatted.stringify(taintFlows)
-    );
-    writeOutputFileSync(
-      path.join(outputName, `${siteName}+SF.json`),
-      Flatted.stringify(syntacticFlows)
-    );
-    writeOutputFileSync(
-      path.join(outputName, `${siteName}+C.json`),
-      Flatted.stringify(storageCanariesEntries)
-    );
-  }
-
-  const firstParty = getSiteFromUrl(
-    staResult.taint.connectResult.landingPageUrl
-  );
-  const filterThirdPartyFlows = <T extends Flow>(flows: T[]): T[] =>
-    flows.filter((flow) => getSiteFromUrl(flow.requestUrl) !== firstParty);
-  taintFlows = filterThirdPartyFlows(taintFlows);
-  syntacticFlows = filterThirdPartyFlows(syntacticFlows);
-
-  let details: Record<string, any> = {};
-  const addDetails = (src: Record<string, any>) => {
-    details = _.assign(details, src);
-  };
-  let stats: LocalStats = {};
-  const addStats = (localStats: LocalStats) => {
-    stats = _.assign(stats, localStats);
-  };
-  const addCasesCountStats = (obj: { [key: string]: any[] }) => {
-    addStats(_.mapValues(obj, (x) => casesCount(x)));
-  };
-
-  const taintRequests = TrackingRequestEquivalence.getAllKeys(taintFlows);
-  const syntacticRequests =
-    TrackingRequestEquivalence.getAllKeys(syntacticFlows);
-  const intersectRequests = _.intersectionWith(
-    taintRequests,
-    syntacticRequests,
-    _.isEqual
-  );
-  const onlyTaintRequests = _.differenceWith(
-    taintRequests,
-    syntacticRequests,
-    _.isEqual
-  );
-  const onlySyntacticRequests = _.differenceWith(
-    syntacticRequests,
-    taintRequests,
-    _.isEqual
-  );
-  addDetails({
-    intersectRequests: viewTaintTrackingRequests(intersectRequests, taintFlows),
-    onlyTaintRequests: viewTaintTrackingRequests(onlyTaintRequests, taintFlows),
-    onlySyntacticRequests: viewSyntacticTrackingRequests(
-      onlySyntacticRequests,
-      syntacticFlows
+function getStats(entries: SiteTrackingRequestsEntry[]) {
+  return {
+    intersectRequests: countCategoryRequests(
+      entries,
+      (r) => r.taint && r.syntactic,
     ),
-  });
-  addCasesCountStats({
-    taintRequests,
-    syntacticRequests,
-    intersectRequests,
-    onlyTaintRequests,
-    onlySyntacticRequests,
-  });
+    onlyTaintRequests: countCategoryRequests(
+      entries,
+      (r) => r.taint && !r.syntactic,
+    ),
+    onlySyntacticRequests: countCategoryRequests(
+      entries,
+      (r) => !r.taint && r.syntactic,
+    ),
+    confirmedSyntacticRequests: countCategoryRequests(
+      entries,
+      (r) => r.confirmedSyntactic,
+    ),
+    refutedSyntacticRequests: countCategoryRequests(
+      entries,
+      (r) => r.refutedSyntactic,
+    ),
+    unknownSyntacticRequests: countCategoryRequests(
+      entries,
+      (r) => r.syntactic && !r.confirmedSyntactic && !r.refutedSyntactic,
+    ),
 
-  const verifyResult = doVerify?.(onlySyntacticRequests);
-  if (verifyResult) {
-    const { verifiedRequests, confutedRequests, unknownRequests } =
-      verifyResult;
-    addDetails({
-      verifiedRequests: viewSyntacticTrackingRequests(
-        verifiedRequests,
-        verifyResult.verifiedFlows
-      ),
-      confutedRequests: viewSyntacticTrackingRequests(
-        confutedRequests,
-        verifyResult.confutedFlows
-      ),
-      unknownRequests: viewSyntacticTrackingRequests(
-        unknownRequests,
-        _.union(verifyResult.unknownFlows, verifyResult.confutedFlows)
-      ),
-    });
-    addStats({
-      onlySyntacticRequestsClasses: subLocalStats(
-        _.mapValues(
-          {
-            verifiedRequests,
-            confutedRequests,
-            unknownRequests,
-          },
-          (x) => casesCount(x)
-        )
-      ),
-    });
-  }
+    taint: getCategoryStats(entries, (r) => r.taint),
+    syntactic: getCategoryStats(entries, (r) => r.syntactic),
+    union: getCategoryStats(entries, (r) => r.taint || r.syntactic),
+    __intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
+    confirmedSyntactic: getCategoryStats(entries, (r) => r.confirmedSyntactic),
+    confirmedUnion: getCategoryStats(
+      entries,
+      (r) => r.taint || r.confirmedSyntactic,
+    ),
+    __nonRefutedSyntactic: getCategoryStats(
+      entries,
+      (r) => r.syntactic && !r.refutedSyntactic,
+    ),
+    __nonRefutedUnion: getCategoryStats(
+      entries,
+      (r) => r.taint || (r.syntactic && !r.refutedSyntactic),
+    ),
 
-  writeOutputFileSync(
-    path.join(outputName, `${siteName}.json`),
-    JSON.stringify({
-      site: siteName,
-      ...details,
-    })
+    onlyTaintTrackers: getExclusiveCategoryTrackers(
+      entries,
+      (r) => r.taint && !r.syntactic,
+    ),
+    onlySyntacticTrackers: getExclusiveCategoryTrackers(
+      entries,
+      (r) => !r.taint && r.syntactic,
+    ),
+    fakeTrackers: getExclusiveCategoryTrackers(
+      entries,
+      (r) => r.refutedSyntactic,
+    ),
+
+    trackerPopularityRanking: _.sortBy(
+      _.entries(_.countBy(entries.flatMap((entry) => getSiteTrackers(entry)))),
+      ([_, popularity]) => popularity,
+    ).reverse(),
+  };
+}
+
+function getSiteTrackers(entry: SiteTrackingRequestsEntry): string[] {
+  const { requests } = entry;
+  return _.uniq(requests.map((request) => request.tracker));
+}
+
+function countCategoryRequests(
+  inputEntries: SiteTrackingRequestsEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  return _.sumBy(
+    inputEntries,
+    ({ requests }) => requests.filter((request) => property(request)).length,
   );
+}
 
-  return stats;
+function getCategoryStats(
+  inputEntries: SiteTrackingRequestsEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  const entries = inputEntries.map((entry) => {
+    const { requests } = entry;
+    return {
+      ...entry,
+      requests: requests.filter((request) => property(request)),
+    };
+  });
+  return {
+    totalRequests: _.sumBy(entries, ({ requests }) => requests.length),
+    avgRequestsPerSite: _.meanBy(entries, ({ requests }) => requests.length),
+    maxRequestsPerSite: _.max(entries.map(({ requests }) => requests.length)),
+    sitesHavingTrackers: _.sumBy(entries, ({ requests }) =>
+      Number(requests.length > 0),
+    ),
+    totalTrackers: _.uniq(entries.flatMap((entry) => getSiteTrackers(entry)))
+      .length,
+    avgTrackersPerSite: _.meanBy(
+      entries,
+      (entry) => getSiteTrackers(entry).length,
+    ),
+    maxTrackersPerSite: _.max(
+      entries.map((entry) => getSiteTrackers(entry).length),
+    ),
+  };
+}
+
+function getExclusiveCategoryTrackers(
+  inputEntries: SiteTrackingRequestsEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  // trackers belonging to an exclusive category...
+  // INTERSECTION: for *all* sites including them (more strict)
+  // UNION: for *any* sites including them (less strict)
+  return _.intersection(
+    ...inputEntries.map((entry) =>
+      _.difference(
+        getSiteTrackers(entry),
+        entry.requests
+          .filter((request) => !property(request))
+          .map(({ tracker }) => tracker),
+      ),
+    ),
+  );
 }

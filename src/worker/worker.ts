@@ -1,9 +1,9 @@
 import { dispatcher } from "./Task";
-import { measureSite } from "../commands/cmdMeasure";
+import { processTrackingRequests } from "../core/processTrackingRequests";
 import { runAnalyze, runSimulateConnect } from "../core/runAnalyze";
 
 export default dispatcher({
   runAnalyze,
   runSimulateConnect,
-  measureSite,
+  processTrackingRequests,
 });

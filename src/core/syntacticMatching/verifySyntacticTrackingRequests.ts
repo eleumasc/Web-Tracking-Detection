@@ -9,19 +9,19 @@ import { StorageCanariesEntry } from "./computeCanaries";
 import { SyntacticFlow } from "../Flow";
 import { TransformTree, traverseTransformTree } from "./TransformTree";
 import {
-  TrackingRequest,
-  TrackingRequestEquivalence,
+  TrackingRequestId,
+  TrackingRequestIdEquivalence,
 } from "../TrackingRequest";
 
 export function verifySyntacticTrackingRequests(
-  trkRequests: TrackingRequest[],
+  trkRequests: TrackingRequestId[],
   flows: SyntacticFlow[],
   storageCanariesEntries: StorageCanariesEntry[],
   verifHarReader: HarReader,
-  auxVerifHarReader: HarReader
+  auxVerifHarReader: HarReader,
 ) {
-  const verifiedFlows: SyntacticFlow[] = [];
-  const confutedFlows: SyntacticFlow[] = [];
+  const confirmedFlows: SyntacticFlow[] = [];
+  const refutedFlows: SyntacticFlow[] = [];
   const unknownFlows: SyntacticFlow[] = [];
 
   const verifRequestItems = getRequestItemsFromHar(verifHarReader);
@@ -33,7 +33,7 @@ export function verifySyntacticTrackingRequests(
       (token) => {
         requestValues.push(token.value);
         return true;
-      }
+      },
     );
     return requestValues;
   });
@@ -44,18 +44,18 @@ export function verifySyntacticTrackingRequests(
     } = flow;
 
     const canaries = storageCanariesEntries.find((entry) =>
-      _.isEqual(entry.storageItem.id, storageId)
+      _.isEqual(entry.storageItem.id, storageId),
     )?.canaries;
     assert(canaries);
 
     const requestTemplate = RequestTemplate.fromSyntacticFlow(flow);
     const matchingVerifRequestItems = getMatchingRequestItems(
       verifRequestItems,
-      requestTemplate
+      requestTemplate,
     );
     const matchingAuxVerifRequestItems = getMatchingRequestItems(
       auxVerifRequestItems,
-      requestTemplate
+      requestTemplate,
     );
 
     if (matchingVerifRequestItems.length === 0) {
@@ -64,65 +64,65 @@ export function verifySyntacticTrackingRequests(
       matchingVerifRequestItems.some(({ params }) =>
         params.some(({ value: initialRequestValue }) =>
           parseRequestValue(initialRequestValue).some((requestValue) =>
-            canaries.some((canary) => requestValue.includes(canary.modified))
-          )
-        )
+            canaries.some((canary) => requestValue.includes(canary.modified)),
+          ),
+        ),
       )
     ) {
-      verifiedFlows.push(flow);
+      confirmedFlows.push(flow);
     } else if (
       matchingAuxVerifRequestItems.every(({ params }) =>
         params.some(({ value: initialRequestValue }) =>
           parseRequestValue(initialRequestValue).some((requestValue) =>
-            canaries.some((canary) => requestValue.includes(canary.original))
-          )
-        )
+            canaries.some((canary) => requestValue.includes(canary.original)),
+          ),
+        ),
       )
     ) {
-      confutedFlows.push(flow);
+      refutedFlows.push(flow);
     } else {
       unknownFlows.push(flow);
     }
   }
 
-  const verifiedRequests: TrackingRequest[] = [];
-  const confutedRequests: TrackingRequest[] = [];
-  const unknownRequests: TrackingRequest[] = [];
+  const confirmedRequests: TrackingRequestId[] = [];
+  const refutedRequests: TrackingRequestId[] = [];
+  const unknownRequests: TrackingRequestId[] = [];
 
   for (const trkRequest of trkRequests) {
-    const matchingFlows = TrackingRequestEquivalence.filterValuesByKey(
+    const matchingFlows = TrackingRequestIdEquivalence.filterValuesByKey(
       trkRequest,
-      flows
+      flows,
     );
     assert(matchingFlows.length > 0);
     if (
-      matchingFlows.some((matchingFlow) => verifiedFlows.includes(matchingFlow))
-    ) {
-      verifiedRequests.push(trkRequest);
-    } else if (
-      matchingFlows.every((matchingFlow) =>
-        confutedFlows.includes(matchingFlow)
+      matchingFlows.some((matchingFlow) =>
+        confirmedFlows.includes(matchingFlow),
       )
     ) {
-      confutedRequests.push(trkRequest);
+      confirmedRequests.push(trkRequest);
+    } else if (
+      matchingFlows.every((matchingFlow) => refutedFlows.includes(matchingFlow))
+    ) {
+      refutedRequests.push(trkRequest);
     } else {
       unknownRequests.push(trkRequest);
     }
   }
 
   return {
-    verifiedFlows,
-    confutedFlows,
+    confirmedFlows,
+    refutedFlows,
     unknownFlows,
-    verifiedRequests,
-    confutedRequests,
+    confirmedRequests,
+    refutedRequests,
     unknownRequests,
   };
 }
 
 function getMatchingRequestItems(
   requestItems: RequestItem[],
-  requestTemplate: RequestTemplate
+  requestTemplate: RequestTemplate,
 ): RequestItem[] {
   return requestItems
     .filter((requestItem) => requestTemplate.matchesUrl(requestItem.url))
@@ -130,9 +130,9 @@ function getMatchingRequestItems(
       ({ url, params }): RequestItem => ({
         url,
         params: params.filter((param) =>
-          requestTemplate.includesHole(param.key)
+          requestTemplate.includesHole(param.key),
         ),
-      })
+      }),
     )
     .filter(({ params }) => params.length > 0);
 }
