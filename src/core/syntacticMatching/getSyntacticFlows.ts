@@ -1,19 +1,22 @@
 import { getRequestItemsFromHar } from "../RequestItem";
 import { HarReader } from "../../util/HarReader";
 import { memoize } from "../../util/memoize";
-import { parseRequestValueEdges, transformStorageValueEdges } from "./edges";
 import { StorageItem } from "../StorageItem";
 import { SyntacticFlow, SyntacticMatch } from "../Flow";
 import { syntacticMatcher } from "./syntacticMatcher";
 import { TransformTree } from "./TransformTree";
+import {
+  parseRequestValueRootNode,
+  transformStorageValueRootNode,
+} from "./rootNodes";
 
 export function getSyntacticFlows(
   storageItems: StorageItem[],
-  harReader: HarReader
+  harReader: HarReader,
 ): SyntacticFlow[] {
   const getStorageTransformTree = memoize(
     (storageValue) =>
-      new TransformTree(transformStorageValueEdges, storageValue)
+      new TransformTree(transformStorageValueRootNode(), storageValue),
   );
   const storageEntries = storageItems.map((storageItem) => ({
     storageItem,
@@ -21,7 +24,8 @@ export function getSyntacticFlows(
   }));
 
   const getRequestTransformTree = memoize(
-    (requestValue) => new TransformTree(parseRequestValueEdges, requestValue)
+    (requestValue) =>
+      new TransformTree(parseRequestValueRootNode(), requestValue),
   );
   const requestEntries = getRequestItemsFromHar(harReader).map(
     ({ url: requestUrl, params }) => ({
@@ -30,7 +34,7 @@ export function getSyntacticFlows(
         key,
         transformTree: getRequestTransformTree(value),
       })),
-    })
+    }),
   );
 
   const syntacticFlows: SyntacticFlow[] = [];
@@ -45,8 +49,8 @@ export function getSyntacticFlows(
             (syntacticMatch): SyntacticMatch => ({
               ...syntacticMatch,
               requestParamKey,
-            })
-          )
+            }),
+          ),
       );
       if (matches.length > 0) {
         syntacticFlows.push({

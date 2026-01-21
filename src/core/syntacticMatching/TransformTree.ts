@@ -2,9 +2,11 @@ import { some } from "iter-tools";
 import { Token, tokenChain } from "./Token";
 import { TransformType } from "./Transform";
 
+export type TransformTreeNode = () => Iterable<TransformTreeEdge>;
+
 export type TransformTreeEdge = {
-  transformType: () => TransformType;
-  childEdges: () => Iterable<TransformTreeEdge>;
+  transformType: TransformType;
+  child: TransformTreeNode;
 };
 
 export class TransformTree {
@@ -12,14 +14,14 @@ export class TransformTree {
   protected readonly cache = new WeakMap<
     Token,
     {
-      childEdges: () => Iterable<TransformTreeEdge>;
+      child: TransformTreeNode;
       childToken: Token;
     }[]
   >();
 
   constructor(
-    readonly edges: () => Iterable<TransformTreeEdge>,
-    readonly initialValue: string
+    readonly node: TransformTreeNode,
+    readonly initialValue: string,
   ) {
     this.initialToken = {
       value: initialValue,
@@ -27,12 +29,12 @@ export class TransformTree {
   }
 
   traverse() {
-    return this.doTraverse(this.edges, this.initialToken);
+    return this.doTraverse(this.node, this.initialToken);
   }
 
   protected *doTraverse(
-    edges: () => Iterable<TransformTreeEdge>,
-    token: Token
+    node: TransformTreeNode,
+    token: Token,
   ): Generator<Token, any, boolean> {
     const { value: tokenValue } = token;
 
@@ -42,9 +44,7 @@ export class TransformTree {
     let cacheEntry = this.cache.get(token);
     if (!cacheEntry) {
       cacheEntry = [];
-      for (const { transformType: getTransformType, childEdges } of edges()) {
-        const transformType = getTransformType();
-
+      for (const { transformType, child } of node()) {
         // Skip if this transform trivially inverts the last transform
         // (e.g., `toBase64(fromBase64(x))`)
         const lastTransform = token.transform;
@@ -69,7 +69,7 @@ export class TransformTree {
           if (
             some(
               //
-              (token: Token) => token.value === value
+              (token: Token) => token.value === value,
             )(tokenChain(token))
           ) {
             continue;
@@ -80,21 +80,21 @@ export class TransformTree {
             transform,
             value,
           };
-          cacheEntry.push({ childEdges, childToken });
+          cacheEntry.push({ child, childToken });
         }
       }
       this.cache.set(token, cacheEntry);
     }
 
-    for (const { childEdges, childToken } of cacheEntry) {
-      yield* this.doTraverse(childEdges, childToken);
+    for (const { child, childToken } of cacheEntry) {
+      yield* this.doTraverse(child, childToken);
     }
   }
 }
 
 export function traverseTransformTree(
   transformTree: TransformTree,
-  visitor: (token: Token) => boolean
+  visitor: (token: Token) => boolean,
 ): void {
   const traversal = transformTree.traverse();
   let tokenIt = traversal.next();

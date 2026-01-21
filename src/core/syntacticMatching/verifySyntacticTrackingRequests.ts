@@ -3,7 +3,7 @@ import assert from "assert";
 import { getRequestItemsFromHar, RequestItem } from "../RequestItem";
 import { HarReader } from "../../util/HarReader";
 import { memoize } from "../../util/memoize";
-import { parseRequestValueEdges } from "./edges";
+import { parseRequestValueRootNode } from "./rootNodes";
 import { RequestTemplate } from "./RequestTemplate";
 import { StorageCanariesEntry } from "./computeCanaries";
 import { SyntacticFlow } from "../Flow";
@@ -29,7 +29,7 @@ export function verifySyntacticTrackingRequests(
   const parseRequestValue = memoize((initialValue: string): string[] => {
     const requestValues: string[] = [];
     traverseTransformTree(
-      new TransformTree(parseRequestValueEdges, initialValue),
+      new TransformTree(parseRequestValueRootNode(), initialValue),
       (token) => {
         requestValues.push(token.value);
         return true;

@@ -7,9 +7,9 @@ import { SHA1 } from "./transforms/SHA1";
 import { split } from "./transforms/split";
 import { toBase64 } from "./transforms/toBase64";
 import { toUrlEncoding } from "./transforms/toURLEncoding";
-import { TransformTreeEdge } from "./TransformTree";
+import { TransformTreeEdge, TransformTreeNode } from "./TransformTree";
 
-export function transformStorageValueEdges(): Iterable<TransformTreeEdge> {
+export function transformStorageValueRootNode(): TransformTreeNode {
   const Decoders = [
     split,
     fromBase64,
@@ -19,7 +19,7 @@ export function transformStorageValueEdges(): Iterable<TransformTreeEdge> {
   ];
   const Encoders = [toBase64, toUrlEncoding, MD5, SHA1];
 
-  return decodeEncodeLayer(3);
+  return () => decodeEncodeLayer(3);
 
   function* decodeEncodeLayer(depth: number): Iterable<TransformTreeEdge> {
     if (depth === 0) return;
@@ -33,29 +33,33 @@ export function transformStorageValueEdges(): Iterable<TransformTreeEdge> {
   }
 
   function decode(
-    childEdges: () => Iterable<TransformTreeEdge>
+    child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Decoders.map((decoder) => ({
-      transformType: () => decoder,
-      childEdges,
-    }));
+    return Decoders.map(
+      (decoder): TransformTreeEdge => ({
+        transformType: decoder,
+        child,
+      }),
+    );
   }
 
   function encode(
-    childEdges: () => Iterable<TransformTreeEdge>
+    child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Encoders.map((encoder) => ({
-      transformType: () => encoder,
-      childEdges,
-    }));
+    return Encoders.map(
+      (encoder): TransformTreeEdge => ({
+        transformType: encoder,
+        child,
+      }),
+    );
   }
 }
 
-export function parseRequestValueEdges(): Iterable<TransformTreeEdge> {
+export function parseRequestValueRootNode(): TransformTreeNode {
   const Decoders = [fromBase64, fromUrlEncoding];
   const Parsers = [split, fromJSON, fromQueryValues];
 
-  return decodeParseLayer(3);
+  return () => decodeParseLayer(3);
 
   function* decodeParseLayer(depth: number): Iterable<TransformTreeEdge> {
     if (depth === 0) return;
@@ -64,20 +68,24 @@ export function parseRequestValueEdges(): Iterable<TransformTreeEdge> {
   }
 
   function decode(
-    childEdges: () => Iterable<TransformTreeEdge>
+    child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Decoders.map((decoder) => ({
-      transformType: () => decoder,
-      childEdges,
-    }));
+    return Decoders.map(
+      (decoder): TransformTreeEdge => ({
+        transformType: decoder,
+        child,
+      }),
+    );
   }
 
   function parse(
-    childEdges: () => Iterable<TransformTreeEdge>
+    child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Parsers.map((parser) => ({
-      transformType: () => parser,
-      childEdges,
-    }));
+    return Parsers.map(
+      (parser): TransformTreeEdge => ({
+        transformType: parser,
+        child,
+      }),
+    );
   }
 }
