@@ -1,9 +1,6 @@
-import { fromJSON } from "./syntacticMatching/transforms/fromJSON";
-import { fromQueryValues } from "./syntacticMatching/transforms/fromQueryValues";
 import { HarReader } from "../util/HarReader";
-import { map, toArray } from "iter-tools";
+import { parseJSONValues } from "../util/JSONValue";
 import { parseQueryParams } from "../util/QueryParam";
-import { Transform } from "./syntacticMatching/Transform";
 
 export type RequestItem = {
   url: string;
@@ -34,14 +31,18 @@ export function getRequestItemsFromHar(harReader: HarReader): RequestItem[] {
     const parsedUrl = new URL(url);
 
     let params: RequestParameter[] = [];
-    params = params.concat(extractUrlPathSegments(parsedUrl.pathname));
-    params = params.concat(extractUrlQueryParams(parsedUrl.search));
+    const addParams = (argParams: RequestParameter[]): void => {
+      params = params.concat(argParams.filter(({ value }) => value));
+    };
+
+    addParams(extractUrlPathSegments(parsedUrl.pathname));
+    addParams(extractUrlQueryParams(parsedUrl.search));
     if (postData) {
-      params = params.concat(
+      addParams(
         extractPostDataComponents(
           harReader.readPostData(postData),
-          headers.find(({ name }) => name === "content-type")?.value
-        )
+          headers.find(({ name }) => name === "content-type")?.value,
+        ),
       );
     }
 
@@ -63,7 +64,7 @@ export function extractUrlPathSegments(input: string): RequestParameter[] {
           segmentIndex: index,
         },
         value,
-      })
+      }),
     );
 }
 
@@ -77,27 +78,21 @@ export function extractUrlQueryParams(input: string): RequestParameter[] {
           name: namePart.raw,
         },
         value: valuePart!.raw,
-      })
+      }),
     );
 }
 
 export function extractPostDataComponents(
   input: string,
-  contentType?: string
+  contentType?: string,
 ): RequestParameter[] {
   const values = (): string[] => {
     if (contentType?.includes("application/json")) {
-      return toArray(
-        map((transform: Transform) => transform.apply(input))(
-          fromJSON.generateTransforms(input)
-        )
-      );
+      return parseJSONValues(input).map(({ cooked: value }) => value);
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-      return toArray(
-        map((transform: Transform) => transform.apply(input))(
-          fromQueryValues.generateTransforms(input)
-        )
-      );
+      return parseQueryParams(input)
+        .filter(({ value }) => value)
+        .map(({ value: valuePart }) => valuePart!.raw);
     } else {
       return [input];
     }
@@ -106,6 +101,6 @@ export function extractPostDataComponents(
     (value): RequestParameter => ({
       key: { type: "postData" },
       value,
-    })
+    }),
   );
 }

@@ -38,7 +38,7 @@ export default async function cmdLoadSiteList(options: {
     50,
     (entries) => {
       store.insertDocuments(sitesCollection.id, entries);
-    }
+    },
   );
   await pipeline(
     downloadReadable,
@@ -65,7 +65,7 @@ export default async function cmdLoadSiteList(options: {
         sitesInserter.flush();
         callback();
       },
-    })
+    }),
   );
 
   process.exit(0);
@@ -76,7 +76,7 @@ function createSiteEntry(data: any): SiteEntry {
   const parts = data.split(",");
   assert(parts.length === 2);
   const [rankString, name] = parts;
-  const rank = parseInt(rankString);
+  const rank = Number(rankString);
   assert(!isNaN(rank));
   return { name, rank };
 }

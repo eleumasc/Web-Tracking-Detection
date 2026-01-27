@@ -1,11 +1,11 @@
 import { some } from "iter-tools";
 import { Token, tokenChain } from "./Token";
-import { TransformType } from "./Transform";
+import { TransformGenerator } from "./Transform";
 
 export type TransformTreeNode = () => Iterable<TransformTreeEdge>;
 
 export type TransformTreeEdge = {
-  transformType: TransformType;
+  transformGenerator: TransformGenerator;
   child: TransformTreeNode;
 };
 
@@ -36,7 +36,7 @@ export class TransformTree {
     node: TransformTreeNode,
     token: Token,
   ): Generator<Token, any, boolean> {
-    const { value: tokenValue } = token;
+    const { value: tokenValue, transform: tokenTransform } = token;
 
     const traverseChildren = yield token;
     if (!traverseChildren) return;
@@ -44,19 +44,11 @@ export class TransformTree {
     let cacheEntry = this.cache.get(token);
     if (!cacheEntry) {
       cacheEntry = [];
-      for (const { transformType, child } of node()) {
-        // Skip if this transform trivially inverts the last transform
-        // (e.g., `toBase64(fromBase64(x))`)
-        const lastTransform = token.transform;
-        if (
-          transformType.inverts &&
-          lastTransform &&
-          transformType.inverts(lastTransform)
-        ) {
-          continue;
-        }
-
-        for (const transform of transformType.generateTransforms(tokenValue)) {
+      for (const { transformGenerator, child } of node()) {
+        for (const transform of transformGenerator.generate(
+          tokenValue,
+          tokenTransform,
+        )) {
           let value;
           try {
             value = transform.apply(tokenValue);

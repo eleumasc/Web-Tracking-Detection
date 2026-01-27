@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
-import { Transform, TransformType } from "../Transform";
+import { Transform, TransformGenerator } from "../Transform";
 
-export const SHA1: TransformType = {
-  *generateTransforms(input) {
+export const SHA1: TransformGenerator = {
+  *generate(input) {
     yield new SHA1Transform();
   },
 };

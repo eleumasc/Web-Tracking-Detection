@@ -6,16 +6,15 @@ export interface Transform {
   reverse?(value: string, originalInput: string): string;
 }
 
-export interface TransformType {
-  generateTransforms(input: string): Iterable<Transform>;
-  inverts?(transform: Transform): boolean;
+export interface TransformGenerator {
+  generate(input: string, lastTransform?: Transform): Iterable<Transform>;
 }
 
 export default function replaceStringAt(
   original: string,
   replacement: string,
   begin: number,
-  end: number
+  end: number,
 ): string {
   assert(replacement.length === end - begin);
   return original.substring(0, begin) + replacement + original.substring(end);

@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
-import { Transform, TransformType } from "../Transform";
+import { Transform, TransformGenerator } from "../Transform";
 
-export const MD5: TransformType = {
-  *generateTransforms(input) {
+export const MD5: TransformGenerator = {
+  *generate(input) {
     yield new MD5Transform();
   },
 };

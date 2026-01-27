@@ -1,13 +1,10 @@
 import { FromBase64Transform } from "./fromBase64";
-import { Transform, TransformType } from "../Transform";
+import { Transform, TransformGenerator } from "../Transform";
 
-export const toBase64: TransformType = {
-  *generateTransforms(input) {
+export const toBase64: TransformGenerator = {
+  *generate(input, lastTransform) {
+    if (lastTransform instanceof FromBase64Transform) return;
     yield new ToBase64Transform();
-  },
-
-  inverts(transform) {
-    return transform instanceof FromBase64Transform;
   },
 };
 

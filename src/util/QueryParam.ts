@@ -5,42 +5,44 @@ export interface QueryParam {
 
 export interface Part {
   raw: string;
-  index: number;
+  begin: number;
+  end: number;
 }
 
 export function parseQueryParams(input: string): QueryParam[] {
   input = input.replace(/^\?/, "");
 
-  const params: QueryParam[] = [];
+  const result: QueryParam[] = [];
 
   const re = /([^=&]+)(?:=([^&]*))?/g;
   let match: RegExpExecArray | null;
-
   while ((match = re.exec(input)) !== null) {
     const nameRaw = match[1];
     const valueRaw = match[2] ?? null;
 
-    const nameStart = match.index;
-    const nameEnd = nameStart + nameRaw.length;
+    const nameBegin = match.index;
+    const nameEnd = nameBegin + nameRaw.length;
 
     let valuePart: Part | undefined;
     if (valueRaw !== null) {
-      const valueStart = nameEnd + 1;
+      const valueBegin = nameEnd + 1;
 
       valuePart = {
         raw: valueRaw,
-        index: valueStart,
+        begin: valueBegin,
+        end: valueBegin + valueRaw.length,
       };
     }
 
-    params.push({
+    result.push({
       name: {
         raw: nameRaw,
-        index: nameStart,
+        begin: nameBegin,
+        end: nameBegin + nameRaw.length,
       },
       value: valuePart,
     });
   }
 
-  return params;
+  return result;
 }

@@ -1,42 +1,12 @@
-import JsonAsty from "json-asty";
-import replaceStringAt, { Transform, TransformType } from "../Transform";
+import assert from "assert";
+import replaceStringAt, { Transform, TransformGenerator } from "../Transform";
+import { parseJSONValues } from "../../../util/JSONValue";
 
-export const fromJSON: TransformType = {
-  *generateTransforms(input) {
-    let ast;
-    try {
-      ast = JsonAsty.parse(input);
-    } catch {
-      return;
-    }
-
-    yield* extractStringValues(ast);
-
-    function* extractStringValues(node: any): Generator<Transform> {
-      const { T: type } = node;
-      switch (type) {
-        case "string": {
-          const {
-            A: { body: raw },
-            L: { O: begin },
-          } = node;
-          const end = begin + raw.length;
-          yield new FromJSONTransform(begin, end);
-          break;
-        }
-        case "member": {
-          const {
-            C: { 1: child },
-          } = node;
-          yield* extractStringValues(child);
-          break;
-        }
-        default: {
-          for (const child of node.C) {
-            yield* extractStringValues(child);
-          }
-        }
-      }
+export const fromJSON: TransformGenerator = {
+  *generate(input) {
+    for (const jsonValue of parseJSONValues(input)) {
+      const { type, begin, end } = jsonValue;
+      yield new FromJSONTransform(type, begin, end);
     }
   },
 };
@@ -44,18 +14,33 @@ export const fromJSON: TransformType = {
 export class FromJSONTransform implements Transform {
   readonly name: string = "fromJSON";
 
-  constructor(readonly begin: number, readonly end: number) {}
+  constructor(
+    readonly type: "string" | "number",
+    readonly begin: number,
+    readonly end: number,
+  ) {}
 
   apply(input: string): string {
-    return JSON.parse(input.substring(this.begin, this.end));
+    switch (this.type) {
+      case "string":
+        return JSON.parse(input.substring(this.begin, this.end));
+      case "number":
+        return input.substring(this.begin, this.end);
+    }
   }
 
   reverse(value: string, originalInput: string): string {
-    return replaceStringAt(
-      originalInput,
-      JSON.stringify(value),
-      this.begin,
-      this.end
-    );
+    switch (this.type) {
+      case "string":
+        return replaceStringAt(
+          originalInput,
+          JSON.stringify(value),
+          this.begin,
+          this.end,
+        );
+      case "number":
+        assert(!isNaN(Number(value)));
+        return replaceStringAt(originalInput, value, this.begin, this.end);
+    }
   }
 }

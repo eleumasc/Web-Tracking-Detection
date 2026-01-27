@@ -28,6 +28,12 @@ export function viewToken(token: Token): Token {
   } as Token;
 
   function truncateValue(value: string): string {
-    return value.substring(0, 500);
+    const valLength = value.length;
+    const maxLength = 500;
+    if (valLength > maxLength) {
+      return `${value.substring(0, 500)} [+${valLength - maxLength}]`;
+    } else {
+      return value;
+    }
   }
 }

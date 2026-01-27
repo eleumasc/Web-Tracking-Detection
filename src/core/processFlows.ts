@@ -26,18 +26,18 @@ export function processFlows(args: {
 
   const identifiers = detectIdentifiableStorageItems(
     getStorageItemsFromStorageState(preConnectResult.storageState),
-    getStorageItemsFromStorageState(auxConnectResult.storageState)
+    getStorageItemsFromStorageState(auxConnectResult.storageState),
   );
   const taintHarReader = new HarReader(
-    path.join(getOutputPath(analysisName), taintHarFile)
+    path.join(getOutputPath(analysisName), taintHarFile),
   );
   const taintFoxhoundReports = new FoxhoundTaintArchive(
-    path.join(getOutputPath(analysisName), taintTaintFile)
+    path.join(getOutputPath(analysisName), taintTaintFile),
   ).getReports();
   const taintFlows = getTaintFlows(
     taintFoxhoundReports,
     identifiers,
-    taintHarReader
+    taintHarReader,
   );
   const syntacticFlows = getSyntacticFlows(identifiers, taintHarReader);
   const storageCanariesEntries = computeCanaries(syntacticFlows);

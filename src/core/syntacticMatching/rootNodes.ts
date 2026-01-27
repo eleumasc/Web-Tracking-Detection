@@ -37,7 +37,7 @@ export function transformStorageValueRootNode(): TransformTreeNode {
   ): Iterable<TransformTreeEdge> {
     return Decoders.map(
       (decoder): TransformTreeEdge => ({
-        transformType: decoder,
+        transformGenerator: decoder,
         child,
       }),
     );
@@ -48,7 +48,7 @@ export function transformStorageValueRootNode(): TransformTreeNode {
   ): Iterable<TransformTreeEdge> {
     return Encoders.map(
       (encoder): TransformTreeEdge => ({
-        transformType: encoder,
+        transformGenerator: encoder,
         child,
       }),
     );
@@ -72,7 +72,7 @@ export function parseRequestValueRootNode(): TransformTreeNode {
   ): Iterable<TransformTreeEdge> {
     return Decoders.map(
       (decoder): TransformTreeEdge => ({
-        transformType: decoder,
+        transformGenerator: decoder,
         child,
       }),
     );
@@ -83,7 +83,7 @@ export function parseRequestValueRootNode(): TransformTreeNode {
   ): Iterable<TransformTreeEdge> {
     return Parsers.map(
       (parser): TransformTreeEdge => ({
-        transformType: parser,
+        transformGenerator: parser,
         child,
       }),
     );

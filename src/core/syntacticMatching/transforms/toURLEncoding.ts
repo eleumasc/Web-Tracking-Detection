@@ -1,13 +1,10 @@
 import { FromURLEncodingTransform } from "./fromURLEncoding";
-import { Transform, TransformType } from "../Transform";
+import { Transform, TransformGenerator } from "../Transform";
 
-export const toUrlEncoding: TransformType = {
-  *generateTransforms(input) {
+export const toUrlEncoding: TransformGenerator = {
+  *generate(input, lastTransform) {
+    if (lastTransform instanceof FromURLEncodingTransform) return;
     yield new ToURLEncodingTransform();
-  },
-
-  inverts(transform) {
-    return transform instanceof FromURLEncodingTransform;
   },
 };
 

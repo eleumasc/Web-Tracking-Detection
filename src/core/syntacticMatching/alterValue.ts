@@ -1,4 +1,7 @@
-export function* alterValue(value: string): Generator<string> {
+export function* alterValue(
+  value: string,
+  singleOffset: boolean = true,
+): Generator<string> {
   const upperChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const lowerChars = "abcdefghijklmnopqrstuvwxyz";
   const digitChars = "0123456789";
@@ -7,7 +10,8 @@ export function* alterValue(value: string): Generator<string> {
   const upperMatches = [...value.matchAll(/[A-Z]/g)].reverse();
   const lowerMatches = [...value.matchAll(/[a-z]/g)].reverse();
 
-  for (let offset = 1; offset < 26; ++offset) {
+  const maxOffset = singleOffset ? 1 : 25;
+  for (let offset = 1; offset <= maxOffset; ++offset) {
     if (offset < 10) {
       for (const match of digitMatches) {
         yield alter(offset, match, digitChars);
@@ -24,7 +28,7 @@ export function* alterValue(value: string): Generator<string> {
   function alter(
     offset: number,
     match: RegExpExecArray,
-    charType: string
+    charType: string,
   ): string {
     const { 0: c, index } = match;
     const d = charType[(charType.indexOf(c) + offset) % charType.length];

@@ -1,7 +1,7 @@
-import replaceStringAt, { Transform, TransformType } from "../Transform";
+import replaceStringAt, { Transform, TransformGenerator } from "../Transform";
 
-export const split: TransformType = {
-  *generateTransforms(input) {
+export const split: TransformGenerator = {
+  *generate(input) {
     for (const { 0: value, index: begin } of input.matchAll(/[A-Za-z0-9]+/g)) {
       const end = begin + value.length;
       yield new SplitTransform(begin, end);

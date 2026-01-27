@@ -1,14 +1,11 @@
 import assert from "assert";
 import { ToURLEncodingTransform } from "./toURLEncoding";
-import { Transform, TransformType } from "../Transform";
+import { Transform, TransformGenerator } from "../Transform";
 
-export const fromUrlEncoding: TransformType = {
-  *generateTransforms(input) {
+export const fromUrlEncoding: TransformGenerator = {
+  *generate(input, lastTransform) {
+    if (lastTransform instanceof ToURLEncodingTransform) return;
     yield new FromURLEncodingTransform();
-  },
-
-  inverts(transform) {
-    return transform instanceof ToURLEncodingTransform;
   },
 };
 
