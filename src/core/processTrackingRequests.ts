@@ -11,8 +11,7 @@ import { StatefulTrackingAnalysisResult } from "./AnalysisResult";
 import { verifySyntacticTrackingRequests } from "./syntacticMatching/verifySyntacticTrackingRequests";
 import {
   TrackingRequest,
-  TrackingRequestId,
-  TrackingRequestIdEquivalence,
+  TrackingIdEquivalence,
   viewSyntacticTrackingRequests,
   viewTaintTrackingRequests,
 } from "./TrackingRequest";
@@ -49,19 +48,18 @@ export function processTrackingRequests(args: {
         ),
       ).toString(),
     );
-    const storageCanariesEntries = Flatted.parse(
+    const modifiedStorageItems = Flatted.parse(
       readFileSync(
         path.join(
           getOutputPath(analysisName),
-          staResult.verif.storageCanariesFile,
+          staResult.verif.modifiedStorageItemsFile,
         ),
       ).toString(),
     );
-    doVerify = (trkRequests: TrackingRequestId[]) =>
+    doVerify = () =>
       verifySyntacticTrackingRequests(
-        trkRequests,
         syntacticFlows,
-        storageCanariesEntries,
+        modifiedStorageItems,
         new HarReader(
           path.join(getOutputPath(analysisName), staResult.verif!.harFile),
         ),
@@ -79,7 +77,7 @@ export function processTrackingRequests(args: {
     });
     taintFlows = processed.taintFlows;
     syntacticFlows = processed.syntacticFlows;
-    const storageCanariesEntries = processed.storageCanariesEntries;
+    const modifiedStorageItems = processed.modifiedStorageItems;
     writeOutputFileSync(
       path.join(outputName, `${site}+TF.json`),
       Flatted.stringify(taintFlows),
@@ -90,7 +88,7 @@ export function processTrackingRequests(args: {
     );
     writeOutputFileSync(
       path.join(outputName, `${site}+C.json`),
-      Flatted.stringify(storageCanariesEntries),
+      Flatted.stringify(modifiedStorageItems),
     );
   }
 
@@ -106,9 +104,8 @@ export function processTrackingRequests(args: {
     details = _.assign(details, src);
   };
 
-  const taintRequests = TrackingRequestIdEquivalence.getAllKeys(taintFlows);
-  const syntacticRequests =
-    TrackingRequestIdEquivalence.getAllKeys(syntacticFlows);
+  const taintRequests = TrackingIdEquivalence.getAllKeys(taintFlows);
+  const syntacticRequests = TrackingIdEquivalence.getAllKeys(syntacticFlows);
   addDetails({
     taintRequests,
     syntacticRequests,
@@ -126,7 +123,7 @@ export function processTrackingRequests(args: {
     ),
   });
 
-  const verifyResult = doVerify?.(syntacticRequests);
+  const verifyResult = doVerify?.();
   if (verifyResult) {
     const { confirmedRequests, refutedRequests, unknownRequests } =
       verifyResult;

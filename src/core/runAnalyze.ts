@@ -31,19 +31,19 @@ export type RunAnalyzeOptions<T extends Analysis> = {
 export const ANALYSIS_TIMEOUT_MS: number = 5 * 60 * 1000; // 5 minutes
 
 export async function runAnalyze(
-  options: RunAnalyzeOptions<Analysis>
+  options: RunAnalyzeOptions<Analysis>,
 ): Promise<AnalysisLogEntry<AnalysisResult>> {
   const { analysis } = options;
   switch (analysis.type) {
     case "StatefulTracking":
       return runAnalyzeForStatefulTrackingAnalysis(
-        options as RunAnalyzeOptions<StatefulTrackingAnalysis>
+        options as RunAnalyzeOptions<StatefulTrackingAnalysis>,
       );
   }
 }
 
 export async function runAnalyzeForStatefulTrackingAnalysis(
-  options: RunAnalyzeOptions<StatefulTrackingAnalysis>
+  options: RunAnalyzeOptions<StatefulTrackingAnalysis>,
 ): Promise<AnalysisLogEntry<StatefulTrackingAnalysisResult>> {
   const { site, outputName } = options;
 
@@ -52,7 +52,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const verifHarFile = `${site}+verif.har.zip`;
   const taintFlowsFile = `${site}+TF.json`;
   const syntacticFlowsFile = `${site}+SF.json`;
-  const storageCanariesFile = `${site}+C.json`;
+  const modifiedStorageItemsFile = `${site}+C.json`;
   const auxVerifHarFile = `${site}+auxVerif.har.zip`;
 
   return toCompletion(async () => {
@@ -74,7 +74,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             outputName,
           },
         ]),
-        { extraBinds: [profilesBind] }
+        { extraBinds: [profilesBind] },
       );
       aux = { connectResult: auxConnectResult };
 
@@ -86,7 +86,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             outputName,
           },
         ]),
-        { extraBinds: [profilesBind] }
+        { extraBinds: [profilesBind] },
       );
       pre = { connectResult: preConnectResult };
 
@@ -106,7 +106,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             screenshotFile: `${site}.png`,
           },
         ]),
-        { extraBinds: [profilesBind] }
+        { extraBinds: [profilesBind] },
       );
       taint = {
         connectResult: taintConnectResult,
@@ -116,18 +116,19 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       if (options.analysis.noVerif) return;
 
-      const { taintFlows, syntacticFlows, storageCanariesEntries } =
-        processFlows({
+      const { taintFlows, syntacticFlows, modifiedStorageItems } = processFlows(
+        {
           analysisName: outputName,
           auxConnectResult,
           preConnectResult,
           taintHarFile,
           taintTaintFile,
-        });
+        },
+      );
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
-        storageCanariesEntries.map(({ storageItem }) => storageItem)
+        modifiedStorageItems.map(({ storageItem }) => storageItem),
       );
       const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
@@ -138,31 +139,31 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             harFile: verifHarFile,
           },
         ]),
-        { extraBinds: [profilesBind] }
+        { extraBinds: [profilesBind] },
       );
       verif = {
         connectResult: verifConnectResult,
         harFile: verifHarFile,
         taintFlowsFile,
         syntacticFlowsFile,
-        storageCanariesFile,
+        modifiedStorageItemsFile,
       };
       writeOutputFileSync(
         path.join(outputName, taintFlowsFile),
-        Flatted.stringify(taintFlows)
+        Flatted.stringify(taintFlows),
       );
       writeOutputFileSync(
         path.join(outputName, syntacticFlowsFile),
-        Flatted.stringify(syntacticFlows)
+        Flatted.stringify(syntacticFlows),
       );
       writeOutputFileSync(
-        path.join(outputName, storageCanariesFile),
-        Flatted.stringify(storageCanariesEntries)
+        path.join(outputName, modifiedStorageItemsFile),
+        Flatted.stringify(modifiedStorageItems),
       );
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "aux"),
-        storageCanariesEntries.map(({ storageItem }) => storageItem)
+        modifiedStorageItems.map(({ storageItem }) => storageItem),
       );
       const auxVerifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
@@ -173,7 +174,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
             harFile: auxVerifHarFile,
           },
         ]),
-        { extraBinds: [profilesBind] }
+        { extraBinds: [profilesBind] },
       );
       auxVerif = {
         connectResult: auxVerifConnectResult,
@@ -202,7 +203,7 @@ export async function runSimulateConnect(
     harFile?: string;
     taintFile?: string;
     screenshotFile?: string;
-  }
+  },
 ) {
   const { userDataDir, outputName, harFile, taintFile, screenshotFile } =
     options;
@@ -241,7 +242,7 @@ export async function runSimulateConnect(
             new FoxhoundTaintArchive(taintPath).insertReports(foxhoundReports!);
           }
         }
-      }
-    )
+      },
+    ),
   );
 }

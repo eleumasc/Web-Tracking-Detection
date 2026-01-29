@@ -1,7 +1,8 @@
 import assert from "assert";
 import { isIdentifiable } from "../identifierDetection/identifiable";
 import { sliceToken } from "./transforms/slice";
-import { Token } from "./Token";
+import { some } from "iter-tools";
+import { Token, tokenChain } from "./Token";
 import { TransformTree, traverseTransformTree } from "./TransformTree";
 
 export type SyntacticMatcherMatch = {
@@ -15,22 +16,25 @@ export function syntacticMatcher(
 ): SyntacticMatcherMatch[] {
   const matches: SyntacticMatcherMatch[] = [];
 
-  const isTokenValueMatchable = (token: Token): boolean => {
-    const { value } = token;
-    return /[\x20-\x7E]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
-  };
-
   traverseTransformTree(storageTransformTree, (storageToken) => {
-    if (!isTokenValueMatchable(storageToken)) {
+    if (!isValueMatchable(storageToken.value)) {
       // skip: storageToken is not matchable
       return false;
     }
 
+    /**
+     * // isIdentifiableCheck
+     * if (!isIdentifiable(storageToken.value)) {
+     *   // skip: storageToken is not identifiable, nor is any derived Token
+     *   return false;
+     * }
+     */
+
     let matchFound = false;
 
     traverseTransformTree(requestTransformTree, (requestToken) => {
-      if (!isTokenValueMatchable(requestToken)) {
-        // skip: storageToken is not matchable
+      if (!isValueMatchable(requestToken.value)) {
+        // skip: requestToken is not matchable
         return false;
       }
 
@@ -38,19 +42,30 @@ export function syntacticMatcher(
       if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
         matchFound = true;
 
-        if (isIdentifiable(storageToken.value)) {
-          // storageToken (identifiable) is substring of requestToken
-          const requestSliceToken = sliceToken(
-            requestToken,
-            index,
-            index + storageToken.value.length,
-          );
-          assert(storageToken.value === requestSliceToken.value);
-          matches.push({
-            storageToken,
-            requestToken: requestSliceToken,
-          });
+        // this is equivalent to running "isIdentifiableCheck" (see above),
+        // but significantly faster
+        if (
+          some(
+            (token: Token) =>
+              //
+              !isIdentifiable(token.value),
+          )(tokenChain(storageToken))
+        ) {
+          // skip: some Token in chain of storageToken is not identifiable,
+          // nor is any derived Token (including storageToken)
+          return false;
         }
+
+        const requestSliceToken = sliceToken(
+          requestToken,
+          index,
+          index + storageToken.value.length,
+        );
+        assert(storageToken.value === requestSliceToken.value);
+        matches.push({
+          storageToken,
+          requestToken: requestSliceToken,
+        });
 
         // skip: matches involving descendants of requestToken are redundant
         return false;
@@ -65,4 +80,8 @@ export function syntacticMatcher(
   });
 
   return matches;
+}
+
+export function isValueMatchable(value: string): boolean {
+  return /[\x20-\x7e]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
 }

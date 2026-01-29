@@ -1,3 +1,4 @@
+import { toArray } from "iter-tools";
 import { Transform } from "./Transform";
 
 export type Token = {
@@ -36,4 +37,13 @@ export function viewToken(token: Token): Token {
       return value;
     }
   }
+}
+
+export function viewTokenDebug(argToken: Token) {
+  return [
+    argToken.value,
+    toArray(tokenChain(argToken))
+      .map((token) => token.transform?.name ?? "$")
+      .join(),
+  ];
 }

@@ -4,6 +4,7 @@ import { fromJSON } from "./transforms/fromJSON";
 import { fromQueryValues } from "./transforms/fromQueryValues";
 import { fromUrlEncoding } from "./transforms/fromURLEncoding";
 import { isIdentifiable } from "../identifierDetection/identifiable";
+import { isValueMatchable } from "./syntacticMatcher";
 import { split } from "./transforms/split";
 import { Token } from "./Token";
 import {
@@ -26,7 +27,7 @@ export function createStructureTokenArray(storageValue: string): Token[] {
       tokenGroupTree.addToken(token);
       return true;
     }
-    const success = /^[\x20-\x7e]+$/.test(value) && isIdentifiable(value);
+    const success = isValueMatchable(value) && isIdentifiable(value);
     if (success) {
       tokenGroupTree.addToken(token);
     }

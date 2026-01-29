@@ -1,7 +1,7 @@
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
 import path from "path";
-import { computeCanaries } from "./syntacticMatching/computeCanaries";
+import { createModifiedStorageItems } from "./syntacticMatching/createModifiedStorageItems";
 import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticFlows } from "./syntacticMatching/getSyntacticFlows";
@@ -40,11 +40,11 @@ export function processFlows(args: {
     taintHarReader,
   );
   const syntacticFlows = getSyntacticFlows(identifiers, taintHarReader);
-  const storageCanariesEntries = computeCanaries(syntacticFlows);
+  const modifiedStorageItems = createModifiedStorageItems(syntacticFlows);
 
   return {
     taintFlows,
     syntacticFlows,
-    storageCanariesEntries,
+    modifiedStorageItems,
   };
 }

@@ -1,14 +1,15 @@
-import _, { every } from "lodash";
+import _ from "lodash";
 import assert from "assert";
 import { alterValue } from "./alterValue";
 import { createStructureTokenArray } from "./StructureTree";
 import { enumerate, first, range } from "iter-tools";
 import { StorageItem } from "../StorageItem";
 import { SyntacticFlow } from "../Flow";
-import { Token, tokenChain } from "./Token";
+import { Token, tokenChain, viewTokenDebug } from "./Token";
 
-export type StorageCanariesEntry = {
+export type ModifiedStorageItem = {
   storageItem: StorageItem;
+  originalValue: string;
 };
 
 type StateEntry = {
@@ -19,9 +20,9 @@ type StateEntry = {
 
 type State = StateEntry[];
 
-export function computeCanaries(
+export function createModifiedStorageItems(
   flows: SyntacticFlow[],
-): StorageCanariesEntry[] {
+): ModifiedStorageItem[] {
   const storageItems = _.uniqWith(
     flows.map((flow) => flow.storageItem),
     _.isEqual,
@@ -79,20 +80,33 @@ export function computeCanaries(
     state = newState;
   }
 
-  if (
-    !state.every((entry) => {
+  const unmodifiedMatchTokenFound = (() => {
+    for (const entry of state) {
       const recomputeToken = createRecomputeToken(entry.storageItem.value);
-      return entry.matchTokenArray.every(
-        (token) => recomputeToken(token).value !== token.value,
-      );
-    })
-  ) {
-    console.log("Not every canary modified");
+      for (const token of entry.matchTokenArray) {
+        if (recomputeToken(token).value === token.value) {
+          return { entry, matchToken: token };
+        }
+      }
+    }
+  })();
+  if (unmodifiedMatchTokenFound) {
+    const { entry, matchToken } = unmodifiedMatchTokenFound;
+    console.log("Not every match token modified");
+    console.log("storageValue", entry.storageItem.value);
+    console.log("matchToken", viewTokenDebug(matchToken));
+    console.log(
+      "structureTokenArray",
+      entry.structureTokenArray.map((structureToken) =>
+        viewTokenDebug(structureToken),
+      ),
+    );
   }
 
   return state.map(
-    (entry): StorageCanariesEntry => ({
+    (entry, entryIndex): ModifiedStorageItem => ({
       storageItem: entry.storageItem,
+      originalValue: originalState[entryIndex].storageItem.value,
     }),
   );
 }

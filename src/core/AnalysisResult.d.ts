@@ -19,7 +19,7 @@ export interface StatefulTrackingAnalysisResult extends AnalysisResult {
     harFile: string;
     taintFlowsFile: string;
     syntacticFlowsFile: string;
-    storageCanariesFile: string;
+    modifiedStorageItemsFile: string;
   };
   auxVerif?: {
     connectResult: SimulateConnectResult;

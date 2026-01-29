@@ -4,7 +4,7 @@ import { Flow, SyntacticFlow } from "./Flow";
 import { viewToken } from "./syntacticMatching/Token";
 
 export interface TrackingRequest {
-  id: TrackingRequestId;
+  id: TrackingId;
   tracker: string;
   taint: boolean;
   syntactic: boolean;
@@ -12,16 +12,16 @@ export interface TrackingRequest {
   refutedSyntactic: boolean;
 }
 
-export type TrackingRequestId = string;
+export type TrackingId = string;
 
-export const TrackingRequestIdEquivalence = new Equivalence(
-  (flow: Flow): TrackingRequestId => {
+export const TrackingIdEquivalence = new Equivalence(
+  (flow: Flow): TrackingId => {
     const { requestUrl } = flow;
-    return getTrackingRequestId(requestUrl);
+    return getTrackingId(requestUrl);
   },
 );
 
-export function getTrackingRequestId(url: string): string {
+export function getTrackingId(url: string): string {
   const { origin, pathname, searchParams } = new URL(url);
   const pathSegments = pathname.split("/").slice(1);
   const paramNames = [...searchParams.entries()]
@@ -31,14 +31,14 @@ export function getTrackingRequestId(url: string): string {
 }
 
 export function viewSyntacticTrackingRequests(
-  trkRequestIds: TrackingRequestId[],
+  trkIds: TrackingId[],
   flows: SyntacticFlow[],
 ) {
-  return trkRequestIds.map((id) => {
+  return trkIds.map((id) => {
     return {
       id,
       flows: groupFlowsByStorageId(
-        TrackingRequestIdEquivalence.filterValuesByKey(id, flows),
+        TrackingIdEquivalence.filterValuesByKey(id, flows),
       ).map(([storageId, groupFlows]) => ({
         storageId,
         matches: _.uniqWith(
@@ -54,14 +54,14 @@ export function viewSyntacticTrackingRequests(
 }
 
 export function viewTaintTrackingRequests(
-  trkRequestIds: TrackingRequestId[],
+  trkIds: TrackingId[],
   flows: Flow[],
 ) {
-  return trkRequestIds.map((id) => {
+  return trkIds.map((id) => {
     return {
       id,
       flows: groupFlowsByStorageId(
-        TrackingRequestIdEquivalence.filterValuesByKey(id, flows),
+        TrackingIdEquivalence.filterValuesByKey(id, flows),
       ).map(([storageId, groupFlows]) => ({
         storageId,
         matches: _.uniqWith(

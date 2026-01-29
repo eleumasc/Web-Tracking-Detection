@@ -1,140 +1,150 @@
 import _ from "lodash";
-import assert from "assert";
-import { getRequestItemsFromHar, RequestItem } from "../RequestItem";
+import { getSyntacticFlows } from "./getSyntacticFlows";
 import { HarReader } from "../../util/HarReader";
-import { memoize } from "../../util/memoize";
-import { parseRequestValueRootNode } from "./rootNodes";
+import { map, toArray } from "iter-tools";
+import { ModifiedStorageItem } from "./createModifiedStorageItems";
+import { RequestParameterKey } from "../RequestItem";
 import { RequestTemplate } from "./RequestTemplate";
-import { StorageCanariesEntry } from "./computeCanaries";
 import { SyntacticFlow } from "../Flow";
-import { TransformTree, traverseTransformTree } from "./TransformTree";
-import {
-  TrackingRequestId,
-  TrackingRequestIdEquivalence,
-} from "../TrackingRequest";
+import { Token, tokenChain } from "./Token";
+import { TrackingIdEquivalence } from "../TrackingRequest";
+import { weakMemoize } from "../../util/memoize";
 
-export function verifySyntacticTrackingRequests(
-  trkRequests: TrackingRequestId[],
-  flows: SyntacticFlow[],
-  storageCanariesEntries: StorageCanariesEntry[],
-  verifHarReader: HarReader,
-  auxVerifHarReader: HarReader,
-): any {
-  throw new Error("Not implemented");
-
-  // const confirmedFlows: SyntacticFlow[] = [];
-  // const refutedFlows: SyntacticFlow[] = [];
-  // const unknownFlows: SyntacticFlow[] = [];
-
-  // const verifRequestItems = getRequestItemsFromHar(verifHarReader);
-  // const auxVerifRequestItems = getRequestItemsFromHar(auxVerifHarReader);
-  // const parseRequestValue = memoize((initialValue: string): string[] => {
-  //   const requestValues: string[] = [];
-  //   traverseTransformTree(
-  //     new TransformTree(parseRequestValueRootNode(), initialValue),
-  //     (token) => {
-  //       requestValues.push(token.value);
-  //       return true;
-  //     },
-  //   );
-  //   return requestValues;
-  // });
-
-  // for (const flow of flows) {
-  //   const {
-  //     storageItem: { id: storageId },
-  //   } = flow;
-
-  //   const canaries = storageCanariesEntries.find((entry) =>
-  //     _.isEqual(entry.storageItem.id, storageId),
-  //   )?.canaries;
-  //   assert(canaries);
-
-  //   const requestTemplate = RequestTemplate.fromSyntacticFlow(flow);
-  //   const matchingVerifRequestItems = getMatchingRequestItems(
-  //     verifRequestItems,
-  //     requestTemplate,
-  //   );
-  //   const matchingAuxVerifRequestItems = getMatchingRequestItems(
-  //     auxVerifRequestItems,
-  //     requestTemplate,
-  //   );
-
-  //   if (matchingVerifRequestItems.length === 0) {
-  //     unknownFlows.push(flow);
-  //   } else if (
-  //     matchingVerifRequestItems.some(({ params }) =>
-  //       params.some(({ value: initialRequestValue }) =>
-  //         parseRequestValue(initialRequestValue).some((requestValue) =>
-  //           canaries.some((canary) => requestValue.includes(canary.modified)),
-  //         ),
-  //       ),
-  //     )
-  //   ) {
-  //     confirmedFlows.push(flow);
-  //   } else if (
-  //     matchingAuxVerifRequestItems.every(({ params }) =>
-  //       params.some(({ value: initialRequestValue }) =>
-  //         parseRequestValue(initialRequestValue).some((requestValue) =>
-  //           canaries.some((canary) => requestValue.includes(canary.original)),
-  //         ),
-  //       ),
-  //     )
-  //   ) {
-  //     refutedFlows.push(flow);
-  //   } else {
-  //     unknownFlows.push(flow);
-  //   }
-  // }
-
-  // const confirmedRequests: TrackingRequestId[] = [];
-  // const refutedRequests: TrackingRequestId[] = [];
-  // const unknownRequests: TrackingRequestId[] = [];
-
-  // for (const trkRequest of trkRequests) {
-  //   const matchingFlows = TrackingRequestIdEquivalence.filterValuesByKey(
-  //     trkRequest,
-  //     flows,
-  //   );
-  //   assert(matchingFlows.length > 0);
-  //   if (
-  //     matchingFlows.some((matchingFlow) =>
-  //       confirmedFlows.includes(matchingFlow),
-  //     )
-  //   ) {
-  //     confirmedRequests.push(trkRequest);
-  //   } else if (
-  //     matchingFlows.every((matchingFlow) => refutedFlows.includes(matchingFlow))
-  //   ) {
-  //     refutedRequests.push(trkRequest);
-  //   } else {
-  //     unknownRequests.push(trkRequest);
-  //   }
-  // }
-
-  // return {
-  //   confirmedFlows,
-  //   refutedFlows,
-  //   unknownFlows,
-  //   confirmedRequests,
-  //   refutedRequests,
-  //   unknownRequests,
-  // };
+interface AbstractMatch {
+  transformChain: any[];
+  requestParamKey: RequestParameterKey;
 }
 
-function getMatchingRequestItems(
-  requestItems: RequestItem[],
-  requestTemplate: RequestTemplate,
-): RequestItem[] {
-  return requestItems
-    .filter((requestItem) => requestTemplate.matchesUrl(requestItem.url))
-    .map(
-      ({ url, params }): RequestItem => ({
-        url,
-        params: params.filter((param) =>
-          requestTemplate.includesHole(param.key),
+export function verifySyntacticTrackingRequests(
+  flows: SyntacticFlow[],
+  modifiedStorageItems: ModifiedStorageItem[],
+  verifHarReader: HarReader,
+  auxVerifHarReader: HarReader,
+) {
+  const modifiedIdentifiers = modifiedStorageItems.map(
+    ({ storageItem }) => storageItem,
+  );
+  const verifFlows = getSyntacticFlows(modifiedIdentifiers, verifHarReader);
+  const originalIdentifiers = modifiedStorageItems.map(
+    ({ storageItem, originalValue }) => ({
+      ...storageItem,
+      value: originalValue,
+    }),
+  );
+  const auxVerifFlows = getSyntacticFlows(
+    originalIdentifiers,
+    auxVerifHarReader,
+  );
+
+  const { confirmedFlows, refutedFlows, unknownFlows } = verifySyntacticFlows(
+    flows,
+    verifFlows,
+    auxVerifFlows,
+  );
+
+  const allRequests = TrackingIdEquivalence.getAllKeys(flows);
+  const confirmedRequests = TrackingIdEquivalence.getAllKeys(confirmedFlows);
+  const notConfirmedRequests = _.difference(allRequests, confirmedRequests); // refuted or unknown
+  const refutedRequests = _.difference(
+    notConfirmedRequests,
+    TrackingIdEquivalence.getAllKeys(unknownFlows),
+  );
+  const unknownRequests = _.difference(notConfirmedRequests, refutedRequests);
+
+  return {
+    confirmedFlows,
+    refutedFlows,
+    unknownFlows,
+    confirmedRequests,
+    refutedRequests,
+    unknownRequests,
+  };
+}
+
+function verifySyntacticFlows(
+  flows: SyntacticFlow[],
+  verifFlows: SyntacticFlow[],
+  auxVerifFlows: SyntacticFlow[],
+) {
+  const getAbstractMatches = weakMemoize((flow: SyntacticFlow) =>
+    flow.matches.map(
+      (match): AbstractMatch => ({
+        transformChain: toArray(
+          map(
+            (x: Token) =>
+              //
+              x.transform && { ...x.transform },
+          )(tokenChain(match.storageToken)),
         ),
+        requestParamKey: match.requestParamKey,
       }),
-    )
-    .filter(({ params }) => params.length > 0);
+    ),
+  );
+
+  const confirmedFlows: SyntacticFlow[] = [];
+  const refutedFlows: SyntacticFlow[] = [];
+  const unknownFlows: SyntacticFlow[] = [];
+
+  for (const flow of flows) {
+    const matchingVerifFlows = getMatchingVerifFlows(flow, verifFlows);
+    const matchingAuxVerifFlows = getMatchingVerifFlows(flow, auxVerifFlows);
+
+    if (matchingVerifFlows.length === 0) {
+      unknownFlows.push(flow);
+    } else if (
+      matchingVerifFlows.some(
+        (verifFlow) =>
+          !_.isEmpty(
+            _.intersectionWith(
+              getAbstractMatches(verifFlow),
+              getAbstractMatches(flow),
+              _.isEqual,
+            ),
+          ),
+      )
+    ) {
+      confirmedFlows.push(flow);
+    } else if (
+      matchingAuxVerifFlows.every(
+        (auxVerifFlow) =>
+          !_.isEmpty(
+            _.intersectionWith(
+              getAbstractMatches(auxVerifFlow),
+              getAbstractMatches(flow),
+              _.isEqual,
+            ),
+          ),
+      )
+    ) {
+      refutedFlows.push(flow);
+    } else {
+      unknownFlows.push(flow);
+    }
+  }
+
+  return {
+    confirmedFlows,
+    refutedFlows,
+    unknownFlows,
+  };
+}
+
+function getMatchingVerifFlows(
+  flow: SyntacticFlow,
+  verifFlows: SyntacticFlow[],
+): SyntacticFlow[] {
+  const {
+    storageItem: { id: storageId },
+  } = flow;
+  const requestTemplate = RequestTemplate.fromSyntacticFlow(flow);
+  return verifFlows.filter((verifFlow) => {
+    const {
+      storageItem: { id: verifStorageId },
+      requestUrl: verifRequestUrl,
+    } = verifFlow;
+    return (
+      _.isEqual(verifStorageId, storageId) &&
+      requestTemplate.matchesUrl(verifRequestUrl)
+    );
+  });
 }
