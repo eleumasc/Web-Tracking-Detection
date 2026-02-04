@@ -3,7 +3,7 @@
 (function () {
   const { stringifyCompactJSON } = loadStringifyCompactJSON();
 
-  window.addEventListener("__taintreport", ({ value }) => {
+  window.addEventListener("__taintreport", ({ detail: value }) => {
     const log = window.__foxhoundTaintReporter ?? console.log;
     const foxReport = createFoxhoundReport(value);
     if (foxReport) {
