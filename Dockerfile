@@ -1,7 +1,7 @@
 FROM node:20-slim
 
 RUN apt update
-RUN apt install unzip
+RUN apt install -y libpci3 unzip
 
 WORKDIR /app
 
