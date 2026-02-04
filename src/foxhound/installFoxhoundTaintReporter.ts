@@ -1,13 +1,12 @@
 import path from "path";
 import { BrowserContext, Page } from "playwright";
-import { FoxhoundReport } from "./types";
 import { rootDir } from "../env";
 
 export default async function installFoxhoundTaintReporter(
   context: BrowserContext | Page,
   options: {
-    onReport: (foxhoundReport: FoxhoundReport) => void;
-  }
+    onReport: (rawReport: string) => void;
+  },
 ): Promise<void> {
   const { onReport } = options;
 
@@ -17,8 +16,8 @@ export default async function installFoxhoundTaintReporter(
 
   await context.exposeBinding(
     "__foxhoundTaintReporter",
-    async (_source, foxhoundReport: FoxhoundReport) => {
-      onReport(foxhoundReport);
-    }
+    async (_source, rawReport: string) => {
+      onReport(rawReport);
+    },
   );
 }

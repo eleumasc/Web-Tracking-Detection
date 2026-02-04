@@ -1,5 +1,6 @@
 import DocumentStore from "../data/DocumentStore";
 import { FoxhoundReport } from "./types";
+import { parseCompactJSON } from "../util/parseCompactJSON";
 
 export const TAINT_REPORTS_COLL_NAME = "taintReports";
 
@@ -11,26 +12,26 @@ export default class FoxhoundTaintArchive {
     try {
       const collection = store.getCollectionByName(
         null,
-        TAINT_REPORTS_COLL_NAME
+        TAINT_REPORTS_COLL_NAME,
       );
       return store
         .getDocumentsWithDataByCollection(collection.id)
-        .map(({ data }) => data as FoxhoundReport);
+        .map(({ data }) => parseCompactJSON(data) as FoxhoundReport);
     } finally {
       store.db.close();
     }
   }
 
-  insertReports(foxhoundReports: FoxhoundReport[]): void {
+  insertRawReports(rawReports: string[]): void {
     const store = DocumentStore.open(this.dbPath);
     try {
       const collection = store.createCollection(null, TAINT_REPORTS_COLL_NAME);
       store.insertDocuments(
         collection.id,
-        foxhoundReports.map((foxhoundReport, i) => ({
+        rawReports.map((rawReport, i) => ({
           name: `${i}`,
-          data: foxhoundReport,
-        }))
+          data: rawReport,
+        })),
       );
     } finally {
       store.db.close();

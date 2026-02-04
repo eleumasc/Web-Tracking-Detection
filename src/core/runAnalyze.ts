@@ -12,7 +12,6 @@ import { AnalysisLogEntry } from "./AnalysisLogEntry";
 import { bomb } from "../util/timeout";
 import { cpSync } from "fs";
 import { createOutputDir, writeOutputFileSync } from "../data/outputDir";
-import { FoxhoundReport } from "../foxhound/types";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
 import { processFlows } from "./processFlows";
@@ -222,12 +221,12 @@ export async function runSimulateConnect(
         harPath,
       },
       async (browser) => {
-        let foxhoundReports: FoxhoundReport[] | undefined;
+        let rawReports: string[] | undefined;
         if (taintPath) {
-          foxhoundReports = [];
+          rawReports = [];
           await installFoxhoundTaintReporter(browser, {
-            onReport(foxhoundReport) {
-              foxhoundReports!.push(foxhoundReport);
+            onReport(rawReport) {
+              rawReports!.push(rawReport);
             },
           });
         }
@@ -239,7 +238,7 @@ export async function runSimulateConnect(
           return result;
         } finally {
           if (taintPath) {
-            new FoxhoundTaintArchive(taintPath).insertReports(foxhoundReports!);
+            new FoxhoundTaintArchive(taintPath).insertRawReports(rawReports!);
           }
         }
       },
