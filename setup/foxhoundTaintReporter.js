@@ -1,192 +1,120 @@
 "use strict";
 
 (function () {
-  const $Reflect$apply = Reflect.apply;
+  const { stringifyCompactJSON } = loadStringifyCompactJSON();
 
-  function unbind(f) {
-    return function (thisArg, ...args) {
-      return $Reflect$apply(f, thisArg, args);
-    };
-  }
-
-  const $Array$$map = unbind(Array.prototype.map);
-  const $Map = window.Map;
-  const $Map$$get = unbind(Map.prototype.get);
-  const $Map$$set = unbind(Map.prototype.set);
-
-  const leaderWindow = (function () {
-    let w = window;
-    while (w !== w.top) {
-      try {
-        void w.parent.location.href;
-        w = w.parent;
-      } catch (e) {
-        break;
-      }
+  window.addEventListener("__taintreport", ({ value }) => {
+    const log = window.__foxhoundTaintReporter ?? console.log;
+    const foxReport = createFoxhoundReport(value);
+    if (foxReport) {
+      log(stringifyCompactJSON(foxReport));
     }
-    return w;
-  })();
-  if (window === leaderWindow) {
-    const { StorageReadLogManager } = loadStorageReadLogManager();
-    const logManager = new StorageReadLogManager();
-    window.__foxhound_taint_callback = function (value) {
-      const taint = value.str.taint;
-      const taintReport = simplifyTaintReport({ ...value, taint });
-      if (!taintReport) return;
-      const log = window.__foxhoundTaintReporter ?? console.log;
-      const toBeLoggedTaintReports =
-        logManager.getToBeLoggedTaintReports(taintReport);
-      for (let i = 0; i < toBeLoggedTaintReports.length; ++i) {
-        log(toBeLoggedTaintReports[i]);
-      }
-    };
-  } else {
-    window.__foxhound_taint_callback = function (value) {
-      leaderWindow.__foxhound_taint_callback(value);
-    };
-  }
+  });
 
-  function simplifyTaintReport(taintReport) {
-    const { taint } = taintReport;
-    const sink = taint[0]?.flow[0];
-    if (!sink) return;
+  function createFoxhoundReport(value) {
+    const { taint } = value.str;
+    if (!taint) return;
+    const sinkOperation = taint[0]?.flow[0];
+    if (!sinkOperation) return;
+    const { sink, ...rest } = value;
     return {
-      ...taintReport,
-      sink,
-      taint: combineStorageTaintRanges(
-        $Array$$map(taint, (range) => {
-          const { flow } = range;
-          return {
-            ...range,
-            flow: flow[flow.length - 1],
-          };
-        })
-      ),
+      ...rest,
+      sinkOperation,
+      taint,
     };
   }
 
-  function isStorageReadOperation(taintOperation) {
-    switch (taintOperation.operation) {
-      case "document.cookie":
-        return taintOperation.source;
-      case "localStorage.getItem":
-      case "sessionStorage.getItem":
-        return true;
-      default: {
-        return false;
-      }
-    }
-  }
+  function loadStringifyCompactJSON() {
+    const isArray = Array.isArray;
+    const keys = Object.keys;
+    const stringifyJSON = JSON.stringify;
+    const $Map = Map;
+    const $Map$$get = Map.prototype.get;
+    const $Map$$set = Map.prototype.set;
+    const $WeakMap = WeakMap;
+    const $WeakMap$$get = WeakMap.prototype.get;
+    const $WeakMap$$set = WeakMap.prototype.set;
 
-  function combineStorageTaintRanges(taintRanges) {
-    const result = [];
-    for (let headIndex = 0; headIndex < taintRanges.length; ++headIndex) {
-      const headRange = taintRanges[headIndex];
-      const { begin: headBegin, flow: headFlow } = headRange;
-      const { arguments: headArgs } = headFlow;
+    function stringifyCompactJSON(value) {
+      return stringifyTop();
 
-      if (!isStorageReadOperation(headFlow)) {
-        result[result.length] = headRange;
-        continue;
-      }
-
-      if (headArgs[2] === undefined) {
-        result[result.length] = headRange;
-        continue;
-      }
-
-      let lastIndex = headIndex;
-      for (let i = headIndex + 1; i < taintRanges.length; ++i) {
-        const currRange = taintRanges[i];
-        const { begin: currBegin, end: currEnd, flow: currFlow } = currRange;
-        const { operation: currOperation, arguments: currArgs } = currFlow;
-
-        const prevRange = taintRanges[i - 1];
-        const { begin: prevBegin, end: prevEnd, flow: prevFlow } = prevRange;
-        const { operation: prevOperation, arguments: prevArgs } = prevFlow;
-
+      function stringifyTop() {
+        const t = typeof value;
         if (
-          prevBegin + 1 === prevEnd &&
-          currBegin + 1 === currEnd &&
-          prevEnd === currBegin &&
-          prevOperation === currOperation &&
-          prevArgs[0] === currArgs[0] && // storageKey
-          prevArgs[1] === currArgs[1] && // version
-          +prevArgs[2] + 1 === +currArgs[2]
+          t === "boolean" ||
+          t === "number" ||
+          t === "string" ||
+          t === "undefined" ||
+          value === null
         ) {
-          lastIndex = i;
+          return stringifyJSON(value);
+        } else if (t === "object") {
+          return stringifyJSON(createTopArray(value));
         } else {
-          break;
+          throw `Unsupported value for CompactJSON: ${value}`;
         }
       }
 
-      const lastRange = taintRanges[lastIndex];
-      const { end: lastEnd } = lastRange;
+      function createTopArray(value) {
+        const strMap = new $Map();
+        const objMap = new $WeakMap();
+        const $topArray = [];
+        visit(value);
+        return $topArray;
 
-      const newRange = {
-        begin: headBegin,
-        end: lastEnd,
-        flow: {
-          ...headFlow,
-          arguments: [
-            headArgs[0],
-            headArgs[1],
-            `${headArgs[2]}:${+headArgs[2] + (lastIndex - headIndex + 1)}`,
-          ],
-        },
-      };
-      result[result.length] = newRange;
-
-      headIndex = lastIndex;
-    }
-    return result;
-  }
-
-  function loadStorageReadLogManager() {
-    class StorageReadLogManager {
-      constructor() {
-        this.storageReadEntryMap = new $Map();
-      }
-
-      getToBeLoggedTaintReports(taintReport) {
-        if (taintReport.sink.operation === "StorageRead") {
-          this._addStorageRead(taintReport);
-          return [];
+        function visit(v) {
+          const t = typeof v;
+          if (
+            t === "boolean" ||
+            t === "number" ||
+            t === "undefined" ||
+            v === null
+          ) {
+            return v;
+          } else if (t === "string") {
+            let $k = $Map$$get.apply(strMap, [v]);
+            if ($k === void 0) {
+              $k = $topArray.length++;
+              $Map$$set.apply(strMap, [v, $k]);
+              $topArray[$k] = v;
+            }
+            return `${$k}`;
+          } else if (t === "object") {
+            let $k = $WeakMap$$get.apply(objMap, [v]);
+            if ($k === void 0) {
+              $k = $topArray.length++;
+              $WeakMap$$set.apply(objMap, [v, $k]);
+              $topArray[$k] = createCompactObject(v);
+            }
+            return `${$k}`;
+          } else {
+            throw `Unsupported value for CompactJSON: ${v}`;
+          }
         }
 
-        const { taint } = taintReport;
-
-        let result = [];
-        for (let i = 0; i < taint.length; ++i) {
-          const taintOperation = taint[i].flow;
-          if (!isStorageReadOperation(taintOperation)) continue;
-          const version = taintOperation.arguments[1];
-          const entry = $Map$$get(this.storageReadEntryMap, version);
-          if (!entry) continue;
-          if (entry.logged) continue;
-          result[result.length] = entry.storageRead;
-          entry.logged = true;
-        }
-        result[result.length] = taintReport;
-        return result;
-      }
-
-      _addStorageRead(storageRead) {
-        const { taint } = storageRead;
-
-        const entry = {
-          storageRead,
-          logged: false,
-        };
-
-        for (let i = 0; i < taint.length; ++i) {
-          const taintOperation = taint[i].flow;
-          const version = taintOperation.arguments[1];
-          $Map$$set(this.storageReadEntryMap, version, entry);
+        function createCompactObject(v) {
+          if (isArray(v)) {
+            const $v = [];
+            for (let i = 0; i < v.length; ++i) {
+              $v[$v.length] = visit(v[i]);
+            }
+            return $v;
+          } else {
+            const $v = { __proto__: null };
+            const K = keys(v);
+            for (let i = 0; i < K.length; ++i) {
+              const k = K[i];
+              const e = v[k];
+              if (e !== void 0) {
+                $v[visit(k)] = visit(e);
+              }
+            }
+            return $v;
+          }
         }
       }
     }
 
-    return { StorageReadLogManager };
+    return { stringifyCompactJSON };
   }
 })();
