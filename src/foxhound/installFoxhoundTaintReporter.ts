@@ -5,7 +5,7 @@ import { rootDir } from "../env";
 export default async function installFoxhoundTaintReporter(
   context: BrowserContext | Page,
   options: {
-    onReport: (rawReport: string) => void;
+    onReport: (rawReport: any) => void;
   },
 ): Promise<void> {
   const { onReport } = options;
@@ -16,7 +16,7 @@ export default async function installFoxhoundTaintReporter(
 
   await context.exposeBinding(
     "__foxhoundTaintReporter",
-    async (_source, rawReport: string) => {
+    async (_source, rawReport: any) => {
       onReport(rawReport);
     },
   );

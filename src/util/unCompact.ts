@@ -1,21 +1,20 @@
-export function parseCompactJSON(str: string): any {
+export function unCompact($value: any): any {
   return parseTop();
 
   function parseTop() {
-    const $v = JSON.parse(str);
-    const t = typeof $v;
+    const t = typeof $value;
     if (
       t === "boolean" ||
       t === "number" ||
       t === "string" ||
       t === "undefined" ||
-      $v === null
+      $value === null
     ) {
-      return $v;
-    } else if (Array.isArray($v)) {
-      return parseTopArray($v);
+      return $value;
+    } else if (Array.isArray($value)) {
+      return parseTopArray($value);
     } else {
-      throw new SyntaxError(`Invalid top value for CompactJSON: ${$v}`);
+      throw new SyntaxError(`Invalid top value for Compact: ${$value}`);
     }
   }
 
@@ -29,9 +28,7 @@ export function parseCompactJSON(str: string): any {
       } else if (t === "object" && t) {
         return { __proto__: null };
       } else {
-        throw new SyntaxError(
-          `Invalid top array element for CompactJSON: ${$v}`,
-        );
+        throw new SyntaxError(`Invalid top array element for Compact: ${$v}`);
       }
     });
 

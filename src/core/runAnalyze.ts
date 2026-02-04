@@ -221,7 +221,7 @@ export async function runSimulateConnect(
         harPath,
       },
       async (browser) => {
-        let rawReports: string[] | undefined;
+        let rawReports: any[] | undefined;
         if (taintPath) {
           rawReports = [];
           await installFoxhoundTaintReporter(browser, {

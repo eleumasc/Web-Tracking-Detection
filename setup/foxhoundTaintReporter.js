@@ -1,13 +1,13 @@
 "use strict";
 
 (function () {
-  const { stringifyCompactJSON } = loadStringifyCompactJSON();
+  const { toCompact } = import$toCompact();
 
   window.addEventListener("__taintreport", ({ detail: value }) => {
     const log = window.__foxhoundTaintReporter ?? console.log;
     const foxReport = createFoxhoundReport(value);
     if (foxReport) {
-      log(stringifyCompactJSON(foxReport));
+      log(toCompact(foxReport));
     }
   });
 
@@ -24,10 +24,9 @@
     };
   }
 
-  function loadStringifyCompactJSON() {
+  function import$toCompact() {
     const isArray = Array.isArray;
     const keys = Object.keys;
-    const stringifyJSON = JSON.stringify;
     const $Map = Map;
     const $Map$$get = Map.prototype.get;
     const $Map$$set = Map.prototype.set;
@@ -35,7 +34,7 @@
     const $WeakMap$$get = WeakMap.prototype.get;
     const $WeakMap$$set = WeakMap.prototype.set;
 
-    function stringifyCompactJSON(value) {
+    function toCompact(value) {
       return stringifyTop();
 
       function stringifyTop() {
@@ -47,11 +46,11 @@
           t === "undefined" ||
           value === null
         ) {
-          return stringifyJSON(value);
+          return value;
         } else if (t === "object") {
-          return stringifyJSON(createTopArray(value));
+          return createTopArray(value);
         } else {
-          throw `Unsupported value for CompactJSON: ${value}`;
+          throw `Unsupported value for Compact: ${value}`;
         }
       }
 
@@ -88,7 +87,7 @@
             }
             return `${$k}`;
           } else {
-            throw `Unsupported value for CompactJSON: ${v}`;
+            throw `Unsupported value for Compact: ${v}`;
           }
         }
 
@@ -115,6 +114,6 @@
       }
     }
 
-    return { stringifyCompactJSON };
+    return { toCompact };
   }
 })();
