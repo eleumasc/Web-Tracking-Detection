@@ -1,7 +1,7 @@
 import assert from "assert";
 import execContainer from "../worker/execContainer";
 import Flatted from "flatted";
-import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
+import FoxTaintArchive from "../foxhound/FoxTaintArchive";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import path from "path";
 import simulateConnect, { SimulateConnectResult } from "./simulateConnect";
@@ -238,7 +238,7 @@ export async function runSimulateConnect(
           return result;
         } finally {
           if (taintPath) {
-            new FoxhoundTaintArchive(taintPath).insertRawReports(rawReports!);
+            new FoxTaintArchive(taintPath).insertRawReports(rawReports!);
           }
         }
       },

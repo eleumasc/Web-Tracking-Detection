@@ -1,4 +1,4 @@
-import { getRequestItemsFromHar } from "../RequestItem";
+import { getRequestsFromHar } from "./Request";
 import { Har } from "../../util/Har";
 import { memoize } from "../../util/memoize";
 import { StorageItem } from "../StorageItem";
@@ -27,11 +27,11 @@ export function getSyntacticFlows(
     (requestValue) =>
       new TransformTree(parseRequestValueRootNode(), requestValue),
   );
-  const requestEntries = getRequestItemsFromHar(har).map(
-    ({ url: requestUrl, params }) => ({
+  const requests = getRequestsFromHar(har).map(
+    ({ url: requestUrl, paramEntries }) => ({
       requestUrl,
-      params: params.map(({ key, value }) => ({
-        key,
+      paramEntries: paramEntries.map(({ param, value }) => ({
+        param,
         transformTree: getRequestTransformTree(value),
       })),
     }),
@@ -42,13 +42,13 @@ export function getSyntacticFlows(
     storageItem,
     transformTree: storageTransformTree,
   } of storageEntries) {
-    for (const { requestUrl, params: requestParamEntries } of requestEntries) {
-      const matches: SyntacticMatch[] = requestParamEntries.flatMap(
-        ({ key: requestParamKey, transformTree: requestTransformTree }) =>
+    for (const { requestUrl, paramEntries } of requests) {
+      const matches: SyntacticMatch[] = paramEntries.flatMap(
+        ({ param, transformTree: requestTransformTree }) =>
           syntacticMatcher(storageTransformTree, requestTransformTree).map(
             (syntacticMatch): SyntacticMatch => ({
               ...syntacticMatch,
-              requestParamKey,
+              requestParam: param,
             }),
           ),
       );

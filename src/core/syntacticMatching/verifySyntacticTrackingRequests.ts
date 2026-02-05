@@ -3,7 +3,7 @@ import { getSyntacticFlows } from "./getSyntacticFlows";
 import { Har } from "../../util/Har";
 import { map, toArray } from "iter-tools";
 import { ModifiedStorageItem } from "./createModifiedStorageItems";
-import { RequestParameterKey } from "../RequestItem";
+import { RequestParam } from "./Request";
 import { RequestTemplate } from "./RequestTemplate";
 import { SyntacticFlow } from "../Flow";
 import { Token, tokenChain } from "./Token";
@@ -12,7 +12,7 @@ import { weakMemoize } from "../../util/memoize";
 
 interface AbstractMatch {
   transformChain: any[];
-  requestParamKey: RequestParameterKey;
+  requestParam: RequestParam;
 }
 
 export function verifySyntacticTrackingRequests(
@@ -31,10 +31,7 @@ export function verifySyntacticTrackingRequests(
       value: originalValue,
     }),
   );
-  const auxVerifFlows = getSyntacticFlows(
-    originalIdentifiers,
-    auxVerifHar,
-  );
+  const auxVerifFlows = getSyntacticFlows(originalIdentifiers, auxVerifHar);
 
   const { confirmedFlows, refutedFlows, unknownFlows } = verifySyntacticFlows(
     flows,
@@ -76,7 +73,7 @@ function verifySyntacticFlows(
               x.transform && { ...x.transform },
           )(tokenChain(match.storageToken)),
         ),
-        requestParamKey: match.requestParamKey,
+        requestParam: match.requestParam,
       }),
     ),
   );

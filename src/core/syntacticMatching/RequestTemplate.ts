@@ -4,15 +4,15 @@ import { SyntacticFlow } from "../Flow";
 import {
   extractUrlPathSegments,
   extractUrlQueryParams,
-  RequestParameterKey,
-} from "../RequestItem";
+  RequestParam,
+} from "./Request";
 
 export class RequestTemplate {
   constructor(
-    readonly holes: RequestParameterKey[],
+    readonly holes: RequestParam[],
     readonly origin: string,
     readonly fixedUrlPathSegments: (string | undefined)[],
-    readonly urlQueryParamNames: string[]
+    readonly urlQueryParamNames: string[],
   ) {}
 
   matchesUrl(url: string): boolean {
@@ -24,7 +24,7 @@ export class RequestTemplate {
     }
 
     const urlPathSegments = extractUrlPathSegments(parsedUrl.pathname).map(
-      ({ value }) => value
+      ({ value }) => value,
     );
     if (urlPathSegments.length !== this.fixedUrlPathSegments.length) {
       return false;
@@ -39,7 +39,7 @@ export class RequestTemplate {
     }
 
     const urlQueryParamNames = extractUrlQueryParams(parsedUrl.search).map(
-      ({ key }) => (assert(key.type === "urlQueryParam"), key.name)
+      ({ param: p }) => (assert(p.type === "urlQueryParam"), p.name),
     );
     if (urlQueryParamNames.length !== this.urlQueryParamNames.length) {
       return false;
@@ -54,7 +54,7 @@ export class RequestTemplate {
     return true;
   }
 
-  includesHole(hole: RequestParameterKey): boolean {
+  includesHole(hole: RequestParam): boolean {
     return this.holes.some((thatHole) => _.isEqual(thatHole, hole));
   }
 
@@ -69,10 +69,10 @@ export class RequestTemplate {
     s += this.urlQueryParamNames
       .map((name) =>
         this.holes.some(
-          (hole) => hole.type === "urlQueryParam" && hole.name === name
+          (hole) => hole.type === "urlQueryParam" && hole.name === name,
         )
           ? `${name}=$ID`
-          : name
+          : name,
       )
       .join("&");
     return s;
@@ -85,25 +85,25 @@ export class RequestTemplate {
     const { origin } = parsedRequestUrl;
 
     const holes = _.uniqWith(
-      matches.map((match) => match.requestParamKey),
-      _.isEqual
+      matches.map((match) => match.requestParam),
+      _.isEqual,
     );
 
     const fixedUrlPathSegments = extractUrlPathSegments(
-      parsedRequestUrl.pathname
-    ).map(({ key, value }) =>
-      holes.some((hole) => _.isEqual(hole, key)) ? undefined : value
+      parsedRequestUrl.pathname,
+    ).map(({ param: p, value }) =>
+      holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
     );
 
     const urlQueryParamNames = extractUrlQueryParams(parsedRequestUrl.search)
-      .map(({ key }) => (assert(key.type === "urlQueryParam"), key.name))
+      .map(({ param: p }) => (assert(p.type === "urlQueryParam"), p.name))
       .sort();
 
     return new RequestTemplate(
       holes,
       origin,
       fixedUrlPathSegments,
-      urlQueryParamNames
+      urlQueryParamNames,
     );
   }
 }

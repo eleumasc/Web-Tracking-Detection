@@ -1,18 +1,19 @@
-import { Har } from "../util/Har";
-import { parseJSONValues } from "../util/JSONValue";
-import { parseQueryParams } from "../util/QueryParam";
+import { FoxURL } from "../taintTracking/FoxURL";
+import { Har } from "../../util/Har";
+import { parseJSONValues } from "../../util/JSONValue";
+import { parseQueryParams } from "../../util/QueryParam";
 
-export type RequestItem = {
+export interface Request {
   url: string;
-  params: RequestParameter[];
+  paramEntries: RequestParamEntry[];
 };
 
-export type RequestParameter = {
-  key: RequestParameterKey;
+export interface RequestParamEntry {
+  param: RequestParam;
   value: string;
 };
 
-export type RequestParameterKey =
+export type RequestParam =
   | {
       type: "urlPathSegment";
       segmentIndex: number;
@@ -23,20 +24,22 @@ export type RequestParameterKey =
     }
   | { type: "postData" };
 
-export function getRequestItemsFromHar(har: Har): RequestItem[] {
-  return har.entries().flatMap((harEntry, index) => {
+export function getRequestsFromHar(har: Har): Request[] {
+  return har.entries().map((harEntry): Request => {
     const {
       request: { url, postData, headers },
     } = harEntry;
-    const parsedUrl = new URL(url);
+    const foxUrl = new FoxURL(url);
 
-    let params: RequestParameter[] = [];
-    const addParams = (argParams: RequestParameter[]): void => {
-      params = params.concat(argParams.filter(({ value }) => value));
+    let paramEntries: RequestParamEntry[] = [];
+    const addParams = (argParams: RequestParamEntry[]): void => {
+      paramEntries = paramEntries.concat(
+        argParams.filter(({ value }) => value),
+      );
     };
 
-    addParams(extractUrlPathSegments(parsedUrl.pathname));
-    addParams(extractUrlQueryParams(parsedUrl.search));
+    addParams(extractUrlPathSegments(foxUrl.pathname));
+    addParams(extractUrlQueryParams(foxUrl.search));
     if (postData) {
       addParams(
         extractPostDataComponents(
@@ -46,20 +49,17 @@ export function getRequestItemsFromHar(har: Har): RequestItem[] {
       );
     }
 
-    return {
-      url,
-      params,
-    };
+    return { url, paramEntries };
   });
 }
 
-export function extractUrlPathSegments(input: string): RequestParameter[] {
+export function extractUrlPathSegments(input: string): RequestParamEntry[] {
   return input
     .split("/")
     .slice(1)
     .map(
-      (value, index): RequestParameter => ({
-        key: {
+      (value, index): RequestParamEntry => ({
+        param: {
           type: "urlPathSegment",
           segmentIndex: index,
         },
@@ -68,12 +68,12 @@ export function extractUrlPathSegments(input: string): RequestParameter[] {
     );
 }
 
-export function extractUrlQueryParams(input: string): RequestParameter[] {
+export function extractUrlQueryParams(input: string): RequestParamEntry[] {
   return parseQueryParams(input)
     .filter(({ value }) => value)
     .map(
-      ({ name: namePart, value: valuePart }): RequestParameter => ({
-        key: {
+      ({ name: namePart, value: valuePart }): RequestParamEntry => ({
+        param: {
           type: "urlQueryParam",
           name: namePart.raw,
         },
@@ -85,7 +85,7 @@ export function extractUrlQueryParams(input: string): RequestParameter[] {
 export function extractPostDataComponents(
   input: string,
   contentType?: string,
-): RequestParameter[] {
+): RequestParamEntry[] {
   const values = (): string[] => {
     if (contentType?.includes("application/json")) {
       return parseJSONValues(input).map(({ cooked: value }) => value);
@@ -98,8 +98,8 @@ export function extractPostDataComponents(
     }
   };
   return values().map(
-    (value): RequestParameter => ({
-      key: { type: "postData" },
+    (value): RequestParamEntry => ({
+      param: { type: "postData" },
       value,
     }),
   );

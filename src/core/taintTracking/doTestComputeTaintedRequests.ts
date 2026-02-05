@@ -1,6 +1,6 @@
 import _ from "lodash";
 import detectIdentifiableStorageItems from "../identifierDetection/detectIdentifiableStorageItems";
-import FoxhoundTaintArchive from "../../foxhound/FoxhoundTaintArchive";
+import FoxTaintArchive from "../../foxhound/FoxTaintArchive";
 import path from "path";
 import { computeTaintedRequests } from "./TaintedRequest";
 import { getOutputPath, writeOutputFileSync } from "../../data/outputDir";
@@ -28,7 +28,7 @@ export function doTestComputeTaintedRequests(args: {
   const taintHar = new Har(
     path.join(getOutputPath(analysisName), taintHarFile),
   );
-  const taintFoxReports = new FoxhoundTaintArchive(
+  const taintFoxReports = new FoxTaintArchive(
     path.join(getOutputPath(analysisName), taintTaintFile),
   ).getReports();
 

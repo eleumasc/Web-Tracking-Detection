@@ -1,5 +1,5 @@
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
-import FoxhoundTaintArchive from "../foxhound/FoxhoundTaintArchive";
+import FoxTaintArchive from "../foxhound/FoxTaintArchive";
 import path from "path";
 import { createModifiedStorageItems } from "./syntacticMatching/createModifiedStorageItems";
 import { getOutputPath } from "../data/outputDir";
@@ -31,11 +31,11 @@ export function processFlows(args: {
   const taintHar = new Har(
     path.join(getOutputPath(analysisName), taintHarFile),
   );
-  const taintFoxhoundReports = new FoxhoundTaintArchive(
+  const taintFoxReports = new FoxTaintArchive(
     path.join(getOutputPath(analysisName), taintTaintFile),
   ).getReports();
   const taintFlows = getTaintFlows(
-    taintFoxhoundReports,
+    taintFoxReports,
     identifiers,
     taintHar,
   );

@@ -1,5 +1,5 @@
 import { Range } from "../util/Range";
-import { RequestParameterKey } from "./RequestItem";
+import { RequestParam } from "./syntacticMatching/Request";
 import { StorageItem } from "./StorageItem";
 import { Token } from "./syntacticMatching/Token";
 
@@ -24,5 +24,5 @@ export interface SyntacticFlow extends Flow {
 export interface SyntacticMatch {
   storageToken: Token;
   requestToken: Token;
-  requestParamKey: RequestParameterKey;
+  requestParam: RequestParam;
 }

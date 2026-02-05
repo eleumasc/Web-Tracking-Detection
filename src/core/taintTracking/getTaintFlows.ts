@@ -5,7 +5,7 @@ import { StorageItem } from "../StorageItem";
 import { TaintFlow } from "../Flow";
 
 export function getTaintFlows(
-  foxhoundReports: FoxReport[],
+  foxReports: FoxReport[],
   storageItems: StorageItem[],
   har: Har,
 ): TaintFlow[] {

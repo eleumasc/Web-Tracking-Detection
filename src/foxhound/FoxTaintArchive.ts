@@ -4,7 +4,7 @@ import { unCompact } from "../util/unCompact";
 
 export const TAINT_REPORTS_COLL_NAME = "taintReports";
 
-export default class FoxhoundTaintArchive {
+export default class FoxTaintArchive {
   constructor(readonly dbPath: string) {}
 
   getReports(): FoxReport[] {
