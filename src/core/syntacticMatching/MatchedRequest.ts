@@ -1,0 +1,94 @@
+import { findRequestId, Har } from "../../util/Har";
+import { parseRequestParamEntries, RequestParam } from "./RequestParam";
+import { StorageItem } from "../StorageItem";
+import { syntacticMatcher } from "./syntacticMatcher";
+import { Token } from "./Token";
+import { TransformTree } from "./TransformTree";
+import {
+  parseRequestValueRootNode,
+  transformStorageValueRootNode,
+} from "./rootNodes";
+
+export interface MatchedRequest {
+  requestId: string;
+  url: string;
+  storageMatches: StorageMatch[];
+}
+
+export interface StorageMatch {
+  storageItem: StorageItem;
+  syntacticMatches: SyntacticMatch[];
+}
+
+export interface SyntacticMatch {
+  storageToken: Token;
+  requestToken: Token;
+  requestParam: RequestParam;
+}
+
+export function computeMatchedRequests(
+  storageItems: StorageItem[],
+  har: Har,
+): MatchedRequest[] {
+  const storageEntries = storageItems.map((storageItem) => ({
+    storageItem,
+    transformTree: new TransformTree(
+      transformStorageValueRootNode(),
+      storageItem.value,
+    ),
+  }));
+
+  const matchedRequests: MatchedRequest[] = [];
+  for (const harEntry of har.entries()) {
+    const requestId = findRequestId(harEntry);
+    if (!requestId) continue;
+
+    const { request } = harEntry;
+    const { url: requestUrl } = request;
+
+    const requestEntries = parseRequestParamEntries(harEntry, har).map(
+      (paramEntry) => ({
+        paramEntry,
+        transformTree: new TransformTree(
+          parseRequestValueRootNode(),
+          paramEntry.value,
+        ),
+      }),
+    );
+
+    const storageMatches: StorageMatch[] = [];
+    for (const {
+      storageItem,
+      transformTree: storageTransformTree,
+    } of storageEntries) {
+      for (const {
+        paramEntry,
+        transformTree: requestTransformTree,
+      } of requestEntries) {
+        const syntacticMatches = syntacticMatcher(
+          storageTransformTree,
+          requestTransformTree,
+        ).map(
+          (syntacticMatch): SyntacticMatch => ({
+            ...syntacticMatch,
+            requestParam: paramEntry.param,
+          }),
+        );
+
+        if (syntacticMatches.length > 0) {
+          storageMatches.push({ storageItem, syntacticMatches });
+        }
+      }
+    }
+
+    if (storageMatches.length > 0) {
+      matchedRequests.push({
+        requestId,
+        url: requestUrl,
+        storageMatches,
+      });
+    }
+  }
+
+  return matchedRequests;
+}

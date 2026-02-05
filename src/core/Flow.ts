@@ -1,5 +1,5 @@
 import { Range } from "../util/Range";
-import { RequestParam } from "./syntacticMatching/Request";
+import { RequestParam } from "./syntacticMatching/RequestParam";
 import { StorageItem } from "./StorageItem";
 import { Token } from "./syntacticMatching/Token";
 

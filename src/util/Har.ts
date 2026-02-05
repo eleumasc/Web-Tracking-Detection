@@ -33,3 +33,9 @@ export class Har {
     return harEntry.getData().toString();
   }
 }
+
+export function findRequestId(entry: Entry): string | undefined {
+  return entry.request.headers.find(
+    ({ name }) => name === "X-Foxhound-RequestId",
+  )?.value;
+}

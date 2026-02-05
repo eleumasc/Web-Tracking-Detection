@@ -3,7 +3,7 @@ import { getSyntacticFlows } from "./getSyntacticFlows";
 import { Har } from "../../util/Har";
 import { map, toArray } from "iter-tools";
 import { ModifiedStorageItem } from "./createModifiedStorageItems";
-import { RequestParam } from "./Request";
+import { RequestParam } from "./RequestParam";
 import { RequestTemplate } from "./RequestTemplate";
 import { SyntacticFlow } from "../Flow";
 import { Token, tokenChain } from "./Token";

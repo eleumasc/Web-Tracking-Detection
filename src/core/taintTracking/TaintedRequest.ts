@@ -1,20 +1,20 @@
 import _ from "lodash";
+import { findRequestId, Har } from "../../util/Har";
 import { FoxReport } from "../../foxhound/types";
-import { Har } from "../../util/Har";
 import { StorageItem } from "../StorageItem";
 import { tryParseNetworkSinkOperation } from "./NetworkSinkOperation";
 import {
-  tryCheckStorageFlowArray,
-  getUncheckedStorageFlows,
-  StorageFlow,
-} from "./StorageFlow";
+  tryCheckStorageTaintArray,
+  getUncheckedStorageTaints,
+  StorageTaint,
+} from "./StorageTaint";
 
 export interface TaintedRequest {
   requestId: string;
   url: string;
   postData?: string;
-  urlStorageFlows?: StorageFlow[];
-  postDataStorageFlows?: StorageFlow[];
+  urlStorageTaints?: StorageTaint[];
+  postDataStorageTaints?: StorageTaint[];
 }
 
 export function computeTaintedRequests(
@@ -44,55 +44,59 @@ export function computeTaintedRequests(
   // Process requests in HAR for which there is a corresponding FoxReport
   // involving url or postData
   const taintedRequests: TaintedRequest[] = [];
-  for (const { request } of har.entries()) {
-    const requestId = request.headers.find(
-      ({ name }) => name === "X-Foxhound-RequestId",
-    )?.value;
+  for (const harEntry of har.entries()) {
+    const requestId = findRequestId(harEntry);
     if (!requestId) continue;
+
+    const { request } = harEntry;
+    const { url: requestUrl } = request;
 
     const matchesRequest = (entry: TaintedRequestReportEntry): boolean =>
       entry.requestId
         ? entry.requestId === requestId // match by requestId (XMLHttpRequest, fetch, navigator.sendBeacon)
-        : entry.url === request.url; // match by URL (location, Element.src)
+        : entry.url === requestUrl; // match by URL (location, Element.src)
 
-    let urlStorageFlows: StorageFlow[] | undefined;
+    let urlStorageTaints: StorageTaint[] | undefined;
     const urlReportEntry = taintedRequestReportEntries.find(
       (entry) => entry.argType === "url" && matchesRequest(entry),
     );
     if (urlReportEntry) {
       const { foxReport } = urlReportEntry;
-      const uncheckedArray = getUncheckedStorageFlows(
+      const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
         foxReport,
         true,
       );
-      urlStorageFlows = tryCheckStorageFlowArray(uncheckedArray, storageItems);
-    }
-
-    let postData: string | undefined;
-    let postDataStorageFlows: StorageFlow[] | undefined;
-    const postDataReportEntry = taintedRequestReportEntries.find(
-      (entry) => entry.argType === "postData" && matchesRequest(entry),
-    );
-    if (postDataReportEntry) {
-      const { foxReport } = postDataReportEntry;
-      const uncheckedArray = getUncheckedStorageFlows(
-        foxReport.taint,
-        foxReport,
-      );
-      postDataStorageFlows = tryCheckStorageFlowArray(
+      urlStorageTaints = tryCheckStorageTaintArray(
         uncheckedArray,
         storageItems,
       );
     }
 
-    if (urlStorageFlows || postDataStorageFlows) {
+    let postData: string | undefined;
+    let postDataStorageTaints: StorageTaint[] | undefined;
+    const postDataReportEntry = taintedRequestReportEntries.find(
+      (entry) => entry.argType === "postData" && matchesRequest(entry),
+    );
+    if (postDataReportEntry) {
+      const { foxReport } = postDataReportEntry;
+      const uncheckedArray = getUncheckedStorageTaints(
+        foxReport.taint,
+        foxReport,
+      );
+      postDataStorageTaints = tryCheckStorageTaintArray(
+        uncheckedArray,
+        storageItems,
+      );
+    }
+
+    if (urlStorageTaints || postDataStorageTaints) {
       taintedRequests.push({
         requestId,
-        url: request.url,
+        url: requestUrl,
         postData,
-        urlStorageFlows,
-        postDataStorageFlows,
+        urlStorageTaints,
+        postDataStorageTaints,
       });
     }
   }

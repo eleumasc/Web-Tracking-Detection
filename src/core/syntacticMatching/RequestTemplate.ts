@@ -2,10 +2,10 @@ import _ from "lodash";
 import assert from "assert";
 import { SyntacticFlow } from "../Flow";
 import {
-  extractUrlPathSegments,
-  extractUrlQueryParams,
+  extractPathSegments,
+  extractQueryParameters,
   RequestParam,
-} from "./Request";
+} from "./RequestParam";
 
 export class RequestTemplate {
   constructor(
@@ -23,7 +23,7 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlPathSegments = extractUrlPathSegments(parsedUrl.pathname).map(
+    const urlPathSegments = extractPathSegments(parsedUrl.pathname).map(
       ({ value }) => value,
     );
     if (urlPathSegments.length !== this.fixedUrlPathSegments.length) {
@@ -38,8 +38,8 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlQueryParamNames = extractUrlQueryParams(parsedUrl.search).map(
-      ({ param: p }) => (assert(p.type === "urlQueryParam"), p.name),
+    const urlQueryParamNames = extractQueryParameters(parsedUrl.search).map(
+      ({ param: p }) => (assert(p.type === "QueryParameter"), p.name),
     );
     if (urlQueryParamNames.length !== this.urlQueryParamNames.length) {
       return false;
@@ -69,7 +69,7 @@ export class RequestTemplate {
     s += this.urlQueryParamNames
       .map((name) =>
         this.holes.some(
-          (hole) => hole.type === "urlQueryParam" && hole.name === name,
+          (hole) => hole.type === "QueryParameter" && hole.name === name,
         )
           ? `${name}=$ID`
           : name,
@@ -89,14 +89,14 @@ export class RequestTemplate {
       _.isEqual,
     );
 
-    const fixedUrlPathSegments = extractUrlPathSegments(
+    const fixedUrlPathSegments = extractPathSegments(
       parsedRequestUrl.pathname,
     ).map(({ param: p, value }) =>
       holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
     );
 
-    const urlQueryParamNames = extractUrlQueryParams(parsedRequestUrl.search)
-      .map(({ param: p }) => (assert(p.type === "urlQueryParam"), p.name))
+    const urlQueryParamNames = extractQueryParameters(parsedRequestUrl.search)
+      .map(({ param: p }) => (assert(p.type === "QueryParameter"), p.name))
       .sort();
 
     return new RequestTemplate(

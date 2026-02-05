@@ -3,17 +3,17 @@ import assert from "assert";
 import { clusterObjectsBy } from "../../util/cluster";
 import { Cookie, StorageItem } from "../StorageItem";
 import { FoxRange, FoxReport } from "../../foxhound/types";
-import { FoxURL } from "./FoxURL";
+import { FoxURL } from "../../foxhound/FoxURL";
 import { range, toArray } from "iter-tools";
 import { tryParseStorageCharFlow } from "./StorageCharFlow";
 
-export interface StorageFlow {
+export interface StorageTaint {
   storageItem: StorageItem;
   links: [number, number][]; // 1st: requestIndex, 2nd: storageIndex
   intermeds: string[];
 }
 
-export interface UncheckedStorageFlow {
+export interface UncheckedStorageTaint {
   origin: string;
   storageType: string;
   key: string;
@@ -22,11 +22,11 @@ export interface UncheckedStorageFlow {
   intermeds: string[];
 }
 
-export function getUncheckedStorageFlows(
+export function getUncheckedStorageTaints(
   foxTaint: FoxRange[],
   foxReport: FoxReport,
   isUrlArgType: boolean = false,
-): UncheckedStorageFlow[] {
+): UncheckedStorageTaint[] {
   const origin = new URL(foxReport.loc).origin;
   const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
   return clusterObjectsBy(
@@ -36,7 +36,7 @@ export function getUncheckedStorageFlows(
     }),
     ({ storageType, key, value }) => [storageType, key, value],
   )
-    .map((cluster): UncheckedStorageFlow => {
+    .map((cluster): UncheckedStorageTaint => {
       const { storageType, key, value } = cluster[0];
       let links = cluster.flatMap(({ begin, end, storageIndex }) =>
         toArray(range(begin, end)) //
@@ -63,32 +63,32 @@ export function getUncheckedStorageFlows(
     .filter(({ links }) => links.length > 0);
 }
 
-export function tryCheckStorageFlowArray(
-  uncheckedArray: UncheckedStorageFlow[],
+export function tryCheckStorageTaintArray(
+  uncheckedArray: UncheckedStorageTaint[],
   storageItems: StorageItem[],
-): StorageFlow[] | undefined {
+): StorageTaint[] | undefined {
   const checkedArray = uncheckedArray.flatMap((unchecked) => {
-    const checked = tryCheckStorageFlow(unchecked, storageItems);
+    const checked = tryCheckStorageTaint(unchecked, storageItems);
     return checked ? [checked] : [];
   });
   return checkedArray.length > 0 ? checkedArray : undefined;
 }
 
-export function tryCheckStorageFlow(
-  unchecked: UncheckedStorageFlow,
+export function tryCheckStorageTaint(
+  unchecked: UncheckedStorageTaint,
   storageItems: StorageItem[],
-): StorageFlow | undefined {
+): StorageTaint | undefined {
   try {
-    return checkStorageFlow(unchecked, storageItems);
+    return checkStorageTaint(unchecked, storageItems);
   } catch {
     return;
   }
 }
 
-export function checkStorageFlow(
-  unchecked: UncheckedStorageFlow,
+export function checkStorageTaint(
+  unchecked: UncheckedStorageTaint,
   storageItems: StorageItem[],
-): StorageFlow {
+): StorageTaint {
   const { origin, storageType, key, value, links, intermeds } = unchecked;
   const hostname = new URL(origin).hostname;
 

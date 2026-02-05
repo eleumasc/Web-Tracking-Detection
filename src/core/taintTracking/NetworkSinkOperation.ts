@@ -1,5 +1,5 @@
 import { FoxOperation, FoxReport } from "../../foxhound/types";
-import { FoxURL } from "./FoxURL";
+import { FoxURL } from "../../foxhound/FoxURL";
 
 export interface NetworkSinkOperation {
   requestId?: string;

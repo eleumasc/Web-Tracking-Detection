@@ -1,5 +1,5 @@
 import assert from "assert";
-import { Range } from "../../util/Range";
+import { Range } from "../util/Range";
 
 type ParsedURL = {
   protocol: string;
