@@ -1,5 +1,5 @@
 import { getRequestItemsFromHar } from "../RequestItem";
-import { HarReader } from "../../util/HarReader";
+import { Har } from "../../util/Har";
 import { memoize } from "../../util/memoize";
 import { StorageItem } from "../StorageItem";
 import { SyntacticFlow, SyntacticMatch } from "../Flow";
@@ -12,7 +12,7 @@ import {
 
 export function getSyntacticFlows(
   storageItems: StorageItem[],
-  harReader: HarReader,
+  har: Har,
 ): SyntacticFlow[] {
   const getStorageTransformTree = memoize(
     (storageValue) =>
@@ -27,7 +27,7 @@ export function getSyntacticFlows(
     (requestValue) =>
       new TransformTree(parseRequestValueRootNode(), requestValue),
   );
-  const requestEntries = getRequestItemsFromHar(harReader).map(
+  const requestEntries = getRequestItemsFromHar(har).map(
     ({ url: requestUrl, params }) => ({
       requestUrl,
       params: params.map(({ key, value }) => ({

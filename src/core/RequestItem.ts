@@ -1,4 +1,4 @@
-import { HarReader } from "../util/HarReader";
+import { Har } from "../util/Har";
 import { parseJSONValues } from "../util/JSONValue";
 import { parseQueryParams } from "../util/QueryParam";
 
@@ -23,8 +23,8 @@ export type RequestParameterKey =
     }
   | { type: "postData" };
 
-export function getRequestItemsFromHar(harReader: HarReader): RequestItem[] {
-  return harReader.entries().flatMap((harEntry, index) => {
+export function getRequestItemsFromHar(har: Har): RequestItem[] {
+  return har.entries().flatMap((harEntry, index) => {
     const {
       request: { url, postData, headers },
     } = harEntry;
@@ -40,7 +40,7 @@ export function getRequestItemsFromHar(harReader: HarReader): RequestItem[] {
     if (postData) {
       addParams(
         extractPostDataComponents(
-          harReader.readPostData(postData),
+          har.readPostData(postData),
           headers.find(({ name }) => name === "content-type")?.value,
         ),
       );

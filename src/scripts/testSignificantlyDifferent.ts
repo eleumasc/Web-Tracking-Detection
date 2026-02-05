@@ -10,12 +10,20 @@ async function main(args: { str1: string; str2: string }) {
   process.exit(0);
 }
 
-const argv = yargs(hideBin(process.argv))
-  .option("str1", { type: "string", demandOption: true })
-  .option("str2", { type: "string", demandOption: true })
-  .parseSync();
-
-main({
-  str1: argv.str1,
-  str2: argv.str2,
-});
+yargs(hideBin(process.argv))
+  .command(
+    "$0 <str1> <str2>",
+    "Test significantlyDifferent",
+    (yargs) =>
+      yargs
+        .positional("str1", {
+          type: "string",
+          demandOption: true,
+        })
+        .positional("str2", {
+          type: "string",
+          demandOption: true,
+        }),
+    (args) => main(args),
+  )
+  .parse();

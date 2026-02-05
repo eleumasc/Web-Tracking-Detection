@@ -1,5 +1,5 @@
 import DocumentStore from "../data/DocumentStore";
-import { FoxhoundReport } from "./types";
+import { FoxReport } from "./types";
 import { unCompact } from "../util/unCompact";
 
 export const TAINT_REPORTS_COLL_NAME = "taintReports";
@@ -7,7 +7,7 @@ export const TAINT_REPORTS_COLL_NAME = "taintReports";
 export default class FoxhoundTaintArchive {
   constructor(readonly dbPath: string) {}
 
-  getReports(): FoxhoundReport[] {
+  getReports(): FoxReport[] {
     const store = DocumentStore.open(this.dbPath);
     try {
       const collection = store.getCollectionByName(
@@ -16,7 +16,7 @@ export default class FoxhoundTaintArchive {
       );
       return store
         .getDocumentsWithDataByCollection(collection.id)
-        .map(({ data }) => unCompact(data) as FoxhoundReport);
+        .map(({ data }) => unCompact(data) as FoxReport);
     } finally {
       store.db.close();
     }

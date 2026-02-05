@@ -4,7 +4,7 @@ import path from "path";
 import { Flow, SyntacticFlow, TaintFlow } from "./Flow";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { getSiteFromUrl } from "../util/site";
-import { HarReader } from "../util/HarReader";
+import { Har } from "../util/Har";
 import { processFlows } from "./processFlows";
 import { readFileSync } from "fs";
 import { StatefulTrackingAnalysisResult } from "./AnalysisResult";
@@ -60,10 +60,10 @@ export function processTrackingRequests(args: {
       verifySyntacticTrackingRequests(
         syntacticFlows,
         modifiedStorageItems,
-        new HarReader(
+        new Har(
           path.join(getOutputPath(analysisName), staResult.verif!.harFile),
         ),
-        new HarReader(
+        new Har(
           path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile),
         ),
       );

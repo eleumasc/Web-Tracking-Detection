@@ -1,6 +1,6 @@
 import _ from "lodash";
 import { getSyntacticFlows } from "./getSyntacticFlows";
-import { HarReader } from "../../util/HarReader";
+import { Har } from "../../util/Har";
 import { map, toArray } from "iter-tools";
 import { ModifiedStorageItem } from "./createModifiedStorageItems";
 import { RequestParameterKey } from "../RequestItem";
@@ -18,13 +18,13 @@ interface AbstractMatch {
 export function verifySyntacticTrackingRequests(
   flows: SyntacticFlow[],
   modifiedStorageItems: ModifiedStorageItem[],
-  verifHarReader: HarReader,
-  auxVerifHarReader: HarReader,
+  verifHar: Har,
+  auxVerifHar: Har,
 ) {
   const modifiedIdentifiers = modifiedStorageItems.map(
     ({ storageItem }) => storageItem,
   );
-  const verifFlows = getSyntacticFlows(modifiedIdentifiers, verifHarReader);
+  const verifFlows = getSyntacticFlows(modifiedIdentifiers, verifHar);
   const originalIdentifiers = modifiedStorageItems.map(
     ({ storageItem, originalValue }) => ({
       ...storageItem,
@@ -33,7 +33,7 @@ export function verifySyntacticTrackingRequests(
   );
   const auxVerifFlows = getSyntacticFlows(
     originalIdentifiers,
-    auxVerifHarReader,
+    auxVerifHar,
   );
 
   const { confirmedFlows, refutedFlows, unknownFlows } = verifySyntacticFlows(

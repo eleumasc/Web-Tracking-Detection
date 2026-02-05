@@ -6,7 +6,7 @@ import { getOutputPath } from "../data/outputDir";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { getSyntacticFlows } from "./syntacticMatching/getSyntacticFlows";
 import { getTaintFlows } from "./taintTracking/getTaintFlows";
-import { HarReader } from "../util/HarReader";
+import { Har } from "../util/Har";
 import { SimulateConnectResult } from "./simulateConnect";
 
 export function processFlows(args: {
@@ -28,7 +28,7 @@ export function processFlows(args: {
     getStorageItemsFromStorageState(preConnectResult.storageState),
     getStorageItemsFromStorageState(auxConnectResult.storageState),
   );
-  const taintHarReader = new HarReader(
+  const taintHar = new Har(
     path.join(getOutputPath(analysisName), taintHarFile),
   );
   const taintFoxhoundReports = new FoxhoundTaintArchive(
@@ -37,9 +37,9 @@ export function processFlows(args: {
   const taintFlows = getTaintFlows(
     taintFoxhoundReports,
     identifiers,
-    taintHarReader,
+    taintHar,
   );
-  const syntacticFlows = getSyntacticFlows(identifiers, taintHarReader);
+  const syntacticFlows = getSyntacticFlows(identifiers, taintHar);
   const modifiedStorageItems = createModifiedStorageItems(syntacticFlows);
 
   return {

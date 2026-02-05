@@ -1,33 +1,30 @@
-export interface FoxhoundReport {
+export interface FoxReport {
   subframe: boolean;
   loc: string;
   baseURI: string;
-  sink: FoxhoundOperation;
+  sinkOperation: FoxOperation;
   str: string;
-  taint: FoxhoundTaint;
+  taint: FoxTaint;
   stack: any;
-  timestamp: any; // It should be a number, but Date.now() may have been monkey-patched at analysis time. In such a case, the function may have returned a non-number value (e.g., see cornell.edu).
 }
 
-export type FoxhoundTaint = FoxhoundRange[];
+export type FoxTaint = FoxRange[];
 
-export interface FoxhoundRange {
+export interface FoxRange {
   begin: number;
   end: number;
-  flow: FoxhoundFlow;
+  flow: FoxOperation[];
 }
 
-export type FoxhoundFlow = FoxhoundOperation;
-
-export interface FoxhoundOperation {
+export interface FoxOperation {
   arguments: string[];
   builtin: boolean;
-  location: FoxhoundLocation;
+  location: FoxLocation;
   operation: string;
   source: boolean;
 }
 
-export interface FoxhoundLocation {
+export interface FoxLocation {
   filename: string;
   function: string;
   line: number;

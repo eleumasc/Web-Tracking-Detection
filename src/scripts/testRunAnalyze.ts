@@ -20,8 +20,8 @@ async function main(args: { site: string }) {
             noVerif: false,
           },
         },
-      ])
-    )
+      ]),
+    ),
   );
 
   console.log(completion);
@@ -29,10 +29,15 @@ async function main(args: { site: string }) {
   process.exit(0);
 }
 
-const argv = yargs(hideBin(process.argv))
-  .option("site", { type: "string", demandOption: true })
-  .parseSync();
-
-main({
-  site: argv.site,
-});
+yargs(hideBin(process.argv))
+  .command(
+    "$0 <site>",
+    "Test runAnalyze",
+    (yargs) =>
+      yargs.positional("site", {
+        type: "string",
+        demandOption: true,
+      }),
+    (args) => main(args),
+  )
+  .parse();
