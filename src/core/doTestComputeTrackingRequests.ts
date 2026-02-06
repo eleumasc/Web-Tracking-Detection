@@ -1,14 +1,14 @@
 import _ from "lodash";
-import detectIdentifiableStorageItems from "../identifierDetection/detectIdentifiableStorageItems";
-import FoxTaintArchive from "../../foxhound/FoxTaintArchive";
+import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
+import FoxTaintArchive from "../foxhound/FoxTaintArchive";
 import path from "path";
-import { computeMatchedRequests } from "../syntacticMatching/MatchedRequest";
-import { computeTaintedRequests } from "./TaintedRequest";
-import { getOutputPath, writeOutputFileSync } from "../../data/outputDir";
-import { getSiteFromUrl } from "../../util/site";
-import { getStorageItemsFromStorageState } from "../StorageItem";
-import { Har } from "../../util/Har";
-import { StatefulTrackingAnalysisResult } from "../AnalysisResult";
+import { computeMatchedRequests } from "./syntacticMatching/MatchedRequest";
+import { computeTaintedRequests } from "./taintTracking/TaintedRequest";
+import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
+import { getSiteFromUrl } from "../util/site";
+import { getStorageItemsFromStorageState } from "./StorageItem";
+import { Har } from "../util/Har";
+import { StatefulTrackingAnalysisResult } from "./AnalysisResult";
 
 export function doTestComputeTrackingRequests(args: {
   site: string;

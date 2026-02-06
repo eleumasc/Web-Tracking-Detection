@@ -1,5 +1,5 @@
 import { dispatcher } from "./Task";
-import { doTestComputeTrackingRequests } from "../core/taintTracking/doTestComputeTrackingRequests";
+import { doTestComputeTrackingRequests } from "../core/doTestComputeTrackingRequests";
 import { processTrackingRequests } from "../core/processTrackingRequests";
 import { runAnalyze, runSimulateConnect } from "../core/runAnalyze";
 

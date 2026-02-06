@@ -6,7 +6,7 @@ import openDocumentStore from "../data/openDocumentStore";
 import yargs from "yargs";
 import { ANALYSIS_LOGS_COLL_TYPE } from "../commands/cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { doTestComputeTrackingRequests } from "../core/taintTracking/doTestComputeTrackingRequests";
+import { doTestComputeTrackingRequests } from "../core/doTestComputeTrackingRequests";
 import { hideBin } from "yargs/helpers";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";

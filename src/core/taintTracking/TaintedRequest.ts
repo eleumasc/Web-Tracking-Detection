@@ -1,8 +1,12 @@
 import _ from "lodash";
 import { findRequestId, Har } from "../../util/Har";
 import { FoxReport } from "../../foxhound/types";
+import { isIdentifiable } from "../identifierDetection/identifiable";
 import { StorageItem } from "../StorageItem";
-import { tryParseNetworkSinkOperation } from "./NetworkSinkOperation";
+import {
+  TaintedRequestParam,
+  tryParseNetworkSinkOperation,
+} from "./NetworkSinkOperation";
 import {
   tryCheckStorageTaintArray,
   getUncheckedStorageTaints,
@@ -13,8 +17,7 @@ export interface TaintedRequest {
   requestId: string;
   url: string;
   postData?: string;
-  urlStorageTaints?: StorageTaint[];
-  postDataStorageTaints?: StorageTaint[];
+  storageTaints?: StorageTaint[];
 }
 
 export function computeTaintedRequests(
@@ -25,11 +28,11 @@ export function computeTaintedRequests(
   interface TaintedRequestReportEntry {
     requestId?: string;
     url: string;
-    argType: "url" | "postData";
+    requestParam: TaintedRequestParam;
     foxReport: FoxReport;
   }
 
-  // Collect entries from FoxReports involving NetworkSinkOperations
+  // Filter FoxReports involving a NetworkSinkOperation
   const taintedRequestReportEntries: TaintedRequestReportEntry[] = [];
   for (const foxReport of foxReports) {
     const networkSinkOperation = tryParseNetworkSinkOperation(
@@ -42,7 +45,7 @@ export function computeTaintedRequests(
   }
 
   // Process requests in HAR for which there is a corresponding FoxReport
-  // involving url or postData
+  // involving a TaintedRequestParam
   const taintedRequests: TaintedRequest[] = [];
   for (const harEntry of har.entries()) {
     const requestId = findRequestId(harEntry);
@@ -56,50 +59,109 @@ export function computeTaintedRequests(
         ? entry.requestId === requestId // match by requestId (XMLHttpRequest, fetch, navigator.sendBeacon)
         : entry.url === requestUrl; // match by URL (location, Element.src)
 
-    let urlStorageTaints: StorageTaint[] | undefined;
+    let storageTaints: StorageTaint[] = [];
+
     const urlReportEntry = taintedRequestReportEntries.find(
-      (entry) => entry.argType === "url" && matchesRequest(entry),
+      (entry) => entry.requestParam === "url" && matchesRequest(entry),
     );
+    // TODO: mark urlReportEntry as picked
     if (urlReportEntry) {
       const { foxReport } = urlReportEntry;
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
         foxReport,
-        true,
+        "url",
       );
-      urlStorageTaints = tryCheckStorageTaintArray(
+      const urlStorageTaints = tryCheckStorageTaintArray(
         uncheckedArray,
         storageItems,
       );
+      if (urlStorageTaints) {
+        storageTaints = storageTaints.concat(urlStorageTaints);
+      }
     }
 
     let postData: string | undefined;
-    let postDataStorageTaints: StorageTaint[] | undefined;
     const postDataReportEntry = taintedRequestReportEntries.find(
-      (entry) => entry.argType === "postData" && matchesRequest(entry),
+      (entry) => entry.requestParam === "postData" && matchesRequest(entry),
     );
     if (postDataReportEntry) {
       const { foxReport } = postDataReportEntry;
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
         foxReport,
+        "postData",
       );
-      postDataStorageTaints = tryCheckStorageTaintArray(
+      const postDataStorageTaints = tryCheckStorageTaintArray(
         uncheckedArray,
         storageItems,
       );
+      if (postDataStorageTaints) {
+        storageTaints = storageTaints.concat(postDataStorageTaints);
+      }
     }
 
-    if (urlStorageTaints || postDataStorageTaints) {
+    storageTaints = storageTaints.filter((storageTaint) =>
+      isCharConcatReadFromStorageIdentifiable(storageTaint),
+    );
+
+    if (storageTaints.length > 0) {
       taintedRequests.push({
         requestId,
         url: requestUrl,
         postData,
-        urlStorageTaints,
-        postDataStorageTaints,
+        storageTaints,
       });
     }
   }
 
   return taintedRequests;
+}
+
+// Checks whether the concatenation of characters at accessed indexes of
+// storage value form a string that is identifiable
+function isCharConcatReadFromStorageIdentifiable(
+  storageTaint: StorageTaint,
+): boolean {
+  const {
+    storageItem: { value },
+    links,
+  } = storageTaint;
+
+  const indexes = _.sortBy(
+    _.uniq(links.map(([, storageIndex]) => storageIndex)),
+  );
+
+  const charConcat = indexes.map((i) => value.at(i)).join("");
+
+  return isIdentifiable(charConcat);
+}
+
+// Checks whether accessed indexes of storage value form at least one
+// contiguous sequence that is identifiable
+function someSequenceReadFromStorageIdentifiable(
+  storageTaint: StorageTaint,
+): boolean {
+  const {
+    storageItem: { value },
+    links,
+  } = storageTaint;
+
+  const indexes = _.sortBy(
+    _.uniq(links.map(([, storageIndex]) => storageIndex)),
+  );
+
+  const sequences: string[] = [];
+  let beginIndex = indexes[0];
+  let previousIndex = indexes[0];
+  for (let i = 1; i <= indexes.length; i++) {
+    const cur = indexes[i];
+    if (cur !== previousIndex + 1) {
+      sequences.push(value.slice(beginIndex, previousIndex + 1));
+      beginIndex = cur;
+    }
+    previousIndex = cur;
+  }
+
+  return sequences.some((sequence) => isIdentifiable(sequence));
 }

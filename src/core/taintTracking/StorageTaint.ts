@@ -5,10 +5,12 @@ import { Cookie, StorageItem } from "../StorageItem";
 import { FoxRange, FoxReport } from "../../foxhound/types";
 import { FoxURL } from "../../foxhound/FoxURL";
 import { range, toArray } from "iter-tools";
+import { TaintedRequestParam } from "./NetworkSinkOperation";
 import { tryParseStorageCharFlow } from "./StorageCharFlow";
 
 export interface StorageTaint {
   storageItem: StorageItem;
+  requestParam: TaintedRequestParam;
   links: [number, number][]; // 1st: requestIndex, 2nd: storageIndex
   intermeds: string[];
 }
@@ -18,6 +20,7 @@ export interface UncheckedStorageTaint {
   storageType: string;
   key: string;
   value: string;
+  requestParam: TaintedRequestParam;
   links: [number, number][];
   intermeds: string[];
 }
@@ -25,7 +28,7 @@ export interface UncheckedStorageTaint {
 export function getUncheckedStorageTaints(
   foxTaint: FoxRange[],
   foxReport: FoxReport,
-  isUrlArgType: boolean = false,
+  requestParam: TaintedRequestParam,
 ): UncheckedStorageTaint[] {
   const origin = new URL(foxReport.loc).origin;
   const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
@@ -45,7 +48,7 @@ export function getUncheckedStorageTaints(
             storageIndex,
           ]),
       );
-      if (isUrlArgType) {
+      if (requestParam === "url") {
         links = links
           .map(([requestIndex, storageIndex]): [number, number] =>
             //
@@ -58,7 +61,15 @@ export function getUncheckedStorageTaints(
           );
       }
       const intermeds = _.uniq(cluster.flatMap(({ intermeds }) => intermeds));
-      return { origin, storageType, key, value, links, intermeds };
+      return {
+        origin,
+        storageType,
+        key,
+        value,
+        requestParam,
+        links,
+        intermeds,
+      };
     })
     .filter(({ links }) => links.length > 0);
 }
@@ -89,7 +100,8 @@ export function checkStorageTaint(
   unchecked: UncheckedStorageTaint,
   storageItems: StorageItem[],
 ): StorageTaint {
-  const { origin, storageType, key, value, links, intermeds } = unchecked;
+  const { origin, storageType, key, value, requestParam, links, intermeds } =
+    unchecked;
   const hostname = new URL(origin).hostname;
 
   let candidates = storageItems.filter(
@@ -123,6 +135,7 @@ export function checkStorageTaint(
   const [storageItem] = candidates;
   return {
     storageItem,
+    requestParam,
     links,
     intermeds,
   };
