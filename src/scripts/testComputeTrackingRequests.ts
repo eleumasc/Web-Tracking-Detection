@@ -6,7 +6,7 @@ import openDocumentStore from "../data/openDocumentStore";
 import yargs from "yargs";
 import { ANALYSIS_LOGS_COLL_TYPE } from "../commands/cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
-import { doTestComputeTaintedRequests } from "../core/taintTracking/doTestComputeTaintedRequests";
+import { doTestComputeTrackingRequests } from "../core/taintTracking/doTestComputeTrackingRequests";
 import { hideBin } from "yargs/helpers";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
@@ -27,6 +27,7 @@ async function main(args: { analysisId: number; maxTasks: number }) {
   let totalSites = 0;
   let successSites = 0;
   let taintedRequestsCount = 0;
+  let matchedRequestsCount = 0;
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
@@ -47,9 +48,9 @@ async function main(args: { analysisId: number; maxTasks: number }) {
       successSites += 1;
 
       const s = await execThread<
-        ReturnType<typeof doTestComputeTaintedRequests>
+        ReturnType<typeof doTestComputeTrackingRequests>
       >(
-        makeTaskFromFunction(doTestComputeTaintedRequests, [
+        makeTaskFromFunction(doTestComputeTrackingRequests, [
           {
             site,
             analysisName,
@@ -60,6 +61,7 @@ async function main(args: { analysisId: number; maxTasks: number }) {
       );
 
       taintedRequestsCount += s.taintedRequestsCount;
+      matchedRequestsCount += s.matchedRequestsCount;
     },
   );
 
@@ -67,6 +69,7 @@ async function main(args: { analysisId: number; maxTasks: number }) {
     totalSites,
     successSites,
     taintedRequestsCount,
+    matchedRequestsCount,
   });
 
   process.exit(0);

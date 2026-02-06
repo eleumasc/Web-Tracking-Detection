@@ -2,13 +2,15 @@ import _ from "lodash";
 import detectIdentifiableStorageItems from "../identifierDetection/detectIdentifiableStorageItems";
 import FoxTaintArchive from "../../foxhound/FoxTaintArchive";
 import path from "path";
+import { computeMatchedRequests } from "../syntacticMatching/MatchedRequest";
 import { computeTaintedRequests } from "./TaintedRequest";
 import { getOutputPath, writeOutputFileSync } from "../../data/outputDir";
+import { getSiteFromUrl } from "../../util/site";
 import { getStorageItemsFromStorageState } from "../StorageItem";
 import { Har } from "../../util/Har";
 import { StatefulTrackingAnalysisResult } from "../AnalysisResult";
 
-export function doTestComputeTaintedRequests(args: {
+export function doTestComputeTrackingRequests(args: {
   site: string;
   analysisName: string;
   outputName: string;
@@ -32,21 +34,38 @@ export function doTestComputeTaintedRequests(args: {
     path.join(getOutputPath(analysisName), taintTaintFile),
   ).getReports();
 
-  const taintedRequests = computeTaintedRequests(
-    taintFoxReports,
-    identifiers,
-    taintHar,
+  const pageUrl = staResult.taint.connectResult.landingPageUrl;
+  const firstParty = getSiteFromUrl(pageUrl);
+  const filterThirdPartyRequests = <T extends { url: string }>(
+    requests: T[],
+  ): T[] =>
+    requests.filter((request) => getSiteFromUrl(request.url) !== firstParty);
+
+  const taintedRequests = filterThirdPartyRequests(
+    computeTaintedRequests(taintFoxReports, identifiers, taintHar),
+  );
+
+  const matchedRequests = filterThirdPartyRequests(
+    computeMatchedRequests(identifiers, taintHar),
   );
 
   writeOutputFileSync(
-    path.join(outputName, `${site}.json`),
+    path.join(outputName, `${site}+TR.json`),
     JSON.stringify({
       site,
       taintedRequests,
     }),
   );
+  writeOutputFileSync(
+    path.join(outputName, `${site}+SR.json`),
+    JSON.stringify({
+      site,
+      matchedRequests,
+    }),
+  );
 
   return {
     taintedRequestsCount: taintedRequests.length,
+    matchedRequestsCount: matchedRequests.length,
   };
 }

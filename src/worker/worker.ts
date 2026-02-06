@@ -1,5 +1,5 @@
 import { dispatcher } from "./Task";
-import { doTestComputeTaintedRequests } from "../core/taintTracking/doTestComputeTaintedRequests";
+import { doTestComputeTrackingRequests } from "../core/taintTracking/doTestComputeTrackingRequests";
 import { processTrackingRequests } from "../core/processTrackingRequests";
 import { runAnalyze, runSimulateConnect } from "../core/runAnalyze";
 
@@ -7,5 +7,5 @@ export default dispatcher({
   runAnalyze,
   runSimulateConnect,
   processTrackingRequests,
-  doTestComputeTaintedRequests,
+  doTestComputeTrackingRequests,
 });
