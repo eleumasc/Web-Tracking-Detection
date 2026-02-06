@@ -44,6 +44,11 @@ export function computeTaintedRequests(
     }
   }
 
+  // Ensure that each param of each request in HAR matches some FoxReport at
+  // most once
+  const urlReportEntryFoundSet = new Set<TaintedRequestReportEntry>();
+  const postDataReportEntryFoundSet = new Set<TaintedRequestReportEntry>();
+
   // Process requests in HAR for which there is a corresponding FoxReport
   // involving a TaintedRequestParam
   const taintedRequests: TaintedRequest[] = [];
@@ -62,10 +67,13 @@ export function computeTaintedRequests(
     let storageTaints: StorageTaint[] = [];
 
     const urlReportEntry = taintedRequestReportEntries.find(
-      (entry) => entry.requestParam === "url" && matchesRequest(entry),
+      (entry) =>
+        entry.requestParam === "url" &&
+        matchesRequest(entry) &&
+        !urlReportEntryFoundSet.has(entry),
     );
-    // TODO: mark urlReportEntry as picked
     if (urlReportEntry) {
+      urlReportEntryFoundSet.add(urlReportEntry);
       const { foxReport } = urlReportEntry;
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
@@ -82,10 +90,15 @@ export function computeTaintedRequests(
     }
 
     let postData: string | undefined;
+
     const postDataReportEntry = taintedRequestReportEntries.find(
-      (entry) => entry.requestParam === "postData" && matchesRequest(entry),
+      (entry) =>
+        entry.requestParam === "postData" &&
+        matchesRequest(entry) &&
+        !postDataReportEntryFoundSet.has(entry),
     );
     if (postDataReportEntry) {
+      postDataReportEntryFoundSet.add(postDataReportEntry);
       const { foxReport } = postDataReportEntry;
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
@@ -101,6 +114,7 @@ export function computeTaintedRequests(
       }
     }
 
+    // Filter taints based on identification power
     storageTaints = storageTaints.filter((storageTaint) =>
       isCharConcatReadFromStorageIdentifiable(storageTaint),
     );
