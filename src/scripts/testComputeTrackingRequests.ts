@@ -3,6 +3,7 @@ import assert from "assert";
 import currentTime from "../util/currentTime";
 import execThread from "../worker/execThread";
 import openDocumentStore from "../data/openDocumentStore";
+import path from "path";
 import yargs from "yargs";
 import { ANALYSIS_LOGS_COLL_TYPE } from "../commands/cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
@@ -12,6 +13,7 @@ import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
 import { processTaskQueue } from "../util/TaskQueue";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
+import { writeOutputFileSync } from "../data/outputDir";
 
 async function main(args: { analysisId: number; maxTasks: number }) {
   const { analysisId } = args;
@@ -22,12 +24,11 @@ async function main(args: { analysisId: number; maxTasks: number }) {
   assert(analysisCollection, ANALYSIS_LOGS_COLL_TYPE);
   const { name: analysisName } = analysisCollection;
 
-  const outputName = `${currentTime()}-testComputeTaintedRequests-${analysisId}`;
+  const outputName = `${currentTime()}-testComputeTrackingRequests-${analysisId}`;
 
   let totalSites = 0;
   let successSites = 0;
-  let taintedRequestsCount = 0;
-  let matchedRequestsCount = 0;
+  const entries: ReturnType<typeof doTestComputeTrackingRequests>[] = [];
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
@@ -47,7 +48,7 @@ async function main(args: { analysisId: number; maxTasks: number }) {
 
       successSites += 1;
 
-      const s = await execThread<
+      const entry = await execThread<
         ReturnType<typeof doTestComputeTrackingRequests>
       >(
         makeTaskFromFunction(doTestComputeTrackingRequests, [
@@ -60,17 +61,39 @@ async function main(args: { analysisId: number; maxTasks: number }) {
         ]),
       );
 
-      taintedRequestsCount += s.taintedRequestsCount;
-      matchedRequestsCount += s.matchedRequestsCount;
+      entries.push(entry);
     },
   );
 
-  console.log({
+  const reportRecord = {
     totalSites,
     successSites,
-    taintedRequestsCount,
-    matchedRequestsCount,
-  });
+    taintedRequestsCount: _.sumBy(
+      entries,
+      (entry) => entry.taintedRequestsCount,
+    ),
+    matchedRequestsCount: _.sumBy(
+      entries,
+      (entry) => entry.matchedRequestsCount,
+    ),
+    intersectRequestsCount: _.sumBy(
+      entries,
+      (entry) => entry.intersectRequestsCount,
+    ),
+    onlyTaintRequestsCount: _.sumBy(
+      entries,
+      (entry) => entry.onlyTaintRequestsCount,
+    ),
+    onlySyntacticRequestsCount: _.sumBy(
+      entries,
+      (entry) => entry.onlySyntacticRequestsCount,
+    ),
+  };
+  console.log(reportRecord);
+  writeOutputFileSync(
+    path.join(outputName, "report.json"),
+    JSON.stringify(reportRecord),
+  );
 
   process.exit(0);
 }

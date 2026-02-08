@@ -64,8 +64,36 @@ export function doTestComputeTrackingRequests(args: {
     }),
   );
 
+  const taintedRequestIds = taintedRequests.map(({ requestId }) => requestId);
+  const matchedRequestIds = matchedRequests.map(({ requestId }) => requestId);
+  const intersectRequestIds = _.intersection(
+    taintedRequestIds,
+    matchedRequestIds,
+  );
+  const onlyTaintRequestIds = _.difference(
+    taintedRequestIds,
+    matchedRequestIds,
+  );
+  const onlySyntacticRequestIds = _.difference(
+    matchedRequestIds,
+    taintedRequestIds,
+  );
+
+  writeOutputFileSync(
+    path.join(outputName, `${site}.json`),
+    JSON.stringify({
+      site,
+      intersectRequestIds,
+      onlyTaintRequestIds,
+      onlySyntacticRequestIds,
+    }),
+  );
+
   return {
     taintedRequestsCount: taintedRequests.length,
     matchedRequestsCount: matchedRequests.length,
+    intersectRequestsCount: intersectRequestIds.length,
+    onlyTaintRequestsCount: onlyTaintRequestIds.length,
+    onlySyntacticRequestsCount: onlySyntacticRequestIds.length,
   };
 }
