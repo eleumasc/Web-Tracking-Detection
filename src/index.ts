@@ -1,10 +1,10 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
+import cmdExplain from "./commands/cmdExplain";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
 import yargs from "yargs";
+import { createStatefulTrackingAnalysis } from "./core/Analysis";
 import { hideBin } from "yargs/helpers";
-import { parseAnalysis } from "./core/Analysis";
-import cmdExplain from "./commands/cmdExplain";
 
 async function main() {
   console.log(`PID: ${process.pid}`);
@@ -19,7 +19,7 @@ async function main() {
           type: "string",
           demandOption: true,
         }),
-      (args) => cmdLoadSiteList(args)
+      (args) => cmdLoadSiteList(args),
     )
 
     .command(
@@ -32,21 +32,20 @@ async function main() {
             type: "number",
             demandOption: true,
           })
-          .option("analysis", {
-            describe: "Analysis descriptor",
-            type: "string",
-            demandOption: true,
+          .option("noVerif", {
+            describe: "Disable the request verification step",
+            type: "boolean",
           })
           .option("maxTasks", {
             type: "number",
             default: 1,
           }),
-      (args) =>
+      ({ action, noVerif, ...restArgs }) =>
         cmdAnalyze({
           action: "create",
-          ...args,
-          analysis: parseAnalysis(args.analysis),
-        })
+          analysis: createStatefulTrackingAnalysis({ noVerif }),
+          ...restArgs,
+        }),
     )
     .command(
       "analyze:resume <outputId>",
@@ -62,7 +61,8 @@ async function main() {
             type: "number",
             default: 1,
           }),
-      (args) => cmdAnalyze({ action: "resume", ...args })
+      ({ action, outputId, ...restArgs }) =>
+        cmdAnalyze({ action: "resume", outputId, ...restArgs }),
     )
 
     .command(
@@ -79,7 +79,7 @@ async function main() {
             type: "number",
             default: 1,
           }),
-      (args) => cmdMeasure(args)
+      (args) => cmdMeasure(args),
     )
 
     .command(
@@ -91,7 +91,7 @@ async function main() {
           describe: "Output directory of measure command to explain",
           demandOption: true,
         }),
-      (args) => cmdExplain(args)
+      (args) => cmdExplain(args),
     )
 
     .demandCommand(1, "You must provide a valid command.")
