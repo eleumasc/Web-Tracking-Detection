@@ -22,8 +22,8 @@ export function computeUnverifiedTrackingRequests(args: {
   const taintTaintFile = staResult.taint.taintFile;
 
   const identifiers = detectIdentifiableStorageItems(
-    getStorageItemsFromStorageState(auxConnectResult.storageState),
     getStorageItemsFromStorageState(preConnectResult.storageState),
+    getStorageItemsFromStorageState(auxConnectResult.storageState),
   );
 
   const har = new Har(path.join(getOutputPath(analysisName), taintHarFile));

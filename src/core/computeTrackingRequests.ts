@@ -85,7 +85,7 @@ export function computeTrackingRequests(args: {
   };
 
   const absTaintRequests = toAbstractRequests(taintRequests);
-  const absSyntacticRequests = toAbstractRequests(taintRequests);
+  const absSyntacticRequests = toAbstractRequests(syntacticRequests);
 
   const intersectRequests = _.intersectionWith(
     absTaintRequests,
@@ -137,7 +137,7 @@ export function computeTrackingRequests(args: {
     return {
       requestId,
       url,
-      tracker: getSiteFromUrl(requestId),
+      tracker: getSiteFromUrl(url),
       taint: includesThisRequest(taintRequests),
       syntactic: includesThisRequest(syntacticRequests),
       confirmedSyntactic: includesThisRequest(verifyResult?.confirmedRequests),

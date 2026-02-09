@@ -116,7 +116,7 @@ function getStats(entries: SiteTrackingRequestsEntry[]) {
     taint: getCategoryStats(entries, (r) => r.taint),
     syntactic: getCategoryStats(entries, (r) => r.syntactic),
     union: getCategoryStats(entries, (r) => r.taint || r.syntactic),
-    __intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
+    intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
     confirmedSyntactic: getCategoryStats(entries, (r) => r.confirmedSyntactic),
     confirmedUnion: getCategoryStats(
       entries,
