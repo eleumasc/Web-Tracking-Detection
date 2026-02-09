@@ -1,6 +1,5 @@
 import assert from "assert";
 import execContainer from "../worker/execContainer";
-import Flatted from "flatted";
 import FoxTaintArchive from "../foxhound/FoxTaintArchive";
 import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReporter";
 import path from "path";
@@ -10,11 +9,11 @@ import useTempPath from "../util/useTempPath";
 import { Analysis, StatefulTrackingAnalysis } from "./Analysis";
 import { AnalysisLogEntry } from "./AnalysisLogEntry";
 import { bomb } from "../util/timeout";
+import { computeUnverifiedTrackingRequests } from "./computeUnverifiedTrackingRequests";
 import { cpSync } from "fs";
 import { createOutputDir, writeOutputFileSync } from "../data/outputDir";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
-import { processFlows } from "./processFlows";
 import { toCompletion } from "../util/Completion";
 import {
   AnalysisResult,
@@ -49,17 +48,13 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const taintHarFile = `${site}+taint.har.zip`;
   const taintTaintFile = `${site}+taint.taint.sqlite`;
   const verifHarFile = `${site}+verif.har.zip`;
-  const taintFlowsFile = `${site}+TF.json`;
-  const syntacticFlowsFile = `${site}+SF.json`;
+  const taintRequestsFile = `${site}+T.json`;
+  const syntacticRequestsFile = `${site}+S.json`;
   const modifiedStorageItemsFile = `${site}+C.json`;
   const auxVerifHarFile = `${site}+auxVerif.har.zip`;
 
   return toCompletion(async () => {
-    let aux: StatefulTrackingAnalysisResult["aux"];
-    let pre: StatefulTrackingAnalysisResult["pre"];
-    let taint: StatefulTrackingAnalysisResult["taint"];
-    let verif: StatefulTrackingAnalysisResult["verif"];
-    let auxVerif: StatefulTrackingAnalysisResult["auxVerif"];
+    let staResult: StatefulTrackingAnalysisResult;
 
     await useTempPath({ localTmpDir: true }, async (profilesDir) => {
       const guestProfilesDir = "/profiles";
@@ -75,7 +70,9 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] },
       );
-      aux = { connectResult: auxConnectResult };
+      const aux: StatefulTrackingAnalysisResult["aux"] = {
+        connectResult: auxConnectResult,
+      };
 
       const preConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
@@ -87,7 +84,9 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] },
       );
-      pre = { connectResult: preConnectResult };
+      const pre: StatefulTrackingAnalysisResult["pre"] = {
+        connectResult: preConnectResult,
+      };
 
       // copy profiles/taint to profiles/verif
       cpSync(path.join(profilesDir, "taint"), path.join(profilesDir, "verif"), {
@@ -107,22 +106,32 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] },
       );
-      taint = {
+      const taint: StatefulTrackingAnalysisResult["taint"] = {
         connectResult: taintConnectResult,
         harFile: taintHarFile,
         taintFile: taintTaintFile,
       };
 
+      staResult = { aux, pre, taint };
+
       if (options.analysis.noVerif) return;
 
-      const { taintFlows, syntacticFlows, modifiedStorageItems } = processFlows(
-        {
+      const { taintRequests, syntacticRequests, modifiedStorageItems } =
+        computeUnverifiedTrackingRequests({
           analysisName: outputName,
-          auxConnectResult,
-          preConnectResult,
-          taintHarFile,
-          taintTaintFile,
-        },
+          staResult,
+        });
+      writeOutputFileSync(
+        path.join(outputName, taintRequestsFile),
+        JSON.stringify(taintRequests),
+      );
+      writeOutputFileSync(
+        path.join(outputName, syntacticRequestsFile),
+        JSON.stringify(syntacticRequests),
+      );
+      writeOutputFileSync(
+        path.join(outputName, modifiedStorageItemsFile),
+        JSON.stringify(modifiedStorageItems),
       );
 
       patchFoxhoundProfileStorage(
@@ -140,25 +149,13 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] },
       );
-      verif = {
+      const verif: StatefulTrackingAnalysisResult["verif"] = {
         connectResult: verifConnectResult,
         harFile: verifHarFile,
-        taintFlowsFile,
-        syntacticFlowsFile,
+        taintRequestsFile,
+        syntacticRequestsFile,
         modifiedStorageItemsFile,
       };
-      writeOutputFileSync(
-        path.join(outputName, taintFlowsFile),
-        Flatted.stringify(taintFlows),
-      );
-      writeOutputFileSync(
-        path.join(outputName, syntacticFlowsFile),
-        Flatted.stringify(syntacticFlows),
-      );
-      writeOutputFileSync(
-        path.join(outputName, modifiedStorageItemsFile),
-        Flatted.stringify(modifiedStorageItems),
-      );
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "aux"),
@@ -175,22 +172,16 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         ]),
         { extraBinds: [profilesBind] },
       );
-      auxVerif = {
+      const auxVerif: StatefulTrackingAnalysisResult["auxVerif"] = {
         connectResult: auxVerifConnectResult,
         harFile: auxVerifHarFile,
       };
-    });
-    assert(aux!);
-    assert(pre!);
-    assert(taint!);
 
-    return <StatefulTrackingAnalysisResult>{
-      aux,
-      pre,
-      taint,
-      verif,
-      auxVerif,
-    };
+      staResult = { ...staResult, verif, auxVerif };
+    });
+
+    assert(staResult!);
+    return staResult;
   });
 }
 

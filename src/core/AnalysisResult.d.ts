@@ -17,8 +17,8 @@ export interface StatefulTrackingAnalysisResult extends AnalysisResult {
   verif?: {
     connectResult: SimulateConnectResult;
     harFile: string;
-    taintFlowsFile: string;
-    syntacticFlowsFile: string;
+    taintRequestsFile: string;
+    syntacticRequestsFile: string;
     modifiedStorageItemsFile: string;
   };
   auxVerif?: {

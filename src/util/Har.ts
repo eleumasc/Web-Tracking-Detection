@@ -39,3 +39,22 @@ export function findRequestId(entry: Entry): string | undefined {
     ({ name }) => name === "X-Foxhound-RequestId",
   )?.value;
 }
+
+export function isRedirectFollowupRequest(entry: Entry, har: Har): boolean {
+  const { request } = entry;
+  const redirectCountHeaderValue = request.headers.find(
+    ({ name }) => name === "X-Foxhound-RedirectCount",
+  )?.value;
+  if (redirectCountHeaderValue) {
+    const redirectCount = Number(redirectCountHeaderValue);
+    assert(!isNaN(redirectCount));
+    return redirectCount > 0;
+  } else {
+    return har
+      .entries()
+      .some(
+        ({ response: thatResponse }) =>
+          thatResponse.redirectURL === request.url,
+      );
+  }
+}

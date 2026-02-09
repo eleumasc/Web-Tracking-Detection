@@ -1,6 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
-import { SyntacticFlow } from "../Flow";
+import { FoxURL } from "../../foxhound/FoxURL";
+import { SyntacticRequest } from "./SyntacticRequest";
 import {
   extractPathSegments,
   extractQueryParameters,
@@ -16,14 +17,14 @@ export class RequestTemplate {
   ) {}
 
   matchesUrl(url: string): boolean {
-    const parsedUrl = new URL(url);
+    const foxUrl = new FoxURL(url);
 
-    const { origin } = parsedUrl;
+    const { origin } = foxUrl;
     if (origin !== this.origin) {
       return false;
     }
 
-    const urlPathSegments = extractPathSegments(parsedUrl.pathname).map(
+    const urlPathSegments = extractPathSegments(foxUrl.pathname).map(
       ({ value }) => value,
     );
     if (urlPathSegments.length !== this.fixedUrlPathSegments.length) {
@@ -38,7 +39,7 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlQueryParamNames = extractQueryParameters(parsedUrl.search).map(
+    const urlQueryParamNames = extractQueryParameters(foxUrl.search).map(
       ({ param: p }) => (assert(p.type === "QueryParameter"), p.name),
     );
     if (urlQueryParamNames.length !== this.urlQueryParamNames.length) {
@@ -78,24 +79,25 @@ export class RequestTemplate {
     return s;
   }
 
-  static fromSyntacticFlow(flow: SyntacticFlow): RequestTemplate {
-    const { requestUrl, matches } = flow;
-    const parsedRequestUrl = new URL(requestUrl);
+  static fromSyntacticRequest(request: SyntacticRequest): RequestTemplate {
+    const { url, storageMatches } = request;
+    const foxUrl = new FoxURL(url);
 
-    const { origin } = parsedRequestUrl;
+    const { origin } = foxUrl;
 
     const holes = _.uniqWith(
-      matches.map((match) => match.requestParam),
+      storageMatches.flatMap(({ syntacticMatches }) =>
+        syntacticMatches.map(({ requestParam }) => requestParam),
+      ),
       _.isEqual,
     );
 
-    const fixedUrlPathSegments = extractPathSegments(
-      parsedRequestUrl.pathname,
-    ).map(({ param: p, value }) =>
-      holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
+    const fixedUrlPathSegments = extractPathSegments(foxUrl.pathname).map(
+      ({ param: p, value }) =>
+        holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
     );
 
-    const urlQueryParamNames = extractQueryParameters(parsedRequestUrl.search)
+    const urlQueryParamNames = extractQueryParameters(foxUrl.search)
       .map(({ param: p }) => (assert(p.type === "QueryParameter"), p.name))
       .sort();
 

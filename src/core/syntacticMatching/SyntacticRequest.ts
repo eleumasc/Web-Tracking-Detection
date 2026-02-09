@@ -1,5 +1,6 @@
-import { findRequestId, Har } from "../../util/Har";
+import { findRequestId, Har, isRedirectFollowupRequest } from "../../util/Har";
 import { parseRequestParamEntries, RequestParam } from "./RequestParam";
+import { Request } from "../Request";
 import { StorageItem } from "../StorageItem";
 import { syntacticMatcher } from "./syntacticMatcher";
 import { Token } from "./Token";
@@ -9,9 +10,7 @@ import {
   transformStorageValueRootNode,
 } from "./rootNodes";
 
-export interface MatchedRequest {
-  requestId: string;
-  url: string;
+export interface SyntacticRequest extends Request {
   storageMatches: StorageMatch[];
 }
 
@@ -26,10 +25,10 @@ export interface SyntacticMatch {
   requestParam: RequestParam;
 }
 
-export function computeMatchedRequests(
+export function computeSyntacticRequests(
   storageItems: StorageItem[],
   har: Har,
-): MatchedRequest[] {
+): SyntacticRequest[] {
   const storageEntries = storageItems.map((storageItem) => ({
     storageItem,
     transformTree: new TransformTree(
@@ -38,10 +37,11 @@ export function computeMatchedRequests(
     ),
   }));
 
-  const matchedRequests: MatchedRequest[] = [];
+  const syntacticRequests: SyntacticRequest[] = [];
   for (const harEntry of har.entries()) {
     const requestId = findRequestId(harEntry);
     if (!requestId) continue;
+    if (isRedirectFollowupRequest(harEntry, har)) continue;
 
     const { request } = harEntry;
     const { url: requestUrl } = request;
@@ -82,7 +82,7 @@ export function computeMatchedRequests(
     }
 
     if (storageMatches.length > 0) {
-      matchedRequests.push({
+      syntacticRequests.push({
         requestId,
         url: requestUrl,
         storageMatches,
@@ -90,5 +90,5 @@ export function computeMatchedRequests(
     }
   }
 
-  return matchedRequests;
+  return syntacticRequests;
 }

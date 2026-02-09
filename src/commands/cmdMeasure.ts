@@ -6,16 +6,18 @@ import openDocumentStore from "../data/openDocumentStore";
 import path from "path";
 import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
 import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
+import { computeTrackingRequests } from "../core/computeTrackingRequests";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
 import { processTaskQueue } from "../util/TaskQueue";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { TrackingRequest } from "../core/TrackingRequest";
 import { writeOutputFileSync } from "../data/outputDir";
-import {
-  processTrackingRequests,
-  SiteTrackingRequestsEntry,
-} from "../core/processTrackingRequests";
+
+interface SiteTrackingRequestsEntry {
+  site: string;
+  trackingRequests: TrackingRequest[];
+}
 
 export default async function cmdMeasure(args: {
   analysisId: number;
@@ -53,10 +55,10 @@ export default async function cmdMeasure(args: {
 
       successSites += 1;
 
-      const entry = await execThread<
-        ReturnType<typeof processTrackingRequests>
+      const trackingRequests = await execThread<
+        ReturnType<typeof computeTrackingRequests>
       >(
-        makeTaskFromFunction(processTrackingRequests, [
+        makeTaskFromFunction(computeTrackingRequests, [
           {
             site,
             analysisName,
@@ -66,7 +68,7 @@ export default async function cmdMeasure(args: {
         ]),
       );
 
-      entries.push(entry);
+      entries.push({ site, trackingRequests });
     },
   );
 
@@ -150,7 +152,7 @@ function getStats(entries: SiteTrackingRequestsEntry[]) {
 }
 
 function getSiteTrackers(entry: SiteTrackingRequestsEntry): string[] {
-  const { requests } = entry;
+  const { trackingRequests: requests } = entry;
   return _.uniq(requests.map((request) => request.tracker));
 }
 
@@ -160,7 +162,8 @@ function countCategoryRequests(
 ) {
   return _.sumBy(
     inputEntries,
-    ({ requests }) => requests.filter((request) => property(request)).length,
+    ({ trackingRequests: requests }) =>
+      requests.filter((request) => property(request)).length,
   );
 }
 
@@ -169,7 +172,7 @@ function getCategoryStats(
   property: (request: TrackingRequest) => boolean,
 ) {
   const entries = inputEntries.map((entry) => {
-    const { requests } = entry;
+    const { trackingRequests: requests } = entry;
     return {
       ...entry,
       requests: requests.filter((request) => property(request)),
@@ -205,7 +208,7 @@ function getExclusiveCategoryTrackers(
     ...inputEntries.map((entry) =>
       _.difference(
         getSiteTrackers(entry),
-        entry.requests
+        entry.trackingRequests
           .filter((request) => !property(request))
           .map(({ tracker }) => tracker),
       ),

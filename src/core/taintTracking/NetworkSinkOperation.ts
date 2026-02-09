@@ -4,10 +4,10 @@ import { FoxURL } from "../../foxhound/FoxURL";
 export interface NetworkSinkOperation {
   requestId?: string;
   url: string;
-  requestParam: TaintedRequestParam;
+  requestParam: TaintRequestParam;
 }
 
-export type TaintedRequestParam = "url" | "postData";
+export type TaintRequestParam = "url" | "postData";
 
 export function tryParseNetworkSinkOperation(
   sinkOperation: FoxOperation,
@@ -49,7 +49,7 @@ function doParseNetworkSinkOperation(
 ): {
   requestId?: string;
   url: string;
-  requestParam: TaintedRequestParam;
+  requestParam: TaintRequestParam;
 } {
   const { str } = foxReport;
   const { arguments: args } = sinkOperation;

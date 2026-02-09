@@ -1,10 +1,11 @@
 import _ from "lodash";
-import { findRequestId, Har } from "../../util/Har";
+import { findRequestId, Har, isRedirectFollowupRequest } from "../../util/Har";
 import { FoxReport } from "../../foxhound/types";
 import { isIdentifiable } from "../identifierDetection/identifiable";
+import { Request } from "../Request";
 import { StorageItem } from "../StorageItem";
 import {
-  TaintedRequestParam,
+  TaintRequestParam,
   tryParseNetworkSinkOperation,
 } from "./NetworkSinkOperation";
 import {
@@ -13,60 +14,59 @@ import {
   StorageTaint,
 } from "./StorageTaint";
 
-export interface TaintedRequest {
-  requestId: string;
-  url: string;
+export interface TaintRequest extends Request {
   postData?: string;
   storageTaints?: StorageTaint[];
 }
 
-export function computeTaintedRequests(
+export function computeTaintRequests(
   foxReports: FoxReport[],
   storageItems: StorageItem[],
   har: Har,
-): TaintedRequest[] {
-  interface TaintedRequestReportEntry {
+): TaintRequest[] {
+  interface TaintRequestReportEntry {
     requestId?: string;
     url: string;
-    requestParam: TaintedRequestParam;
+    requestParam: TaintRequestParam;
     foxReport: FoxReport;
   }
 
   // Filter FoxReports involving a NetworkSinkOperation
-  const taintedRequestReportEntries: TaintedRequestReportEntry[] = [];
+  const taintRequestReportEntries: TaintRequestReportEntry[] = [];
   for (const foxReport of foxReports) {
     const networkSinkOperation = tryParseNetworkSinkOperation(
       foxReport.sinkOperation,
       foxReport,
     );
     if (networkSinkOperation) {
-      taintedRequestReportEntries.push({ ...networkSinkOperation, foxReport });
+      taintRequestReportEntries.push({ ...networkSinkOperation, foxReport });
     }
   }
 
   // Ensure that each param of each request in HAR matches some FoxReport at
   // most once
-  const urlReportEntryFoundSet = new Set<TaintedRequestReportEntry>();
-  const postDataReportEntryFoundSet = new Set<TaintedRequestReportEntry>();
+  const urlReportEntryFoundSet = new Set<TaintRequestReportEntry>();
+  const postDataReportEntryFoundSet = new Set<TaintRequestReportEntry>();
 
   // Process requests in HAR for which there is a corresponding FoxReport
-  // involving a TaintedRequestParam
-  const taintedRequests: TaintedRequest[] = [];
+  // involving a TaintRequestParam
+  const taintRequests: TaintRequest[] = [];
   for (const harEntry of har.entries()) {
     const requestId = findRequestId(harEntry);
     if (!requestId) continue;
+    if (isRedirectFollowupRequest(harEntry, har)) continue;
 
     const { request } = harEntry;
     const { url: requestUrl } = request;
 
-    const matchesRequest = (entry: TaintedRequestReportEntry): boolean =>
+    const matchesRequest = (entry: TaintRequestReportEntry): boolean =>
       entry.requestId
         ? entry.requestId === requestId // match by requestId (XMLHttpRequest, fetch, navigator.sendBeacon)
         : entry.url === requestUrl; // match by URL (location, Element.src)
 
     let storageTaints: StorageTaint[] = [];
 
-    const urlReportEntry = taintedRequestReportEntries.find(
+    const urlReportEntry = taintRequestReportEntries.find(
       (entry) =>
         entry.requestParam === "url" &&
         matchesRequest(entry) &&
@@ -91,7 +91,7 @@ export function computeTaintedRequests(
 
     let postData: string | undefined;
 
-    const postDataReportEntry = taintedRequestReportEntries.find(
+    const postDataReportEntry = taintRequestReportEntries.find(
       (entry) =>
         entry.requestParam === "postData" &&
         matchesRequest(entry) &&
@@ -120,7 +120,7 @@ export function computeTaintedRequests(
     );
 
     if (storageTaints.length > 0) {
-      taintedRequests.push({
+      taintRequests.push({
         requestId,
         url: requestUrl,
         postData,
@@ -129,7 +129,7 @@ export function computeTaintedRequests(
     }
   }
 
-  return taintedRequests;
+  return taintRequests;
 }
 
 // Checks whether the concatenation of characters at accessed indexes of
@@ -149,33 +149,4 @@ function isCharConcatReadFromStorageIdentifiable(
   const charConcat = indexes.map((i) => value.at(i)).join("");
 
   return isIdentifiable(charConcat);
-}
-
-// Checks whether accessed indexes of storage value form at least one
-// contiguous sequence that is identifiable
-function someSequenceReadFromStorageIdentifiable(
-  storageTaint: StorageTaint,
-): boolean {
-  const {
-    storageItem: { value },
-    links,
-  } = storageTaint;
-
-  const indexes = _.sortBy(
-    _.uniq(links.map(([, storageIndex]) => storageIndex)),
-  );
-
-  const sequences: string[] = [];
-  let beginIndex = indexes[0];
-  let previousIndex = indexes[0];
-  for (let i = 1; i <= indexes.length; i++) {
-    const cur = indexes[i];
-    if (cur !== previousIndex + 1) {
-      sequences.push(value.slice(beginIndex, previousIndex + 1));
-      beginIndex = cur;
-    }
-    previousIndex = cur;
-  }
-
-  return sequences.some((sequence) => isIdentifiable(sequence));
 }

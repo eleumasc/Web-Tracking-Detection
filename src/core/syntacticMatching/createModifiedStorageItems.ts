@@ -4,8 +4,8 @@ import { alterValue } from "./alterValue";
 import { createStructureTokenArray } from "./StructureTree";
 import { enumerate, first, range } from "iter-tools";
 import { StorageItem } from "../StorageItem";
-import { SyntacticFlow } from "../Flow";
-import { Token, tokenChain, viewTokenDebug } from "./Token";
+import { SyntacticRequest } from "./SyntacticRequest";
+import { Token, tokenChain } from "./Token";
 
 export type ModifiedStorageItem = {
   storageItem: StorageItem;
@@ -21,10 +21,12 @@ type StateEntry = {
 type State = StateEntry[];
 
 export function createModifiedStorageItems(
-  flows: SyntacticFlow[],
+  syntacticRequests: SyntacticRequest[],
 ): ModifiedStorageItem[] {
-  const storageItems = _.uniqWith(
-    flows.map((flow) => flow.storageItem),
+  const storageItems: StorageItem[] = _.uniqWith(
+    syntacticRequests.flatMap(({ storageMatches }) =>
+      storageMatches.map(({ storageItem }) => storageItem),
+    ),
     _.isEqual,
   );
 
@@ -33,9 +35,14 @@ export function createModifiedStorageItems(
       storageItem,
       structureTokenArray: createStructureTokenArray(storageItem.value),
       matchTokenArray: _.uniqWith(
-        flows
-          .filter((flow) => _.isEqual(flow.storageItem, storageItem))
-          .flatMap(({ matches }) => matches.map((match) => match.storageToken)),
+        syntacticRequests
+          .flatMap(({ storageMatches }) => storageMatches)
+          .filter((storageMatch) =>
+            _.isEqual(storageMatch.storageItem, storageItem),
+          )
+          .flatMap(({ syntacticMatches }) =>
+            syntacticMatches.map(({ storageToken }) => storageToken),
+          ),
         _.isEqual,
       ),
     }),
@@ -80,28 +87,8 @@ export function createModifiedStorageItems(
     state = newState;
   }
 
-  const unmodifiedMatchTokenFound = (() => {
-    for (const entry of state) {
-      const recomputeToken = createRecomputeToken(entry.storageItem.value);
-      for (const token of entry.matchTokenArray) {
-        if (recomputeToken(token).value === token.value) {
-          return { entry, matchToken: token };
-        }
-      }
-    }
-  })();
-  if (unmodifiedMatchTokenFound) {
-    const { entry, matchToken } = unmodifiedMatchTokenFound;
-    console.log("Not every match token modified");
-    console.log("storageValue", entry.storageItem.value);
-    console.log("matchToken", viewTokenDebug(matchToken));
-    console.log(
-      "structureTokenArray",
-      entry.structureTokenArray.map((structureToken) =>
-        viewTokenDebug(structureToken),
-      ),
-    );
-  }
+  // TODO: check whether some match token has been modified
+  // TODO: review
 
   return state.map(
     (entry, entryIndex): ModifiedStorageItem => ({

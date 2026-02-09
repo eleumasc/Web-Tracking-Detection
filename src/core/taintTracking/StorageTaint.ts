@@ -5,12 +5,12 @@ import { Cookie, StorageItem } from "../StorageItem";
 import { FoxRange, FoxReport } from "../../foxhound/types";
 import { FoxURL } from "../../foxhound/FoxURL";
 import { range, toArray } from "iter-tools";
-import { TaintedRequestParam } from "./NetworkSinkOperation";
+import { TaintRequestParam } from "./NetworkSinkOperation";
 import { tryParseStorageCharFlow } from "./StorageCharFlow";
 
 export interface StorageTaint {
   storageItem: StorageItem;
-  requestParam: TaintedRequestParam;
+  requestParam: TaintRequestParam;
   links: [number, number][]; // 1st: requestIndex, 2nd: storageIndex
   intermeds: string[];
 }
@@ -20,7 +20,7 @@ export interface UncheckedStorageTaint {
   storageType: string;
   key: string;
   value: string;
-  requestParam: TaintedRequestParam;
+  requestParam: TaintRequestParam;
   links: [number, number][];
   intermeds: string[];
 }
@@ -28,7 +28,7 @@ export interface UncheckedStorageTaint {
 export function getUncheckedStorageTaints(
   foxTaint: FoxRange[],
   foxReport: FoxReport,
-  requestParam: TaintedRequestParam,
+  requestParam: TaintRequestParam,
 ): UncheckedStorageTaint[] {
   const origin = new URL(foxReport.loc).origin;
   const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
