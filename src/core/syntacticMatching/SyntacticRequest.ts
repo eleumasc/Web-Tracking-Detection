@@ -41,7 +41,6 @@ export function computeSyntacticRequests(
   for (const harEntry of har.entries()) {
     const requestId = findRequestId(harEntry);
     if (!requestId) continue;
-    if (isRedirectFollowupRequest(harEntry, har)) continue;
 
     const { request } = harEntry;
     const { url: requestUrl } = request;
