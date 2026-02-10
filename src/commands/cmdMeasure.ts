@@ -171,18 +171,26 @@ function getCategoryStats(
   inputEntries: SiteTrackingRequestsEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
-  const entries = inputEntries.map((entry) => {
+  const entries = inputEntries.map((entry): SiteTrackingRequestsEntry => {
     const { trackingRequests: requests } = entry;
     return {
       ...entry,
-      requests: requests.filter((request) => property(request)),
+      trackingRequests: requests.filter((request) => property(request)),
     };
   });
   return {
-    totalRequests: _.sumBy(entries, ({ requests }) => requests.length),
-    avgRequestsPerSite: _.meanBy(entries, ({ requests }) => requests.length),
-    maxRequestsPerSite: _.max(entries.map(({ requests }) => requests.length)),
-    sitesHavingTrackers: _.sumBy(entries, ({ requests }) =>
+    totalRequests: _.sumBy(
+      entries,
+      ({ trackingRequests: requests }) => requests.length,
+    ),
+    avgRequestsPerSite: _.meanBy(
+      entries,
+      ({ trackingRequests: requests }) => requests.length,
+    ),
+    maxRequestsPerSite: _.max(
+      entries.map(({ trackingRequests: requests }) => requests.length),
+    ),
+    sitesHavingTrackers: _.sumBy(entries, ({ trackingRequests: requests }) =>
       Number(requests.length > 0),
     ),
     totalTrackers: _.uniq(entries.flatMap((entry) => getSiteTrackers(entry)))
