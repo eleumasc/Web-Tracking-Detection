@@ -1,4 +1,5 @@
 import assert from "assert";
+import { applyPriority, TokenGroupTree } from "./TokenGroupTree";
 import { isIdentifiable } from "../identifierDetection/identifiable";
 import { sliceToken } from "./transforms/slice";
 import { some } from "iter-tools";
@@ -14,7 +15,8 @@ export function syntacticMatcher(
   storageTransformTree: TransformTree,
   requestTransformTree: TransformTree,
 ): SyntacticMatcherMatch[] {
-  const matches: SyntacticMatcherMatch[] = [];
+  let matches: SyntacticMatcherMatch[] = [];
+  const storageTokenTree = new TokenGroupTree();
 
   traverseTransformTree(storageTransformTree, (storageToken) => {
     if (!isValueMatchable(storageToken.value)) {
@@ -66,6 +68,7 @@ export function syntacticMatcher(
           storageToken,
           requestToken: requestSliceToken,
         });
+        storageTokenTree.addToken(storageToken);
 
         // skip: matches involving descendants of requestToken are redundant
         return false;
@@ -78,6 +81,18 @@ export function syntacticMatcher(
     // continue if no match found, skip otherwise
     return !matchFound;
   });
+
+  // apply priority on syntactic matches
+  try {
+    const priorityStorageTokenArray =
+      applyPriority(storageTokenTree).toTokenArray();
+    matches = matches.filter((match) =>
+      priorityStorageTokenArray.includes(match.storageToken),
+    );
+  } catch {
+    // in case of ambiguity (the unique type of exception here), discard matches
+    matches = [];
+  }
 
   return matches;
 }
