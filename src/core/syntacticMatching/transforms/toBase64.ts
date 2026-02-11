@@ -15,7 +15,7 @@ export class ToBase64Transform implements Transform {
     return btoa(input);
   }
 
-  reverse(value: string, originalInput: string): string {
+  reverse(value: string, input: string): string {
     return atob(value);
   }
 }

@@ -15,7 +15,7 @@ export class ToURLEncodingTransform implements Transform {
     return encodeURIComponent(input);
   }
 
-  reverse(value: string, originalInput: string): string {
+  reverse(value: string, input: string): string {
     return decodeURIComponent(value);
   }
 }

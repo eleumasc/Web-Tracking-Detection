@@ -1,49 +1,23 @@
-import { toArray } from "iter-tools";
 import { Transform } from "./Transform";
 
-export type Token = {
+export interface BaseToken {
   value: string;
-} & (
-  | {
-      chain?: undefined;
-      transform?: undefined;
-    }
-  | {
-      chain: Token;
-      transform: Transform;
-    }
-);
+}
+
+export interface RootToken extends BaseToken {
+  chain?: undefined;
+  transform?: undefined;
+}
+
+export interface TransformToken extends BaseToken {
+  chain: BaseToken;
+  transform: Transform;
+}
+
+export type Token = RootToken | TransformToken;
 
 export function* tokenChain(token: Token): IterableIterator<Token> {
   for (let cur: Token | undefined = token; cur; cur = cur.chain) {
     yield cur;
   }
-}
-
-export function viewToken(token: Token): Token {
-  const { chain, transform, value } = token;
-  return {
-    chain: chain && viewToken(chain),
-    transform,
-    value: truncateValue(value),
-  } as Token;
-
-  function truncateValue(value: string): string {
-    const valLength = value.length;
-    const maxLength = 500;
-    if (valLength > maxLength) {
-      return `${value.substring(0, 500)} [+${valLength - maxLength}]`;
-    } else {
-      return value;
-    }
-  }
-}
-
-export function viewTokenDebug(argToken: Token) {
-  return [
-    argToken.value,
-    toArray(tokenChain(argToken))
-      .map((token) => token.transform?.name ?? "$")
-      .join(),
-  ];
 }

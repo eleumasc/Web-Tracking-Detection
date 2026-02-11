@@ -24,7 +24,7 @@ export class FromQueryValuesTransform implements Transform {
     return input.substring(this.begin, this.end);
   }
 
-  reverse(value: string, originalInput: string): string {
-    return replaceStringAt(originalInput, value, this.begin, this.end);
+  reverse(value: string, input: string): string {
+    return replaceStringAt(input, value, this.begin, this.end);
   }
 }

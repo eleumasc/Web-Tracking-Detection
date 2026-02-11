@@ -29,18 +29,18 @@ export class FromJSONTransform implements Transform {
     }
   }
 
-  reverse(value: string, originalInput: string): string {
+  reverse(value: string, input: string): string {
     switch (this.type) {
       case "string":
         return replaceStringAt(
-          originalInput,
+          input,
           JSON.stringify(value),
           this.begin,
           this.end,
         );
       case "number":
         assert(!isNaN(Number(value)));
-        return replaceStringAt(originalInput, value, this.begin, this.end);
+        return replaceStringAt(input, value, this.begin, this.end);
     }
   }
 }
