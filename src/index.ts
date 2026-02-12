@@ -78,6 +78,10 @@ async function main() {
           .option("maxTasks", {
             type: "number",
             default: 1,
+          })
+          .option("forceNoVerif", {
+            type: "boolean",
+            default: false,
           }),
       (args) => cmdMeasure(args),
     )

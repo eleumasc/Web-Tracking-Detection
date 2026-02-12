@@ -28,6 +28,7 @@ export interface SiteTrackingRequestsEntry {
 export default async function cmdMeasure(args: {
   analysisId: number;
   maxTasks: number;
+  forceNoVerif: boolean;
 }) {
   const { analysisId } = args;
 
@@ -70,6 +71,7 @@ export default async function cmdMeasure(args: {
             analysisName,
             outputName,
             staResult,
+            forceNoVerif: args.forceNoVerif,
           },
         ]),
       );
