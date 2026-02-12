@@ -1,7 +1,7 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
-import cmdExplain from "./commands/cmdExplain";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
+import cmdReport from "./commands/cmdReport";
 import yargs from "yargs";
 import { createStatefulTrackingAnalysis } from "./core/Analysis";
 import { hideBin } from "yargs/helpers";
@@ -83,15 +83,15 @@ async function main() {
     )
 
     .command(
-      "explain <measureOutDir>",
-      "Explain the results with a pretty MarkDown",
+      "report <measureOutDir>",
+      "Generate report",
       (yargs) =>
         yargs.positional("measureOutDir", {
           type: "string",
-          describe: "Output directory of measure command to explain",
+          describe: "Output directory of measure command",
           demandOption: true,
         }),
-      (args) => cmdExplain(args),
+      (args) => cmdReport(args),
     )
 
     .demandCommand(1, "You must provide a valid command.")
