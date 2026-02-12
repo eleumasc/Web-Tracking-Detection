@@ -1,12 +1,11 @@
-import { applyPriority, TokenGroupTree } from "./TokenGroupTree";
 import { fromBase64 } from "./transforms/fromBase64";
 import { fromJSON } from "./transforms/fromJSON";
 import { fromQueryValues } from "./transforms/fromQueryValues";
 import { fromUrlEncoding } from "./transforms/fromURLEncoding";
 import { isIdentifiable } from "../identifierDetection/identifiable";
-import { isValueMatchable } from "./syntacticMatcher";
+import { resolveAmbiguity } from "./resolveAmbiguity";
 import { split } from "./transforms/split";
-import { Token } from "./Token";
+import { TokenGroupTree } from "./TokenGroupTree";
 import {
   TransformTree,
   TransformTreeEdge,
@@ -14,7 +13,7 @@ import {
   traverseTransformTree,
 } from "./TransformTree";
 
-export function createStructureTokenArray(storageValue: string): Token[] {
+export function createStructureTree(storageValue: string): TokenGroupTree {
   const tokenGroupTree = new TokenGroupTree();
 
   const transformTree = new TransformTree(
@@ -27,23 +26,21 @@ export function createStructureTokenArray(storageValue: string): Token[] {
       tokenGroupTree.addToken(token);
       return true;
     }
-    const success = isValueMatchable(value) && isIdentifiable(value);
+    const success = isIdentifiable(value);
     if (success) {
       tokenGroupTree.addToken(token);
     }
     return success;
   });
 
-  return applyPriority(tokenGroupTree).toTokenArray();
+  return resolveAmbiguity(tokenGroupTree);
 }
 
 function structureTreeRootNode(): TransformTreeNode {
+  // priority groups, sorted by priority
   const Decoders = [
-    split,
-    fromBase64,
-    fromUrlEncoding,
-    fromJSON,
-    fromQueryValues,
+    [fromJSON, fromBase64, fromUrlEncoding],
+    [fromQueryValues, split],
   ];
 
   return () => decodeLayer();
@@ -55,11 +52,14 @@ function structureTreeRootNode(): TransformTreeNode {
   function decode(
     child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Decoders.map(
-      (decoder): TransformTreeEdge => ({
-        transformGenerator: decoder,
-        child,
-      }),
+    return Decoders.flatMap((priorityGroup, priority) =>
+      priorityGroup.map(
+        (decoder): TransformTreeEdge => ({
+          transformGenerator: decoder,
+          child,
+          priority,
+        }),
+      ),
     );
   }
 }

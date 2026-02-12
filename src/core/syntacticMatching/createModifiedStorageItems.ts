@@ -1,24 +1,22 @@
 import _ from "lodash";
-import assert from "assert";
 import { alterValue } from "./alterValue";
-import { createStructureTokenArray } from "./StructureTree";
-import { enumerate, first, range } from "iter-tools";
+import { CanaryTree, CanaryTreeNode, StateInvariantError } from "./CanaryTree";
+import { createStructureTree } from "./StructureTree";
+import { enumerate } from "iter-tools";
 import { StorageItem } from "../StorageItem";
 import { SyntacticRequest } from "./SyntacticRequest";
-import { Token, tokenChain } from "./Token";
 
-export type ModifiedStorageItem = {
+export interface ModifiedStorageItem {
   storageItem: StorageItem;
   originalValue: string;
-};
-
-type StateEntry = {
-  storageItem: StorageItem;
-  structureTokenArray: Token[];
-  matchTokenArray: Token[];
-};
+}
 
 type State = StateEntry[];
+
+interface StateEntry {
+  storageItem: StorageItem;
+  canaryTree: CanaryTree;
+}
 
 export function createModifiedStorageItems(
   syntacticRequests: SyntacticRequest[],
@@ -30,65 +28,106 @@ export function createModifiedStorageItems(
     _.isEqual,
   );
 
-  const originalState: State = storageItems.map(
-    (storageItem): StateEntry => ({
-      storageItem,
-      structureTokenArray: createStructureTokenArray(storageItem.value),
-      matchTokenArray: _.uniqWith(
-        syntacticRequests
-          .flatMap(({ storageMatches }) => storageMatches)
-          .filter((storageMatch) =>
-            _.isEqual(storageMatch.storageItem, storageItem),
-          )
-          .flatMap(({ syntacticMatches }) =>
-            syntacticMatches.map(({ storageToken }) => storageToken),
-          ),
-        _.isEqual,
-      ),
-    }),
-  );
+  const originalState: State = storageItems.map((storageItem): StateEntry => {
+    const matchTokenArray = _.uniqWith(
+      syntacticRequests
+        .flatMap(({ storageMatches }) => storageMatches)
+        .filter((storageMatch) =>
+          _.isEqual(storageMatch.storageItem, storageItem),
+        )
+        .flatMap(({ syntacticMatches }) =>
+          syntacticMatches.map(({ storageToken }) => storageToken),
+        ),
+      _.isEqual,
+    );
+    const structureTree = createStructureTree(storageItem.value);
+    const canaryTree = CanaryTree.create(matchTokenArray, structureTree);
+    return { storageItem, canaryTree };
+  });
 
   let state = originalState;
-  for (const [entryIndex, entry] of enumerate(state)) {
-    const originalStorageValue = entry.storageItem.value;
-    let storageValue = originalStorageValue;
-    const originalStructureTokenArray = entry.structureTokenArray;
-    let structureTokenArray = originalStructureTokenArray;
-    for (const tokenIndex of range(structureTokenArray.length)) {
-      const token = structureTokenArray[tokenIndex];
-      if (token.value !== originalStructureTokenArray[tokenIndex].value) {
-        continue;
-      }
 
-      const newTokenValue = first(alterValue(token.value));
-      assert(newTokenValue);
+  let targetCanary: string | undefined;
+  while ((targetCanary = findTargetCanary(state))) {
+    const usedNewCanarySet = new Set<string>();
 
-      const newStorageValue = computeReverse(token, newTokenValue);
-      const recomputeToken = createRecomputeToken(newStorageValue);
-      const newStructureTokenArray = structureTokenArray.map((token) =>
-        recomputeToken(token),
+    let alterStateTarget: AlterStateTarget | undefined;
+    alterStateTargetLoop: while (
+      (alterStateTarget = findAlterStateTarget(state, targetCanary))
+    ) {
+      const { stateEntry, stateEntryIndex, canaryNode, begin, end } =
+        alterStateTarget;
+      const { canaryTree } = stateEntry;
+
+      const structureNodes = canaryTree.getStructureTreeLeaves(
+        canaryTree.getMatchingStructureTreeNode(canaryNode),
       );
 
-      storageValue = newStorageValue;
-      structureTokenArray = newStructureTokenArray;
+      for (const structureNode of structureNodes) {
+        const structureValue = canaryTree.getNodeValue(structureNode);
+
+        for (const newStructureValue of alterValue(structureValue)) {
+          let newInitialValue: string;
+          let newCanaryTree: CanaryTree;
+          try {
+            newInitialValue = canaryTree.computeReversed(
+              structureNode,
+              newStructureValue,
+            );
+            newCanaryTree = canaryTree.update(newInitialValue);
+          } catch (e) {
+            if (e instanceof StateInvariantError) {
+              continue;
+            } else {
+              // generic error, abort
+              throw e;
+            }
+          }
+
+          const newCanary = newCanaryTree
+            .getNodeValue(canaryNode)
+            .substring(begin, end);
+
+          if (newCanary === targetCanary) {
+            // modification did not happen, try again
+            continue;
+          }
+
+          if (usedNewCanarySet.has(newCanary)) {
+            // newCanary is already used, try again
+            continue;
+          }
+          usedNewCanarySet.add(newCanary);
+
+          // ok, set state
+          {
+            const newState = [...state];
+            newState[stateEntryIndex] = {
+              storageItem: {
+                ...stateEntry.storageItem,
+                value: newInitialValue,
+              },
+              canaryTree: newCanaryTree,
+            };
+            state = newState;
+          }
+
+          continue alterStateTargetLoop;
+        }
+      }
+
+      // fail, remove canary
+      console.log("Cannot modify targetCanary");
+      {
+        const newState = [...state];
+        newState[stateEntryIndex] = {
+          ...stateEntry,
+          canaryTree: canaryTree.removeCanaryNode(canaryNode),
+        };
+        state = newState;
+      }
     }
-
-    const newEntry: StateEntry = {
-      storageItem: {
-        ...entry.storageItem,
-        value: storageValue,
-      },
-      structureTokenArray,
-      matchTokenArray: entry.matchTokenArray,
-    };
-
-    const newState: State = [...state];
-    newState[entryIndex] = newEntry;
-    state = newState;
   }
-
-  // TODO: check whether some match token has been modified
-  // TODO: review
 
   return state.map(
     (entry, entryIndex): ModifiedStorageItem => ({
@@ -98,64 +137,46 @@ export function createModifiedStorageItems(
   );
 }
 
-function computeReverse(token: Token, newValue: string): string {
-  for (const { transform, chain } of tokenChain(token)) {
-    if (!transform) break;
-    assert(transform.reverse);
-    const originalInput = chain.value;
-    try {
-      newValue = transform.reverse(newValue, originalInput);
-    } catch (e) {
-      throw new StateInvariantError(`Failed transform.reverse(): ${String(e)}`);
-    }
-  }
-  return newValue;
+function findTargetCanary(state: State): string | undefined {
+  const targetCanaries = state.flatMap(({ canaryTree }) => {
+    const canaryNodes = canaryTree.getCanaryNodes();
+    return canaryNodes
+      .filter(
+        (canaryNode) =>
+          canaryTree.getNodeValue(canaryNode) === canaryNode.originalValue,
+      )
+      .map((canaryNode) => canaryNode.originalValue);
+  });
+  return _.minBy(targetCanaries, (x) => x.length);
 }
 
-function createRecomputeToken(newInitialValue: string) {
-  const cache = new WeakMap<Token, Token>();
+interface AlterStateTarget {
+  stateEntry: StateEntry;
+  stateEntryIndex: number;
+  canaryNode: CanaryTreeNode;
+  begin: number;
+  end: number;
+}
 
-  function recomputeToken(token: Token): Token {
-    let newToken = cache.get(token);
-    if (!newToken) {
-      newToken = doRecomputeToken(token);
-      if (newToken.value.length !== token.value.length) {
-        throw new StateInvariantError(
-          "newValue and value must have the same length",
-        );
+function findAlterStateTarget(
+  state: State,
+  targetCanary: string,
+): AlterStateTarget | undefined {
+  for (const [stateEntryIndex, stateEntry] of enumerate(state)) {
+    const { canaryTree } = stateEntry;
+    for (const canaryNode of canaryTree.getCanaryNodes()) {
+      let index;
+      const value = canaryTree.getNodeValue(canaryNode);
+      if ((index = value.indexOf(targetCanary)) !== -1) {
+        return {
+          stateEntry,
+          stateEntryIndex,
+          canaryNode,
+          begin: index,
+          end: index + targetCanary.length,
+        };
       }
-      cache.set(token, newToken);
     }
-    return newToken;
   }
-
-  function doRecomputeToken(token: Token): Token {
-    if (!token.chain) {
-      return {
-        value: newInitialValue,
-      };
-    }
-
-    const newChain = recomputeToken(token.chain);
-    const { transform } = token;
-    let newValue: string;
-    try {
-      newValue = transform.apply(newChain.value);
-    } catch (e) {
-      throw new StateInvariantError(`Failed transform.apply(): ${String(e)}`);
-    }
-    return {
-      chain: newChain,
-      transform,
-      value: newValue,
-    };
-  }
-
-  return recomputeToken;
-}
-
-export class StateInvariantError extends Error {
-  constructor(message?: string) {
-    super(message);
-  }
+  return undefined;
 }

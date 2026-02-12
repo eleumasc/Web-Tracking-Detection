@@ -1,9 +1,10 @@
 import assert from "assert";
-import { applyPriority, TokenGroupTree } from "./TokenGroupTree";
 import { isIdentifiable } from "../identifierDetection/identifiable";
+import { resolveAmbiguity } from "./resolveAmbiguity";
 import { sliceToken } from "./transforms/slice";
 import { some } from "iter-tools";
 import { Token, tokenChain } from "./Token";
+import { TokenGroupTree } from "./TokenGroupTree";
 import { TransformTree, traverseTransformTree } from "./TransformTree";
 
 export type SyntacticMatcherMatch = {
@@ -16,14 +17,9 @@ export function syntacticMatcher(
   requestTransformTree: TransformTree,
 ): SyntacticMatcherMatch[] {
   let matches: SyntacticMatcherMatch[] = [];
-  const storageTokenTree = new TokenGroupTree();
+  const matchTree = new TokenGroupTree();
 
   traverseTransformTree(storageTransformTree, (storageToken) => {
-    if (!isValueMatchable(storageToken.value)) {
-      // skip: storageToken is not matchable
-      return false;
-    }
-
     /**
      * // isIdentifiableCheck
      * if (!isIdentifiable(storageToken.value)) {
@@ -35,11 +31,6 @@ export function syntacticMatcher(
     let matchFound = false;
 
     traverseTransformTree(requestTransformTree, (requestToken) => {
-      if (!isValueMatchable(requestToken.value)) {
-        // skip: requestToken is not matchable
-        return false;
-      }
-
       let index: number;
       if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
         matchFound = true;
@@ -68,7 +59,7 @@ export function syntacticMatcher(
           storageToken,
           requestToken: requestSliceToken,
         });
-        storageTokenTree.addToken(storageToken);
+        matchTree.addToken(storageToken);
 
         // skip: matches involving descendants of requestToken are redundant
         return false;
@@ -82,21 +73,17 @@ export function syntacticMatcher(
     return !matchFound;
   });
 
-  // apply priority on syntactic matches
+  // resolve ambiguities on matches
   try {
-    const priorityStorageTokenArray =
-      applyPriority(storageTokenTree).toTokenArray();
+    const selectedStorageTokenArray =
+      resolveAmbiguity(matchTree).toTokenArray();
     matches = matches.filter((match) =>
-      priorityStorageTokenArray.includes(match.storageToken),
+      selectedStorageTokenArray.includes(match.storageToken),
     );
   } catch {
-    // in case of ambiguity (the unique type of exception here), discard matches
+    // if ambiguity cannot be resolved, discard matches
     matches = [];
   }
 
   return matches;
-}
-
-export function isValueMatchable(value: string): boolean {
-  return /[\x20-\x7e]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
 }

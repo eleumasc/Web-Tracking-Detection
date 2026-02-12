@@ -1,4 +1,5 @@
-import { some } from "iter-tools";
+import _ from "lodash";
+import { some, toArray } from "iter-tools";
 import { Token, tokenChain } from "./Token";
 import { TransformGenerator } from "./Transform";
 
@@ -7,6 +8,7 @@ export type TransformTreeNode = () => Iterable<TransformTreeEdge>;
 export type TransformTreeEdge = {
   transformGenerator: TransformGenerator;
   child: TransformTreeNode;
+  priority?: number;
 };
 
 export class TransformTree {
@@ -44,7 +46,20 @@ export class TransformTree {
     let cacheEntry = this.cache.get(token);
     if (!cacheEntry) {
       cacheEntry = [];
-      for (const { transformGenerator, child } of node()) {
+      const edges = _.sortBy(
+        toArray(node()),
+        ({ priority }) => priority ?? Infinity,
+      );
+      let lastPriority: number | undefined;
+      let tokenYielded: boolean = false;
+      for (const { transformGenerator, child, priority } of edges) {
+        if (lastPriority !== priority) {
+          lastPriority = priority;
+          if (tokenYielded) {
+            break;
+          }
+        }
+
         for (const transform of transformGenerator.generate(
           tokenValue,
           tokenTransform,
@@ -67,12 +82,18 @@ export class TransformTree {
             continue;
           }
 
+          // skip if the new value is not matchable (heuristically)
+          if (!isValueMatchable(value)) {
+            continue;
+          }
+
           const childToken: Token = {
             chain: token,
             transform,
             value,
           };
           cacheEntry.push({ child, childToken });
+          tokenYielded = true;
         }
       }
       this.cache.set(token, cacheEntry);
@@ -95,4 +116,8 @@ export function traverseTransformTree(
     const traverseChildren = visitor(token);
     tokenIt = traversal.next(traverseChildren);
   }
+}
+
+export function isValueMatchable(value: string): boolean {
+  return /[\x20-\x7e]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
 }

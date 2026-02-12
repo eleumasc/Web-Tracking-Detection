@@ -1,124 +1,87 @@
-import _ from "lodash";
 import assert from "assert";
 import { Token } from "./Token";
 
 export interface TokenGroup {
   transformName: string;
-  tokenEntries: TokenEntry[];
+  children: TokenGroupTreeNode[];
 }
 
-export interface TokenEntry {
+export interface TokenGroupTreeNode {
   token: Token;
-  children: TokenGroup[];
+  groups: TokenGroup[];
 }
 
 export class TokenGroupTree {
-  protected readonly tokenEntryCache = new WeakMap<Token, TokenEntry>();
+  protected readonly cache = new WeakMap<Token, TokenGroupTreeNode>();
 
-  constructor(protected rootTokenEntry?: TokenEntry) {}
+  constructor(protected rootNode?: TokenGroupTreeNode) {}
 
-  getRootTokenEntry() {
-    return this.rootTokenEntry;
+  getRootNode(): TokenGroupTreeNode {
+    assert(this.rootNode);
+    return this.rootNode;
   }
 
   addToken(token: Token): void {
     this.doAddToken(token);
   }
 
-  protected doAddToken(token: Token): TokenEntry {
+  protected doAddToken(token: Token): TokenGroupTreeNode {
     if (!token.chain) {
-      let { rootTokenEntry } = this;
-      if (!rootTokenEntry) {
-        rootTokenEntry = { token, children: [] };
-        this.rootTokenEntry = rootTokenEntry;
+      let { rootNode } = this;
+      if (!rootNode) {
+        rootNode = { token, groups: [] };
+        this.rootNode = rootNode;
       } else {
-        assert(token === rootTokenEntry.token);
+        assert(token === rootNode.token);
       }
-      return rootTokenEntry;
+      return rootNode;
     }
 
-    let tokenEntry = this.tokenEntryCache.get(token);
-    if (tokenEntry) {
-      return tokenEntry;
+    let node = this.cache.get(token);
+    if (node) {
+      return node;
     }
 
-    const { children: parentChildren } = this.doAddToken(token.chain);
+    const { groups: parentGroups } = this.doAddToken(token.chain);
     const transformName = token.transform.name;
-    let tokenGroup = parentChildren.find(
+    let group = parentGroups.find(
       (group) => group.transformName === transformName,
     );
-    if (!tokenGroup) {
-      tokenGroup = { transformName: transformName, tokenEntries: [] };
-      parentChildren.push(tokenGroup);
+    if (!group) {
+      group = { transformName: transformName, children: [] };
+      parentGroups.push(group);
     }
 
-    const { tokenEntries } = tokenGroup;
-    tokenEntry = tokenEntries.find((tokenEntry) => tokenEntry.token === token);
-    if (!tokenEntry) {
-      tokenEntry = { token, children: [] };
-      tokenEntries.push(tokenEntry);
+    const { children } = group;
+    node = children.find((child) => child.token === token);
+    if (!node) {
+      node = { token, groups: [] };
+      children.push(node);
     }
-    this.tokenEntryCache.set(token, tokenEntry);
-    return tokenEntry;
+    this.cache.set(token, node);
+    return node;
   }
 
-  toTokenArray(tokenEntry?: TokenEntry): Token[] {
-    if (!tokenEntry) {
-      return this.rootTokenEntry ? this.toTokenArray(this.rootTokenEntry) : [];
+  toTokenArray(node?: TokenGroupTreeNode): Token[] {
+    if (!node) {
+      return this.rootNode ? this.toTokenArray(this.rootNode) : [];
     }
 
-    const { token, children } = tokenEntry;
-    if (children.length === 0) {
+    const { token, groups } = node;
+    if (groups.length === 0) {
       return [token];
     } else {
-      return children.flatMap((child) =>
-        child.tokenEntries.flatMap((childTokenEntry) =>
-          this.toTokenArray(childTokenEntry),
-        ),
+      return groups.flatMap((group) =>
+        group.children.flatMap((child) => this.toTokenArray(child)),
       );
     }
   }
-}
 
-export function applyPriority(tree: TokenGroupTree): TokenGroupTree {
-  const rootTokenEntry = tree.getRootTokenEntry();
-  return new TokenGroupTree(rootTokenEntry && doApplyPriority(rootTokenEntry));
-}
-
-function doApplyPriority(tokenEntry: TokenEntry): TokenEntry {
-  const { token, children } = tokenEntry;
-  if (children.length === 0) {
-    return tokenEntry;
-  }
-  const priorityScores = children.map((child) =>
-    getPriorityScore(child.transformName),
-  );
-  const selectedScore = _.min(priorityScores);
-  const selectedChildren = children.filter(
-    (_, index) => priorityScores[index] === selectedScore,
-  );
-  assert(selectedChildren.length === 1, "Ambiguous format");
-  const [selectedChild] = selectedChildren;
-  return {
-    token,
-    children: [
-      {
-        transformName: selectedChild.transformName,
-        tokenEntries: selectedChild.tokenEntries.map((childTokenEntry) =>
-          doApplyPriority(childTokenEntry),
-        ),
-      },
-    ],
-  };
-}
-
-function getPriorityScore(transformName: string): number {
-  switch (transformName) {
-    default:
-      return 1;
-    case "fromQueryValues":
-      return 2;
-    case "split":
-      return 3;
+  static fromTokenArray(tokenArray: Token[]): TokenGroupTree {
+    const tokenGroupTree = new TokenGroupTree();
+    for (const token of tokenArray) {
+      tokenGroupTree.addToken(token);
+    }
+    return tokenGroupTree;
   }
 }
