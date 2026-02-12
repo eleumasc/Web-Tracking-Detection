@@ -4,9 +4,16 @@ import { Token } from "./Token";
 import { TokenGroupTree, TokenGroupTreeNode } from "./TokenGroupTree";
 import { Transform } from "./Transform";
 
+export interface Canary {
+  token: Token;
+  originalValue: string;
+  stashed: boolean;
+}
+
 export interface CanaryTreeStructure {
   rootNode: CanaryTreeNode;
   canaryNodes: CanaryTreeNode[];
+  stashedCanaryNodes: CanaryTreeNode[];
 }
 
 export interface CanaryTreeNode {
@@ -103,44 +110,57 @@ export class CanaryTree {
     return new CanaryTree(this.structure, newValues);
   }
 
-  removeCanaryNode(node: CanaryTreeNode): CanaryTree {
+  stashCanaryNode(node: CanaryTreeNode): CanaryTree {
     const {
-      structure: { rootNode, canaryNodes },
+      structure: { rootNode, canaryNodes, stashedCanaryNodes },
       values,
     } = this;
     const newCanaryNodes = canaryNodes.filter(
       (canaryNode) => canaryNode !== node,
     );
-    return new CanaryTree({ rootNode, canaryNodes: newCanaryNodes }, values);
+    const newStashedCanaryNodes = [...stashedCanaryNodes, node];
+    return new CanaryTree(
+      {
+        rootNode,
+        canaryNodes: newCanaryNodes,
+        stashedCanaryNodes: newStashedCanaryNodes,
+      },
+      values,
+    );
   }
 
-  getCanaries(): Token[] {
+  getCanaries(): Canary[] {
     const { values } = this;
 
-    return (function doGetMatchTokenArray(
-      node: CanaryTreeNode,
-      tokenChain?: Token,
-    ): Token[] {
-      assert(node.inMatchTree);
-
-      let token: Token;
-      const value = values[node.valueIndex];
-      if (!node.parent) {
-        token = { value };
-      } else {
-        const { transform } = node;
-        token = {
-          chain: tokenChain!,
-          transform: transform!,
-          value,
-        };
+    const cache = new WeakMap<CanaryTreeNode, Token>();
+    function getOrCreateToken(node: CanaryTreeNode): Token {
+      let token = cache.get(node);
+      if (!token) {
+        const value = values[node.valueIndex];
+        if (!node.parent) {
+          token = { value };
+        } else {
+          token = {
+            chain: getOrCreateToken(node.parent),
+            transform: node.transform!,
+            value,
+          };
+        }
+        cache.set(node, token);
       }
+      return token;
+    }
 
-      const children = node.children.filter((child) => child.inMatchTree);
-      return children.length === 0
-        ? [token]
-        : children.flatMap((child) => doGetMatchTokenArray(child, token));
-    })(this.getRootNode());
+    return [
+      ...this.structure.canaryNodes,
+      ...this.structure.stashedCanaryNodes,
+    ].map(
+      (canaryNode): Canary => ({
+        token: getOrCreateToken(canaryNode),
+        originalValue: canaryNode.originalValue,
+        stashed: this.structure.stashedCanaryNodes.includes(canaryNode),
+      }),
+    );
   }
 
   static create(
@@ -239,7 +259,10 @@ export class CanaryTree {
       return node;
     })(matchTreeRootNode, structureTreeRootNode);
 
-    return new CanaryTree({ rootNode, canaryNodes }, values);
+    return new CanaryTree(
+      { rootNode, canaryNodes, stashedCanaryNodes: [] },
+      values,
+    );
   }
 }
 

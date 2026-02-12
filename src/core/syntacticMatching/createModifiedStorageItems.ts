@@ -1,14 +1,20 @@
 import _ from "lodash";
 import { alterValue } from "./alterValue";
-import { CanaryTree, CanaryTreeNode, StateInvariantError } from "./CanaryTree";
 import { createStructureTree } from "./StructureTree";
 import { enumerate } from "iter-tools";
 import { StorageItem } from "../StorageItem";
 import { SyntacticRequest } from "./SyntacticRequest";
+import {
+  Canary,
+  CanaryTree,
+  CanaryTreeNode,
+  StateInvariantError,
+} from "./CanaryTree";
 
 export interface ModifiedStorageItem {
   storageItem: StorageItem;
   originalValue: string;
+  canaries: Canary[];
 }
 
 type State = StateEntry[];
@@ -116,13 +122,12 @@ export function createModifiedStorageItems(
         }
       }
 
-      // fail, remove canary
-      console.log("Cannot modify targetCanary");
+      // fail, stash canary node
       {
         const newState = [...state];
         newState[stateEntryIndex] = {
           ...stateEntry,
-          canaryTree: canaryTree.removeCanaryNode(canaryNode),
+          canaryTree: canaryTree.stashCanaryNode(canaryNode),
         };
         state = newState;
       }
@@ -133,6 +138,7 @@ export function createModifiedStorageItems(
     (entry, entryIndex): ModifiedStorageItem => ({
       storageItem: entry.storageItem,
       originalValue: originalState[entryIndex].storageItem.value,
+      canaries: entry.canaryTree.getCanaries(),
     }),
   );
 }
