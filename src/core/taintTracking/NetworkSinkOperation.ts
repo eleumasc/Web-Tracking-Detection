@@ -25,10 +25,14 @@ export function parseNetworkSinkOperation(
   foxReport: FoxReport,
 ): NetworkSinkOperation {
   const {
-    requestId,
+    requestId: rawRequestId,
     url: rawUrl,
     requestParam,
   } = doParseNetworkSinkOperation(sinkOperation, foxReport);
+
+  // fix to add redirectCountStr (first request of redirect chain, thus 0)
+  const requestId = `${rawRequestId}:0`;
+
   // we parse rawUrl using FoxURL to compute url (i.e., rawUrl without hash)
   const foxUrl = new FoxURL(rawUrl, foxReport.baseURI);
   const { protocol } = foxUrl;
@@ -40,6 +44,7 @@ export function parseNetworkSinkOperation(
   ) {
     throw new Error(`Not a network protocol: ${protocol}`);
   }
+
   return { requestId, url: foxUrl.toString(), requestParam };
 }
 

@@ -1,5 +1,5 @@
 import _ from "lodash";
-import { findRequestId, Har, isRedirectFollowupRequest } from "../../util/Har";
+import { findRequestId, Har } from "../../util/Har";
 import { FoxReport } from "../../foxhound/types";
 import { isIdentifiable } from "../identifierDetection/identifiable";
 import { Request } from "../Request";
