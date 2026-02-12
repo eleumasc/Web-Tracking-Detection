@@ -67,12 +67,8 @@ export function verifySyntacticRequests(
       auxVerifRequests,
     );
 
-    if (matchingVerifRequests.length !== 1) {
-      if (matchingVerifRequests.length === 0) {
-        noMatchingRequestsRequests.push(request);
-      } else {
-        manyMatchingRequestsRequests.push(request);
-      }
+    if (matchingVerifRequests.length === 0) {
+      noMatchingRequestsRequests.push(request);
     } else if (
       matchingVerifRequests.some(
         (verifRequest) =>
@@ -101,6 +97,10 @@ export function verifySyntacticRequests(
       refutedRequests.push(request);
     } else {
       unknownRequests.push(request);
+    }
+
+    if (matchingVerifRequests.length > 1) {
+      manyMatchingRequestsRequests.push(request);
     }
   }
 
