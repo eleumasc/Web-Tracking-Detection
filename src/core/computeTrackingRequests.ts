@@ -1,4 +1,5 @@
 import _ from "lodash";
+import assert from "assert";
 import path from "path";
 import { computeUnverifiedTrackingRequests } from "./computeUnverifiedTrackingRequests";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
@@ -109,12 +110,23 @@ export function computeTrackingRequests(args: {
   });
 
   if (verifyResult) {
-    const { confirmedRequests, refutedRequests, unknownRequests } =
-      verifyResult;
+    const {
+      confirmedRequests,
+      refutedRequests,
+      unknownRequests,
+      noMatchingRequestsRequests,
+      manyMatchingRequestsRequests,
+    } = verifyResult;
     addDetails({
       confirmedSyntacticRequests: toAbstractRequests(confirmedRequests),
       refutedSyntacticRequests: toAbstractRequests(refutedRequests),
       unknownSyntacticRequests: toAbstractRequests(unknownRequests),
+      noMatchingRequestsRequests: toAbstractRequests(
+        noMatchingRequestsRequests,
+      ),
+      manyMatchingRequestsRequests: toAbstractRequests(
+        manyMatchingRequestsRequests,
+      ),
     });
   }
 
@@ -134,14 +146,42 @@ export function computeTrackingRequests(args: {
     ): boolean =>
       requests?.some((request) => request.requestId === requestId) ?? false;
 
+    const tracker = getSiteFromUrl(url);
+
+    const taint = includesThisRequest(taintRequests);
+    const syntactic = includesThisRequest(syntacticRequests);
+
+    const noMatchingRequestsSyntactic = includesThisRequest(
+      verifyResult?.noMatchingRequestsRequests,
+    );
+    const manyMatchingRequestsSyntactic = includesThisRequest(
+      verifyResult?.manyMatchingRequestsRequests,
+    );
+    const confirmedSyntactic = includesThisRequest(
+      verifyResult?.confirmedRequests,
+    );
+    const refutedSyntactic = includesThisRequest(verifyResult?.refutedRequests);
+    const unknownSyntactic = includesThisRequest(verifyResult?.unknownRequests);
+
+    const verifFlagsCount =
+      Number(noMatchingRequestsSyntactic) +
+      Number(manyMatchingRequestsSyntactic) +
+      Number(confirmedSyntactic) +
+      Number(refutedSyntactic) +
+      Number(unknownSyntactic);
+    assert(syntactic ? verifFlagsCount === 1 : verifFlagsCount === 0);
+
     return {
       requestId,
       url,
-      tracker: getSiteFromUrl(url),
-      taint: includesThisRequest(taintRequests),
-      syntactic: includesThisRequest(syntacticRequests),
-      confirmedSyntactic: includesThisRequest(verifyResult?.confirmedRequests),
-      refutedSyntactic: includesThisRequest(verifyResult?.refutedRequests),
+      tracker,
+      taint,
+      syntactic,
+      noMatchingRequestsSyntactic,
+      manyMatchingRequestsSyntactic,
+      confirmedSyntactic,
+      refutedSyntactic,
+      unknownSyntactic,
     };
   });
 }

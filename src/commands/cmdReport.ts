@@ -34,6 +34,9 @@ export default async function cmdReport(args: { measureOutDir: string }) {
 
 function getStats(entries: SiteTrackingRequestsEntry[]) {
   return {
+    taintRequests: countCategoryRequests(entries, (r) => r.taint),
+    syntacticRequests: countCategoryRequests(entries, (r) => r.syntactic),
+
     intersectRequests: countCategoryRequests(
       entries,
       (r) => r.taint && r.syntactic,
@@ -46,17 +49,15 @@ function getStats(entries: SiteTrackingRequestsEntry[]) {
       entries,
       (r) => !r.taint && r.syntactic,
     ),
-    confirmedSyntacticRequests: countCategoryRequests(
+
+    syntacticVerif: getSyntacticVerifStats(entries, (r) => r.syntactic),
+    intersectVerif: getSyntacticVerifStats(
       entries,
-      (r) => r.confirmedSyntactic,
+      (r) => r.taint && r.syntactic,
     ),
-    refutedSyntacticRequests: countCategoryRequests(
+    onlySyntacticVerif: getSyntacticVerifStats(
       entries,
-      (r) => r.refutedSyntactic,
-    ),
-    unknownSyntacticRequests: countCategoryRequests(
-      entries,
-      (r) => r.syntactic && !r.confirmedSyntactic && !r.refutedSyntactic,
+      (r) => !r.taint && r.syntactic,
     ),
 
     taint: getCategoryStats(entries, (r) => r.taint),
@@ -97,6 +98,19 @@ function getStats(entries: SiteTrackingRequestsEntry[]) {
   };
 }
 
+function applyProperty(
+  inputEntries: SiteTrackingRequestsEntry[],
+  property: (request: TrackingRequest) => boolean,
+): SiteTrackingRequestsEntry[] {
+  return inputEntries.map((entry): SiteTrackingRequestsEntry => {
+    const { trackingRequests: requests } = entry;
+    return {
+      ...entry,
+      trackingRequests: requests.filter((request) => property(request)),
+    };
+  });
+}
+
 function getSiteTrackers(entry: SiteTrackingRequestsEntry): string[] {
   const { trackingRequests: requests } = entry;
   return _.uniq(requests.map((request) => request.tracker));
@@ -113,17 +127,34 @@ function countCategoryRequests(
   );
 }
 
+function getSyntacticVerifStats(
+  inputEntries: SiteTrackingRequestsEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  const entries = applyProperty(inputEntries, property);
+  return {
+    noMatchingRequestsRequests: countCategoryRequests(
+      entries,
+      (r) => r.noMatchingRequestsSyntactic,
+    ),
+    manyMatchingRequestsRequests: countCategoryRequests(
+      entries,
+      (r) => r.manyMatchingRequestsSyntactic,
+    ),
+    confirmedRequests: countCategoryRequests(
+      entries,
+      (r) => r.confirmedSyntactic,
+    ),
+    refutedRequests: countCategoryRequests(entries, (r) => r.refutedSyntactic),
+    unknownRequests: countCategoryRequests(entries, (r) => r.unknownSyntactic),
+  };
+}
+
 function getCategoryStats(
   inputEntries: SiteTrackingRequestsEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
-  const entries = inputEntries.map((entry): SiteTrackingRequestsEntry => {
-    const { trackingRequests: requests } = entry;
-    return {
-      ...entry,
-      trackingRequests: requests.filter((request) => property(request)),
-    };
-  });
+  const entries = applyProperty(inputEntries, property);
   return {
     totalRequests: _.sumBy(
       entries,

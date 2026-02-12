@@ -57,6 +57,8 @@ export function verifySyntacticRequests(
   const confirmedRequests: SyntacticRequest[] = [];
   const refutedRequests: SyntacticRequest[] = [];
   const unknownRequests: SyntacticRequest[] = [];
+  const noMatchingRequestsRequests: SyntacticRequest[] = [];
+  const manyMatchingRequestsRequests: SyntacticRequest[] = [];
 
   for (const request of requests) {
     const matchingVerifRequests = getMatchingRequests(request, verifRequests);
@@ -65,8 +67,12 @@ export function verifySyntacticRequests(
       auxVerifRequests,
     );
 
-    if (matchingVerifRequests.length === 0) {
-      unknownRequests.push(request);
+    if (matchingVerifRequests.length !== 1) {
+      if (matchingVerifRequests.length === 0) {
+        noMatchingRequestsRequests.push(request);
+      } else {
+        manyMatchingRequestsRequests.push(request);
+      }
     } else if (
       matchingVerifRequests.some(
         (verifRequest) =>
@@ -102,6 +108,8 @@ export function verifySyntacticRequests(
     confirmedRequests,
     refutedRequests,
     unknownRequests,
+    noMatchingRequestsRequests,
+    manyMatchingRequestsRequests,
   };
 }
 

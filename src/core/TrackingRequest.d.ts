@@ -6,4 +6,7 @@ export interface TrackingRequest extends Request {
   syntactic: boolean;
   confirmedSyntactic: boolean;
   refutedSyntactic: boolean;
+  unknownSyntactic: boolean;
+  noMatchingRequestsSyntactic: boolean;
+  manyMatchingRequestsSyntactic: boolean;
 }
