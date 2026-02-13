@@ -28,6 +28,7 @@ export interface SyntacticMatch {
 export function computeSyntacticRequests(
   storageItems: StorageItem[],
   har: Har,
+  includeIfNoStorageMatches?: boolean,
 ): SyntacticRequest[] {
   const storageEntries = storageItems.map((storageItem) => ({
     storageItem,
@@ -80,7 +81,7 @@ export function computeSyntacticRequests(
       }
     }
 
-    if (storageMatches.length > 0) {
+    if (storageMatches.length > 0 || includeIfNoStorageMatches) {
       syntacticRequests.push({
         requestId,
         url: requestUrl,

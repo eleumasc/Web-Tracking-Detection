@@ -1,20 +1,17 @@
 import _ from "lodash";
 import { alterValue } from "./alterValue";
+import { Canary } from "./CanaryTree";
+import { CanaryTree, CanaryTreeNode, StateInvariantError } from "./CanaryTree";
 import { createStructureTree } from "./StructureTree";
 import { enumerate } from "iter-tools";
 import { StorageItem } from "../StorageItem";
 import { SyntacticRequest } from "./SyntacticRequest";
-import {
-  Canary,
-  CanaryTree,
-  CanaryTreeNode,
-  StateInvariantError,
-} from "./CanaryTree";
 
-export interface ModifiedStorageItem {
+export interface CanaryStorageItem {
   storageItem: StorageItem;
   originalValue: string;
   canaries: Canary[];
+  rejectedCanaries: Canary[];
 }
 
 type State = StateEntry[];
@@ -24,9 +21,9 @@ interface StateEntry {
   canaryTree: CanaryTree;
 }
 
-export function createModifiedStorageItems(
+export function createCanaryStorageItems(
   syntacticRequests: SyntacticRequest[],
-): ModifiedStorageItem[] {
+): CanaryStorageItem[] {
   const storageItems: StorageItem[] = _.uniqWith(
     syntacticRequests.flatMap(({ storageMatches }) =>
       storageMatches.map(({ storageItem }) => storageItem),
@@ -122,25 +119,26 @@ export function createModifiedStorageItems(
         }
       }
 
-      // fail, stash canary node
+      // fail, reject canaryNode
       {
         const newState = [...state];
         newState[stateEntryIndex] = {
           ...stateEntry,
-          canaryTree: canaryTree.stashCanaryNode(canaryNode),
+          canaryTree: canaryTree.rejectCanaryNode(canaryNode),
         };
         state = newState;
       }
     }
   }
 
-  return state.map(
-    (entry, entryIndex): ModifiedStorageItem => ({
+  return state.map((entry, entryIndex): CanaryStorageItem => {
+    return {
       storageItem: entry.storageItem,
       originalValue: originalState[entryIndex].storageItem.value,
       canaries: entry.canaryTree.getCanaries(),
-    }),
-  );
+      rejectedCanaries: entry.canaryTree.getRejectedCanaries(),
+    };
+  });
 }
 
 function findTargetCanary(state: State): string | undefined {

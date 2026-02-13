@@ -5,15 +5,15 @@ import { TokenGroupTree, TokenGroupTreeNode } from "./TokenGroupTree";
 import { Transform } from "./Transform";
 
 export interface Canary {
-  token: Token;
+  transformChain: any[];
+  value: string;
   originalValue: string;
-  stashed: boolean;
 }
 
 export interface CanaryTreeStructure {
   rootNode: CanaryTreeNode;
   canaryNodes: CanaryTreeNode[];
-  stashedCanaryNodes: CanaryTreeNode[];
+  rejectedCanaryNodes: CanaryTreeNode[];
 }
 
 export interface CanaryTreeNode {
@@ -110,57 +110,49 @@ export class CanaryTree {
     return new CanaryTree(this.structure, newValues);
   }
 
-  stashCanaryNode(node: CanaryTreeNode): CanaryTree {
+  rejectCanaryNode(node: CanaryTreeNode): CanaryTree {
     const {
-      structure: { rootNode, canaryNodes, stashedCanaryNodes },
+      structure: { rootNode, canaryNodes, rejectedCanaryNodes },
       values,
     } = this;
     const newCanaryNodes = canaryNodes.filter(
       (canaryNode) => canaryNode !== node,
     );
-    const newStashedCanaryNodes = [...stashedCanaryNodes, node];
+    const newrejectedCanaryNodes = [...rejectedCanaryNodes, node];
     return new CanaryTree(
       {
         rootNode,
         canaryNodes: newCanaryNodes,
-        stashedCanaryNodes: newStashedCanaryNodes,
+        rejectedCanaryNodes: newrejectedCanaryNodes,
       },
       values,
     );
   }
 
   getCanaries(): Canary[] {
-    const { values } = this;
+    return this.createCanaries(this.structure.canaryNodes);
+  }
 
-    const cache = new WeakMap<CanaryTreeNode, Token>();
-    function getOrCreateToken(node: CanaryTreeNode): Token {
-      let token = cache.get(node);
-      if (!token) {
-        const value = values[node.valueIndex];
-        if (!node.parent) {
-          token = { value };
-        } else {
-          token = {
-            chain: getOrCreateToken(node.parent),
-            transform: node.transform!,
-            value,
-          };
-        }
-        cache.set(node, token);
+  getRejectedCanaries(): Canary[] {
+    return this.createCanaries(this.structure.rejectedCanaryNodes);
+  }
+
+  protected createCanaries(canaryNodes: CanaryTreeNode[]): Canary[] {
+    return canaryNodes.map((canaryNode): Canary => {
+      const transformChain: any[] = [];
+      for (
+        let cur: CanaryTreeNode = canaryNode;
+        cur.transform;
+        cur = cur.parent!
+      ) {
+        transformChain.push({ ...cur.transform });
       }
-      return token;
-    }
-
-    return [
-      ...this.structure.canaryNodes,
-      ...this.structure.stashedCanaryNodes,
-    ].map(
-      (canaryNode): Canary => ({
-        token: getOrCreateToken(canaryNode),
+      return {
+        transformChain,
+        value: this.getNodeValue(canaryNode),
         originalValue: canaryNode.originalValue,
-        stashed: this.structure.stashedCanaryNodes.includes(canaryNode),
-      }),
-    );
+      };
+    });
   }
 
   static create(
@@ -260,7 +252,7 @@ export class CanaryTree {
     })(matchTreeRootNode, structureTreeRootNode);
 
     return new CanaryTree(
-      { rootNode, canaryNodes, stashedCanaryNodes: [] },
+      { rootNode, canaryNodes, rejectedCanaryNodes: [] },
       values,
     );
   }

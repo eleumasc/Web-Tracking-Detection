@@ -3,7 +3,7 @@ import FoxTaintArchive from "../foxhound/FoxTaintArchive";
 import path from "path";
 import { computeSyntacticRequests } from "./syntacticMatching/SyntacticRequest";
 import { computeTaintRequests } from "./taintTracking/TaintRequest";
-import { createModifiedStorageItems } from "./syntacticMatching/createModifiedStorageItems";
+import { createCanaryStorageItems } from "./syntacticMatching/CanaryStorageItem";
 import { getOutputPath } from "../data/outputDir";
 import { getSiteFromUrl } from "../util/site";
 import { getStorageItemsFromStorageState } from "./StorageItem";
@@ -43,11 +43,11 @@ export function computeUnverifiedTrackingRequests(args: {
     computeSyntacticRequests(identifiers, har),
   );
 
-  const modifiedStorageItems = createModifiedStorageItems(syntacticRequests);
+  const canaryStorageItems = createCanaryStorageItems(syntacticRequests);
 
   return {
     taintRequests,
     syntacticRequests,
-    modifiedStorageItems,
+    canaryStorageItems,
   };
 }

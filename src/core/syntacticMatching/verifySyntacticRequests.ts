@@ -1,57 +1,27 @@
 import _ from "lodash";
+import { CanaryStorageItem } from "./CanaryStorageItem";
 import { computeSyntacticRequests, SyntacticRequest } from "./SyntacticRequest";
+import { createTokenTransformChain } from "./Token";
 import { Har } from "../../util/Har";
-import { map, toArray } from "iter-tools";
-import { ModifiedStorageItem } from "./createModifiedStorageItems";
-import { RequestParam } from "./RequestParam";
+import { Request } from "../Request";
 import { RequestTemplate } from "./RequestTemplate";
 import { StorageItem } from "../StorageItem";
-import { Token, tokenChain } from "./Token";
-import { weakMemoize } from "../../util/memoize";
-
-interface AbstractMatch {
-  storageId: StorageItem["id"];
-  requestParam: RequestParam;
-  transformChain: any[];
-}
 
 export function verifySyntacticRequests(
-  requests: SyntacticRequest[],
-  modifiedStorageItems: ModifiedStorageItem[],
+  syntacticRequests: SyntacticRequest[],
+  canaryStorageItems: CanaryStorageItem[],
   verifHar: Har,
   auxVerifHar: Har,
 ) {
-  const modifiedIdentifiers = modifiedStorageItems.map(
-    ({ storageItem }) => storageItem,
-  );
-  const verifRequests = computeSyntacticRequests(modifiedIdentifiers, verifHar);
-  const originalIdentifiers = modifiedStorageItems.map(
-    ({ storageItem, originalValue }) => ({
-      ...storageItem,
-      value: originalValue,
-    }),
-  );
-  const auxVerifRequests = computeSyntacticRequests(
-    originalIdentifiers,
-    auxVerifHar,
-  );
+  const originalCanaries = computeCanaryVerifMatches(canaryStorageItems, true);
+  const modifiedCanaries = computeCanaryVerifMatches(canaryStorageItems);
 
-  const getAbstractMatches = weakMemoize((request: SyntacticRequest) =>
-    request.storageMatches.flatMap(
-      ({ storageItem: { id: storageId }, syntacticMatches }) =>
-        syntacticMatches.map(
-          ({ storageToken, requestParam }): AbstractMatch => ({
-            storageId,
-            requestParam: requestParam,
-            transformChain: toArray(
-              map(
-                //
-                (x: Token) => x.transform && { ...x.transform },
-              )(tokenChain(storageToken)),
-            ),
-          }),
-        ),
-    ),
+  const originalStorageItems = extractStorageItems(canaryStorageItems, true);
+  const modifiedStorageItems = extractStorageItems(canaryStorageItems);
+  const verifRequests = computeVerifRequests(modifiedStorageItems, verifHar);
+  const auxVerifRequests = computeVerifRequests(
+    originalStorageItems,
+    auxVerifHar,
   );
 
   const confirmedRequests: SyntacticRequest[] = [];
@@ -60,47 +30,50 @@ export function verifySyntacticRequests(
   const noMatchingRequestsRequests: SyntacticRequest[] = [];
   const manyMatchingRequestsRequests: SyntacticRequest[] = [];
 
-  for (const request of requests) {
-    const matchingVerifRequests = getMatchingRequests(request, verifRequests);
-    const matchingAuxVerifRequests = getMatchingRequests(
-      request,
+  for (const syntacticRequest of syntacticRequests) {
+    const verifMatchingRequests = getMatchingRequests(
+      syntacticRequest,
+      verifRequests,
+    );
+    const auxVerifMatchingRequests = getMatchingRequests(
+      syntacticRequest,
       auxVerifRequests,
     );
 
-    if (matchingVerifRequests.length === 0) {
-      noMatchingRequestsRequests.push(request);
+    if (verifMatchingRequests.length === 0) {
+      noMatchingRequestsRequests.push(syntacticRequest);
     } else if (
-      matchingVerifRequests.some(
+      verifMatchingRequests.some(
         (verifRequest) =>
           !_.isEmpty(
             _.intersectionWith(
-              getAbstractMatches(verifRequest),
-              getAbstractMatches(request),
+              verifRequest.verifMatches,
+              modifiedCanaries,
               _.isEqual,
             ),
           ),
       )
     ) {
-      confirmedRequests.push(request);
+      confirmedRequests.push(syntacticRequest);
     } else if (
-      matchingAuxVerifRequests.every(
+      auxVerifMatchingRequests.every(
         (auxVerifRequest) =>
           !_.isEmpty(
             _.intersectionWith(
-              getAbstractMatches(auxVerifRequest),
-              getAbstractMatches(request),
+              auxVerifRequest.verifMatches,
+              originalCanaries,
               _.isEqual,
             ),
           ),
       )
     ) {
-      refutedRequests.push(request);
+      refutedRequests.push(syntacticRequest);
     } else {
-      unknownRequests.push(request);
+      unknownRequests.push(syntacticRequest);
     }
 
-    if (matchingVerifRequests.length > 1) {
-      manyMatchingRequestsRequests.push(request);
+    if (verifMatchingRequests.length > 1) {
+      manyMatchingRequestsRequests.push(syntacticRequest);
     }
   }
 
@@ -114,12 +87,83 @@ export function verifySyntacticRequests(
 }
 
 function getMatchingRequests(
-  request: SyntacticRequest,
-  verifRequests: SyntacticRequest[],
-): SyntacticRequest[] {
-  const requestTemplate = RequestTemplate.fromSyntacticRequest(request);
-  return verifRequests.filter((verifRequest) => {
-    const { url: verifUrl } = verifRequest;
-    return requestTemplate.matchesUrl(verifUrl);
+  syntacticRequest: SyntacticRequest,
+  verifRequests: VerifRequest[],
+): VerifRequest[] {
+  const requestTemplate =
+    RequestTemplate.fromSyntacticRequest(syntacticRequest);
+  return verifRequests.filter((verifRequest) =>
+    requestTemplate.matchesUrl(verifRequest.url),
+  );
+}
+
+interface VerifRequest extends Request {
+  verifMatches: VerifMatch[];
+}
+
+interface VerifMatch {
+  storageId: StorageItem["id"];
+  transformChain: any[];
+  value: string;
+}
+
+function computeVerifRequests(
+  storageItems: StorageItem[],
+  verifHar: Har,
+): VerifRequest[] {
+  // it is necessary to include all syntactic requests, including those without
+  // storage matches, in order to count matching requests properly
+  const syntacticRequests = computeSyntacticRequests(
+    storageItems,
+    verifHar,
+    true,
+  );
+
+  return syntacticRequests.map((syntacticRequest): VerifRequest => {
+    const { url, requestId } = syntacticRequest;
+    const verifMatches = computeVerifMatches(syntacticRequest);
+    return { url, requestId, verifMatches };
   });
+}
+
+function computeVerifMatches(syntacticRequest: SyntacticRequest): VerifMatch[] {
+  const { storageMatches } = syntacticRequest;
+  return _.intersectionWith(
+    storageMatches.flatMap(
+      ({ storageItem: { id: storageId }, syntacticMatches }) =>
+        syntacticMatches.map(
+          ({ storageToken: token }): VerifMatch => ({
+            storageId,
+            transformChain: createTokenTransformChain(token),
+            value: token.value,
+          }),
+        ),
+    ),
+  );
+}
+
+function computeCanaryVerifMatches(
+  canaryStorageItems: CanaryStorageItem[],
+  original?: boolean,
+): VerifMatch[] {
+  return canaryStorageItems.flatMap(
+    ({ storageItem: { id: storageId }, canaries }) =>
+      canaries.map(
+        ({ transformChain, value, originalValue }): VerifMatch => ({
+          storageId,
+          transformChain,
+          value: original ? originalValue : value,
+        }),
+      ),
+  );
+}
+
+function extractStorageItems(
+  canaryStorageItems: CanaryStorageItem[],
+  original?: boolean,
+): StorageItem[] {
+  return canaryStorageItems.map(
+    ({ storageItem, originalValue }): StorageItem =>
+      original ? { ...storageItem, value: originalValue } : storageItem,
+  );
 }

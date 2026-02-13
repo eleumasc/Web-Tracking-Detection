@@ -42,17 +42,17 @@ export function computeTrackingRequests(args: {
         ),
       ).toString(),
     );
-    const modifiedStorageItems = JSON.parse(
+    const canaryStorageItems = JSON.parse(
       readFileSync(
         path.join(
           getOutputPath(analysisName),
-          staResult.verif.modifiedStorageItemsFile,
+          staResult.verif.canaryStorageItemsFile,
         ),
       ).toString(),
     );
     verifyResult = verifySyntacticRequests(
       syntacticRequests,
-      modifiedStorageItems,
+      canaryStorageItems,
       new Har(path.join(getOutputPath(analysisName), staResult.verif!.harFile)),
       new Har(
         path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile),
@@ -65,7 +65,7 @@ export function computeTrackingRequests(args: {
     });
     taintRequests = computed.taintRequests;
     syntacticRequests = computed.syntacticRequests;
-    const modifiedStorageItems = computed.modifiedStorageItems;
+    const canaryStorageItems = computed.canaryStorageItems;
     writeOutputFileSync(
       path.join(outputName, `${site}+T.json`),
       JSON.stringify(taintRequests),
@@ -76,7 +76,7 @@ export function computeTrackingRequests(args: {
     );
     writeOutputFileSync(
       path.join(outputName, `${site}+C.json`),
-      JSON.stringify(modifiedStorageItems),
+      JSON.stringify(canaryStorageItems),
     );
   }
 

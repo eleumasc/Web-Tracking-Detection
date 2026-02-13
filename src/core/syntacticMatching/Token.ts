@@ -21,3 +21,11 @@ export function* tokenChain(token: Token): IterableIterator<Token> {
     yield cur;
   }
 }
+
+export function createTokenTransformChain(token: Token): any[] {
+  const transformChain: any[] = [];
+  for (let cur: Token = token; cur.transform; cur = cur.chain) {
+    transformChain.push({ ...cur.transform });
+  }
+  return transformChain;
+}

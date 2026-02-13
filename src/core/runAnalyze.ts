@@ -50,7 +50,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   const verifHarFile = `${site}+verif.har.zip`;
   const taintRequestsFile = `${site}+T.json`;
   const syntacticRequestsFile = `${site}+S.json`;
-  const modifiedStorageItemsFile = `${site}+C.json`;
+  const canaryStorageItemsFile = `${site}+C.json`;
   const auxVerifHarFile = `${site}+auxVerif.har.zip`;
 
   return toCompletion(async () => {
@@ -116,7 +116,7 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       if (options.analysis.noVerif) return;
 
-      const { taintRequests, syntacticRequests, modifiedStorageItems } =
+      const { taintRequests, syntacticRequests, canaryStorageItems } =
         computeUnverifiedTrackingRequests({
           analysisName: outputName,
           staResult,
@@ -130,13 +130,13 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         JSON.stringify(syntacticRequests),
       );
       writeOutputFileSync(
-        path.join(outputName, modifiedStorageItemsFile),
-        JSON.stringify(modifiedStorageItems),
+        path.join(outputName, canaryStorageItemsFile),
+        JSON.stringify(canaryStorageItems),
       );
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
-        modifiedStorageItems.map(({ storageItem }) => storageItem),
+        canaryStorageItems.map(({ storageItem }) => storageItem),
       );
       const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
@@ -154,12 +154,12 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         harFile: verifHarFile,
         taintRequestsFile,
         syntacticRequestsFile,
-        modifiedStorageItemsFile,
+        canaryStorageItemsFile,
       };
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "aux"),
-        modifiedStorageItems.map(({ storageItem }) => storageItem),
+        canaryStorageItems.map(({ storageItem }) => storageItem),
       );
       const auxVerifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
