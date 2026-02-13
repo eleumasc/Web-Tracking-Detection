@@ -10,10 +10,12 @@ import { toUrlEncoding } from "./transforms/toURLEncoding";
 import { TransformTreeEdge, TransformTreeNode } from "./TransformTree";
 
 export function transformStorageValueRootNode(): TransformTreeNode {
-  // priority groups, sorted by priority
   const Decoders = [
-    [fromJSON, fromBase64, fromUrlEncoding],
-    [fromQueryValues, split],
+    fromJSON,
+    fromBase64,
+    fromUrlEncoding,
+    fromQueryValues,
+    split,
   ];
   const Encoders = [toBase64, toUrlEncoding, MD5, SHA1];
 
@@ -33,14 +35,11 @@ export function transformStorageValueRootNode(): TransformTreeNode {
   function decode(
     child: () => Iterable<TransformTreeEdge>,
   ): Iterable<TransformTreeEdge> {
-    return Decoders.flatMap((priorityGroup, priority) =>
-      priorityGroup.map(
-        (decoder): TransformTreeEdge => ({
-          transformGenerator: decoder,
-          child,
-          priority,
-        }),
-      ),
+    return Decoders.map(
+      (decoder): TransformTreeEdge => ({
+        transformGenerator: decoder,
+        child,
+      }),
     );
   }
 

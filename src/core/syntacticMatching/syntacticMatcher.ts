@@ -20,6 +20,11 @@ export function syntacticMatcher(
   const matchTree = new TokenGroupTree();
 
   traverseTransformTree(storageTransformTree, (storageToken) => {
+    if (!isValueMatchable(storageToken.value)) {
+      // skip: storageToken is not matchable
+      return false;
+    }
+
     /**
      * // isIdentifiableCheck
      * if (!isIdentifiable(storageToken.value)) {
@@ -31,6 +36,11 @@ export function syntacticMatcher(
     let matchFound = false;
 
     traverseTransformTree(requestTransformTree, (requestToken) => {
+      if (!isValueMatchable(requestToken.value)) {
+        // skip: requestToken is not matchable
+        return false;
+      }
+
       let index: number;
       if ((index = requestToken.value.indexOf(storageToken.value)) !== -1) {
         matchFound = true;
@@ -73,7 +83,7 @@ export function syntacticMatcher(
     return !matchFound;
   });
 
-  // resolve ambiguities on matches
+  // resolve ambiguity on matches
   try {
     const selectedStorageTokenArray =
       resolveAmbiguity(matchTree).toTokenArray();
@@ -86,4 +96,8 @@ export function syntacticMatcher(
   }
 
   return matches;
+}
+
+export function isValueMatchable(value: string): boolean {
+  return /[\x20-\x7e]{8,}/.test(value) && /[A-Za-z0-9]+/.test(value);
 }
