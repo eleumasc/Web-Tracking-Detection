@@ -2,7 +2,8 @@ import replaceStringAt, { Transform, TransformGenerator } from "../Transform";
 import { parseQueryParams } from "../../../util/QueryParam";
 
 export const fromQueryValues: TransformGenerator = {
-  *generate(input) {
+  *generate(input, lastTransform) {
+    if (lastTransform instanceof FromQueryValuesTransform) return;
     for (const queryParam of parseQueryParams(input)) {
       const { value: valuePart } = queryParam;
       if (!valuePart) continue;
