@@ -163,13 +163,15 @@ export function computeTrackingRequests(args: {
     const refutedSyntactic = includesThisRequest(verifyResult?.refutedRequests);
     const unknownSyntactic = includesThisRequest(verifyResult?.unknownRequests);
 
-    // the following verif flags should be mutually exclusive
-    const verifFlagsCount =
-      Number(noMatchingRequestsSyntactic) +
-      Number(confirmedSyntactic) +
-      Number(refutedSyntactic) +
-      Number(unknownSyntactic);
-    assert(syntactic ? verifFlagsCount === 1 : verifFlagsCount === 0);
+    if (verifyResult) {
+      // the following verif flags should be mutually exclusive
+      const verifFlagsCount =
+        Number(noMatchingRequestsSyntactic) +
+        Number(confirmedSyntactic) +
+        Number(refutedSyntactic) +
+        Number(unknownSyntactic);
+      assert(syntactic ? verifFlagsCount === 1 : verifFlagsCount === 0);
+    }
 
     return {
       requestId,
