@@ -15,8 +15,7 @@ import {
 } from "./StorageTaint";
 
 export interface TaintRequest extends Request {
-  postData?: string;
-  storageTaints?: StorageTaint[];
+  storageTaints: StorageTaint[];
 }
 
 export function computeTaintRequests(
@@ -88,8 +87,6 @@ export function computeTaintRequests(
       }
     }
 
-    let postData: string | undefined;
-
     const postDataReportEntry = taintRequestReportEntries.find(
       (entry) =>
         entry.requestParam === "PostData" &&
@@ -122,7 +119,6 @@ export function computeTaintRequests(
       taintRequests.push({
         requestId,
         url: requestUrl,
-        postData,
         storageTaints,
       });
     }

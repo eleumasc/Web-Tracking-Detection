@@ -12,6 +12,7 @@ import { SyntacticRequest } from "./syntacticMatching/SyntacticRequest";
 import { TaintRequest } from "./taintTracking/TaintRequest";
 import { TrackingRequest } from "./TrackingRequest";
 import { verifySyntacticRequests } from "./syntacticMatching/verifySyntacticRequests";
+import { verifyTaintRequests } from "./taintTracking/verifyTaintRequests";
 
 export function computeTrackingRequests(args: {
   site: string;
@@ -24,7 +25,7 @@ export function computeTrackingRequests(args: {
 
   let taintRequests: TaintRequest[];
   let syntacticRequests: SyntacticRequest[];
-  let verifyResult = undefined;
+  let syntacticVerifResult = undefined;
   if (staResult.verif && !forceNoVerif) {
     taintRequests = JSON.parse(
       readFileSync(
@@ -50,7 +51,7 @@ export function computeTrackingRequests(args: {
         ),
       ).toString(),
     );
-    verifyResult = verifySyntacticRequests(
+    syntacticVerifResult = verifySyntacticRequests(
       syntacticRequests,
       canaryStorageItems,
       new Har(path.join(getOutputPath(analysisName), staResult.verif!.harFile)),
@@ -79,6 +80,8 @@ export function computeTrackingRequests(args: {
       JSON.stringify(canaryStorageItems),
     );
   }
+
+  const taintVerifResult = verifyTaintRequests(taintRequests);
 
   let detailRecord: Record<string, any> = {};
   const addDetails = (src: Record<string, any>) => {
@@ -109,14 +112,22 @@ export function computeTrackingRequests(args: {
     onlySyntacticRequests,
   });
 
-  if (verifyResult) {
+  {
+    const { confirmedRequests, unknownRequests } = taintVerifResult;
+    addDetails({
+      confirmedTaintRequests: toAbstractRequests(confirmedRequests),
+      unknownTaintRequests: toAbstractRequests(unknownRequests),
+    });
+  }
+
+  if (syntacticVerifResult) {
     const {
       confirmedRequests,
       refutedRequests,
       unknownRequests,
       noMatchingRequestsRequests,
       manyMatchingRequestsRequests,
-    } = verifyResult;
+    } = syntacticVerifResult;
     addDetails({
       confirmedSyntacticRequests: toAbstractRequests(confirmedRequests),
       refutedSyntacticRequests: toAbstractRequests(refutedRequests),
@@ -151,19 +162,34 @@ export function computeTrackingRequests(args: {
     const taint = includesThisRequest(taintRequests);
     const syntactic = includesThisRequest(syntacticRequests);
 
+    const confirmedTaint = includesThisRequest(
+      taintVerifResult.confirmedRequests,
+    );
+    const unknownTaint = includesThisRequest(taintVerifResult.unknownRequests);
+
+    {
+      // the following verif flags should be mutually exclusive
+      const verifFlagsCount = Number(confirmedTaint) + Number(unknownTaint);
+      assert(taint ? verifFlagsCount === 1 : verifFlagsCount === 0);
+    }
+
     const noMatchingRequestsSyntactic = includesThisRequest(
-      verifyResult?.noMatchingRequestsRequests,
+      syntacticVerifResult?.noMatchingRequestsRequests,
     );
     const manyMatchingRequestsSyntactic = includesThisRequest(
-      verifyResult?.manyMatchingRequestsRequests,
+      syntacticVerifResult?.manyMatchingRequestsRequests,
     );
     const confirmedSyntactic = includesThisRequest(
-      verifyResult?.confirmedRequests,
+      syntacticVerifResult?.confirmedRequests,
     );
-    const refutedSyntactic = includesThisRequest(verifyResult?.refutedRequests);
-    const unknownSyntactic = includesThisRequest(verifyResult?.unknownRequests);
+    const refutedSyntactic = includesThisRequest(
+      syntacticVerifResult?.refutedRequests,
+    );
+    const unknownSyntactic = includesThisRequest(
+      syntacticVerifResult?.unknownRequests,
+    );
 
-    if (verifyResult) {
+    if (syntacticVerifResult) {
       // the following verif flags should be mutually exclusive
       const verifFlagsCount =
         Number(noMatchingRequestsSyntactic) +
@@ -179,6 +205,8 @@ export function computeTrackingRequests(args: {
       tracker,
       taint,
       syntactic,
+      confirmedTaint,
+      unknownTaint,
       noMatchingRequestsSyntactic,
       manyMatchingRequestsSyntactic,
       confirmedSyntactic,

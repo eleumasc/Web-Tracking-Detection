@@ -45,6 +45,8 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => !r.taint && r.syntactic,
     ),
 
+    taintVerif: getTaintVerifStats(entries, (r) => r.taint),
+
     syntacticVerif: getSyntacticVerifStats(entries, (r) => r.syntactic),
     intersectVerif: getSyntacticVerifStats(
       entries,
@@ -120,6 +122,22 @@ function countCategoryRequests(
       ? requests.filter((request) => property(request)).length
       : requests.length,
   );
+}
+
+function getTaintVerifStats(
+  inputEntries: TrackingSiteEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  const entries = applyProperty(inputEntries, property);
+  const total = countCategoryRequests(entries);
+  const doCount = (countProperty: (request: TrackingRequest) => boolean) => {
+    const count = countCategoryRequests(entries, countProperty);
+    return [count, `${Math.round((count / total) * 100)}%`];
+  };
+  return {
+    confirmedRequests: doCount((r) => r.confirmedTaint),
+    unknownRequests: doCount((r) => r.unknownTaint),
+  };
 }
 
 function getSyntacticVerifStats(
