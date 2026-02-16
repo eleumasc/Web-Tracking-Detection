@@ -67,7 +67,7 @@ export function computeTaintRequests(
 
     const urlReportEntry = taintRequestReportEntries.find(
       (entry) =>
-        entry.requestParam === "url" &&
+        entry.requestParam === "Url" &&
         matchesRequest(entry) &&
         !urlReportEntryFoundSet.has(entry),
     );
@@ -77,7 +77,7 @@ export function computeTaintRequests(
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
         foxReport,
-        "url",
+        "Url",
       );
       const urlStorageTaints = tryCheckStorageTaintArray(
         uncheckedArray,
@@ -92,7 +92,7 @@ export function computeTaintRequests(
 
     const postDataReportEntry = taintRequestReportEntries.find(
       (entry) =>
-        entry.requestParam === "postData" &&
+        entry.requestParam === "PostData" &&
         matchesRequest(entry) &&
         !postDataReportEntryFoundSet.has(entry),
     );
@@ -102,7 +102,7 @@ export function computeTaintRequests(
       const uncheckedArray = getUncheckedStorageTaints(
         foxReport.taint,
         foxReport,
-        "postData",
+        "PostData",
       );
       const postDataStorageTaints = tryCheckStorageTaintArray(
         uncheckedArray,

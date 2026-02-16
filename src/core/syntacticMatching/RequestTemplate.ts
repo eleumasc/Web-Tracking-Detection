@@ -24,7 +24,7 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlPathSegments = extractPathSegments(foxUrl.pathname).map(
+    const urlPathSegments = extractPathSegments(foxUrl).map(
       ({ value }) => value,
     );
     if (urlPathSegments.length !== this.fixedUrlPathSegments.length) {
@@ -39,7 +39,7 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlQueryParamNames = extractQueryParameters(foxUrl.search).map(
+    const urlQueryParamNames = extractQueryParameters(foxUrl).map(
       ({ param: p }) => (assert(p.type === "QueryParameter"), p.name),
     );
     if (urlQueryParamNames.length !== this.urlQueryParamNames.length) {
@@ -92,12 +92,12 @@ export class RequestTemplate {
       _.isEqual,
     );
 
-    const fixedUrlPathSegments = extractPathSegments(foxUrl.pathname).map(
+    const fixedUrlPathSegments = extractPathSegments(foxUrl).map(
       ({ param: p, value }) =>
         holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
     );
 
-    const urlQueryParamNames = extractQueryParameters(foxUrl.search)
+    const urlQueryParamNames = extractQueryParameters(foxUrl)
       .map(({ param: p }) => (assert(p.type === "QueryParameter"), p.name))
       .sort();
 

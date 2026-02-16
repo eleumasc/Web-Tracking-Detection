@@ -7,7 +7,7 @@ export interface NetworkSinkOperation {
   requestParam: TaintRequestParam;
 }
 
-export type TaintRequestParam = "url" | "postData";
+export type TaintRequestParam = "Url" | "PostData";
 
 export function tryParseNetworkSinkOperation(
   sinkOperation: FoxOperation,
@@ -61,19 +61,19 @@ function doParseNetworkSinkOperation(
   switch (sinkOperation.operation) {
     // XMLHttpRequest
     case "XMLHttpRequest.open(url)":
-      return { requestId: args[0], url: str, requestParam: "url" };
+      return { requestId: args[0], url: str, requestParam: "Url" };
     case "XMLHttpRequest.send":
-      return { requestId: args[1], url: args[0], requestParam: "postData" };
+      return { requestId: args[1], url: args[0], requestParam: "PostData" };
     // fetch
     case "fetch.url":
-      return { requestId: args[0], url: str, requestParam: "url" };
+      return { requestId: args[0], url: str, requestParam: "Url" };
     case "fetch.body":
-      return { requestId: args[1], url: args[0], requestParam: "postData" };
+      return { requestId: args[1], url: args[0], requestParam: "PostData" };
     // sendBeacon
     case "navigator.sendBeacon(url)":
-      return { requestId: args[0], url: str, requestParam: "url" };
+      return { requestId: args[0], url: str, requestParam: "Url" };
     case "navigator.sendBeacon(body)":
-      return { requestId: args[1], url: args[0], requestParam: "postData" };
+      return { requestId: args[1], url: args[0], requestParam: "PostData" };
     // location
     case "location.pathname":
     case "location.search":
@@ -81,7 +81,7 @@ function doParseNetworkSinkOperation(
     case "location.assign":
     case "location.replace":
       if (!sinkOperation.source) {
-        return { url: str, requestParam: "url" };
+        return { url: str, requestParam: "Url" };
       } else {
         break;
       }
@@ -89,7 +89,7 @@ function doParseNetworkSinkOperation(
     case "iframe.src":
     case "img.src":
     case "script.src":
-      return { url: str, requestParam: "url" };
+      return { url: str, requestParam: "Url" };
   }
   throw new Error(
     `Cannot parse network sink operation: ${sinkOperation.operation}`,

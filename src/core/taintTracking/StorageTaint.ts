@@ -7,13 +7,21 @@ import { FoxURL } from "../../foxhound/FoxURL";
 import { range, toArray } from "iter-tools";
 import { TaintRequestParam } from "./NetworkSinkOperation";
 import { tryParseStorageCharFlow } from "./StorageCharFlow";
+import {
+  extractPathSegmentsWithLoc,
+  extractPostDataComponentsWithLoc,
+  extractQueryParametersWithLoc,
+} from "../syntacticMatching/RequestParam";
 
 export interface StorageTaint {
   storageItem: StorageItem;
   requestParam: TaintRequestParam;
-  links: [number, number][]; // 1st: requestIndex, 2nd: storageIndex
+  links: Link[];
   intermeds: string[];
 }
+
+// 1st: requestIndex, 2nd: storageIndex
+export type Link = [number, number];
 
 export interface UncheckedStorageTaint {
   origin: string;
@@ -21,7 +29,7 @@ export interface UncheckedStorageTaint {
   key: string;
   value: string;
   requestParam: TaintRequestParam;
-  links: [number, number][];
+  links: Link[];
   intermeds: string[];
 }
 
@@ -31,7 +39,38 @@ export function getUncheckedStorageTaints(
   requestParam: TaintRequestParam,
 ): UncheckedStorageTaint[] {
   const origin = new URL(foxReport.loc).origin;
-  const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
+
+  let fixLinks: ((links: Link[]) => Link[]) | undefined;
+  let filterLinks: (links: Link[]) => Link[];
+  if (requestParam === "Url") {
+    const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
+    fixLinks = (links) =>
+      links.map(
+        ([requestIndex, storageIndex]): Link =>
+          //
+          [requestIndex + foxUrl.inputLoc.begin, storageIndex],
+      );
+
+    const taintableParams = [
+      ...extractPathSegmentsWithLoc(foxUrl),
+      ...extractQueryParametersWithLoc(foxUrl),
+    ];
+    filterLinks = (links) =>
+      links.filter(([requestIndex]) =>
+        taintableParams.some(
+          ({ begin, end }) => requestIndex >= begin && requestIndex <= end,
+        ),
+      );
+  } else {
+    const taintableParams = extractPostDataComponentsWithLoc(foxReport.str);
+    filterLinks = (links) =>
+      links.filter(([requestIndex]) =>
+        taintableParams.some(
+          ({ begin, end }) => requestIndex >= begin && requestIndex <= end,
+        ),
+      );
+  }
+
   return clusterObjectsBy(
     foxTaint.flatMap((foxRange) => {
       const storageCharFlow = tryParseStorageCharFlow(foxRange);
@@ -41,26 +80,18 @@ export function getUncheckedStorageTaints(
   )
     .map((cluster): UncheckedStorageTaint => {
       const { storageType, key, value } = cluster[0];
+
       let links = cluster.flatMap(({ begin, end, storageIndex }) =>
         toArray(range(begin, end)) //
-          .map((requestIndex): [number, number] => [
-            requestIndex,
-            storageIndex,
-          ]),
+          .map((requestIndex): Link => [requestIndex, storageIndex]),
       );
-      if (requestParam === "url") {
-        links = links
-          .map(([requestIndex, storageIndex]): [number, number] =>
-            //
-            [requestIndex + foxUrl.inputRange.begin, storageIndex],
-          )
-          .filter(
-            ([requestIndex]) =>
-              requestIndex >= foxUrl.taintableRange.begin &&
-              requestIndex < foxUrl.taintableRange.end,
-          );
+      if (fixLinks) {
+        links = fixLinks(links);
       }
+      links = filterLinks(links);
+
       const intermeds = _.uniq(cluster.flatMap(({ intermeds }) => intermeds));
+
       return {
         origin,
         storageType,

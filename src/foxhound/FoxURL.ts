@@ -22,8 +22,9 @@ export class FoxURL {
   readonly hash: string;
   readonly href: string;
 
-  readonly taintableRange: Range;
-  readonly inputRange: Range;
+  readonly idxes: ReturnType<typeof FoxURL.computeIndexes>;
+
+  readonly inputLoc: Range;
 
   constructor(input: string, baseUrl?: string) {
     input = input.trim();
@@ -48,11 +49,9 @@ export class FoxURL {
       this.search +
       this.hash;
 
-    const { pathnameIdx, hashIdx } = FoxURL.computeIndexes(parsed);
+    this.idxes = FoxURL.computeIndexes(parsed);
 
-    this.taintableRange = { begin: pathnameIdx, end: hashIdx };
-
-    this.inputRange = {
+    this.inputLoc = {
       begin: parsed.inputIdx,
       end: parsed.inputIdx + input.length,
     };

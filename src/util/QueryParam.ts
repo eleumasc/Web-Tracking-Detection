@@ -10,21 +10,19 @@ export interface Part {
 }
 
 export function parseQueryParams(input: string): QueryParam[] {
-  input = input.replace(/^\?/, "");
+  let offset = input.startsWith("?") ? 1 : 0;
+  input = offset !== 0 ? input.substring(offset) : input;
 
   const result: QueryParam[] = [];
 
-  const re = /([^=&]+)(?:=([^&]*))?/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(input)) !== null) {
-    const nameRaw = match[1];
-    const valueRaw = match[2] ?? null;
+  for (const match of input.matchAll(/([^=&]+)(?:=([^&]*))?/g)) {
+    const { 1: nameRaw, 2: valueRaw, index: matchIndex } = match;
 
-    const nameBegin = match.index;
+    const nameBegin = matchIndex + offset;
     const nameEnd = nameBegin + nameRaw.length;
 
     let valuePart: Part | undefined;
-    if (valueRaw !== null) {
+    if (valueRaw !== undefined) {
       const valueBegin = nameEnd + 1;
 
       valuePart = {

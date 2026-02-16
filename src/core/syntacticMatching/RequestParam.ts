@@ -2,6 +2,7 @@ import { Entry as HarEntry } from "har-format";
 import { FoxURL } from "../../foxhound/FoxURL";
 import { Har } from "../../util/Har";
 import { parseJSONValues } from "../../util/JSONValue";
+import { parsePathSegments } from "../../util/PathSegment";
 import { parseQueryParams } from "../../util/QueryParam";
 
 export type RequestParam =
@@ -34,8 +35,8 @@ export function parseRequestParamEntries(
     paramEntries = paramEntries.concat(argParams.filter(({ value }) => value));
   };
 
-  addParams(extractPathSegments(foxUrl.pathname));
-  addParams(extractQueryParameters(foxUrl.search));
+  addParams(extractPathSegments(foxUrl));
+  addParams(extractQueryParameters(foxUrl));
   if (postData) {
     addParams(
       extractPostDataComponents(
@@ -48,54 +49,107 @@ export function parseRequestParamEntries(
   return paramEntries;
 }
 
-export function extractPathSegments(input: string): RequestParamEntry[] {
-  return input
-    .split("/")
-    .slice(1)
-    .map(
-      (value, index): RequestParamEntry => ({
+export interface RequestParamEntryWithLoc extends RequestParamEntry {
+  begin: number;
+  end: number;
+}
+
+export function extractPathSegmentsWithLoc(
+  foxUrl: FoxURL,
+): RequestParamEntryWithLoc[] {
+  const { pathnameIdx } = foxUrl.idxes;
+  return parsePathSegments(foxUrl.pathname).map(
+    (pathSegment): RequestParamEntryWithLoc => {
+      const {
+        raw: value,
+        index: segmentIndex,
+        begin: valueBegin,
+        end: valueEnd,
+      } = pathSegment;
+      return {
         param: {
           type: "PathSegment",
-          segmentIndex: index,
+          segmentIndex,
         },
         value,
-      }),
-    );
+        begin: pathnameIdx + valueBegin,
+        end: pathnameIdx + valueEnd,
+      };
+    },
+  );
 }
 
-export function extractQueryParameters(input: string): RequestParamEntry[] {
-  return parseQueryParams(input)
+export function extractQueryParametersWithLoc(
+  foxUrl: FoxURL,
+): RequestParamEntryWithLoc[] {
+  const { searchIdx } = foxUrl.idxes;
+  return parseQueryParams(foxUrl.search)
     .filter(({ value }) => value)
-    .map(
-      ({ name: namePart, value: valuePart }): RequestParamEntry => ({
+    .map(({ name: namePart, value: valuePart }): RequestParamEntryWithLoc => {
+      const { raw: name } = namePart;
+      const { raw: value, begin: valueBegin, end: valueEnd } = valuePart!;
+      return {
         param: {
           type: "QueryParameter",
-          name: namePart.raw,
+          name,
         },
-        value: valuePart!.raw,
-      }),
-    );
+        value,
+        begin: searchIdx + valueBegin,
+        end: searchIdx + valueEnd,
+      };
+    });
 }
 
-export function extractPostDataComponents(
-  input: string,
+export function extractPostDataComponentsWithLoc(
+  postData: string,
   contentType?: string,
-): RequestParamEntry[] {
-  const values = (): string[] => {
+): RequestParamEntryWithLoc[] {
+  const values = (): {
+    value: string;
+    begin: number;
+    end: number;
+  }[] => {
     if (contentType?.includes("application/json")) {
-      return parseJSONValues(input).map(({ cooked: value }) => value);
+      return parseJSONValues(postData) //
+        .map(({ cooked: value, begin, end }) => ({ value, begin, end }));
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
-      return parseQueryParams(input)
+      return parseQueryParams(postData)
         .filter(({ value }) => value)
-        .map(({ value: valuePart }) => valuePart!.raw);
+        .map(({ value: valuePart }) => {
+          const { raw: value, begin: valueBegin, end: valueEnd } = valuePart!;
+          return { value, begin: valueBegin, end: valueEnd };
+        });
     } else {
-      return [input];
+      return [{ value: postData, begin: 0, end: postData.length }];
     }
   };
   return values().map(
-    (value): RequestParamEntry => ({
+    ({ value, begin, end }): RequestParamEntryWithLoc => ({
       param: { type: "PostData" },
       value,
+      begin,
+      end,
     }),
   );
+}
+
+function withoutLoc(
+  entriesWithLoc: RequestParamEntryWithLoc[],
+): RequestParamEntry[] {
+  return entriesWithLoc.map(({ param, value }) => ({ param, value }));
+}
+
+export function extractPathSegments(foxUrl: FoxURL): RequestParamEntry[] {
+  return withoutLoc(extractPathSegmentsWithLoc(foxUrl));
+}
+
+export function extractQueryParameters(foxUrl: FoxURL): RequestParamEntry[] {
+  return withoutLoc(extractQueryParametersWithLoc(foxUrl));
+}
+
+export function extractPostDataComponents(
+  postData: string,
+  contentType?: string,
+): RequestParamEntry[] {
+  return withoutLoc(extractPostDataComponentsWithLoc(postData, contentType));
 }
