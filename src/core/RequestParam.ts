@@ -1,9 +1,9 @@
 import { Entry as HarEntry } from "har-format";
-import { FoxURL } from "../../foxhound/FoxURL";
-import { Har } from "../../util/Har";
-import { parseJSONValues } from "../../util/JSONValue";
-import { parsePathSegments } from "../../util/PathSegment";
-import { parseQueryParams } from "../../util/QueryParam";
+import { FoxURL } from "../foxhound/FoxURL";
+import { Har } from "../util/Har";
+import { parseJSONValues } from "../util/JSONValue";
+import { parsePathSegments } from "../util/PathSegment";
+import { parseQueryParams } from "../util/QueryParam";
 
 export type RequestParam =
   | {

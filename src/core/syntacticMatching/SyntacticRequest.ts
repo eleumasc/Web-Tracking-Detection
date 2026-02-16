@@ -1,5 +1,5 @@
 import { findRequestId, Har } from "../../util/Har";
-import { parseRequestParamEntries, RequestParam } from "./RequestParam";
+import { parseRequestParamEntries, RequestParam } from "../RequestParam";
 import { Request } from "../Request";
 import { StorageItem } from "../StorageItem";
 import { syntacticMatcher } from "./syntacticMatcher";

@@ -11,7 +11,7 @@ import {
   extractPathSegmentsWithLoc,
   extractPostDataComponentsWithLoc,
   extractQueryParametersWithLoc,
-} from "../syntacticMatching/RequestParam";
+} from "../RequestParam";
 
 export interface StorageTaint {
   storageItem: StorageItem;

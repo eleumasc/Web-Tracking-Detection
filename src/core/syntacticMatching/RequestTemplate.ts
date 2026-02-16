@@ -6,7 +6,7 @@ import {
   extractPathSegments,
   extractQueryParameters,
   RequestParam,
-} from "./RequestParam";
+} from "../RequestParam";
 
 export class RequestTemplate {
   constructor(
