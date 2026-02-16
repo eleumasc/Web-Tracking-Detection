@@ -3,19 +3,14 @@ import currentTime from "../util/currentTime";
 import path from "path";
 import { readFileSync, writeFileSync } from "fs";
 import { TrackingRequest } from "../core/TrackingRequest";
-import { TrackingRequestsLogEntry } from "./cmdMeasure";
-
-interface SiteTrackingRequestsEntry {
-  site: string;
-  trackingRequests: TrackingRequest[];
-}
+import { TrackingRequestsFile, TrackingSiteEntry } from "./cmdMeasure";
 
 export default async function cmdReport(args: { measureOutDir: string }) {
   const { measureOutDir } = args;
 
   const trackingRequestsLogEntry = JSON.parse(
     readFileSync(path.join(measureOutDir, "trackingRequests.json"), "utf8"),
-  ) as TrackingRequestsLogEntry;
+  ) as TrackingRequestsFile;
 
   const { totalSites, successSites, entries } = trackingRequestsLogEntry;
   const reportRecord = {
@@ -32,7 +27,7 @@ export default async function cmdReport(args: { measureOutDir: string }) {
   process.exit(0);
 }
 
-function getStats(entries: SiteTrackingRequestsEntry[]) {
+function getStats(entries: TrackingSiteEntry[]) {
   return {
     taintRequests: countCategoryRequests(entries, (r) => r.taint),
     syntacticRequests: countCategoryRequests(entries, (r) => r.syntactic),
@@ -99,10 +94,10 @@ function getStats(entries: SiteTrackingRequestsEntry[]) {
 }
 
 function applyProperty(
-  inputEntries: SiteTrackingRequestsEntry[],
+  inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
-): SiteTrackingRequestsEntry[] {
-  return inputEntries.map((entry): SiteTrackingRequestsEntry => {
+): TrackingSiteEntry[] {
+  return inputEntries.map((entry): TrackingSiteEntry => {
     const { trackingRequests: requests } = entry;
     return {
       ...entry,
@@ -111,47 +106,45 @@ function applyProperty(
   });
 }
 
-function getSiteTrackers(entry: SiteTrackingRequestsEntry): string[] {
+function getSiteTrackers(entry: TrackingSiteEntry): string[] {
   const { trackingRequests: requests } = entry;
   return _.uniq(requests.map((request) => request.tracker));
 }
 
 function countCategoryRequests(
-  inputEntries: SiteTrackingRequestsEntry[],
-  property: (request: TrackingRequest) => boolean,
-) {
-  return _.sumBy(
-    inputEntries,
-    ({ trackingRequests: requests }) =>
-      requests.filter((request) => property(request)).length,
+  inputEntries: TrackingSiteEntry[],
+  property?: (request: TrackingRequest) => boolean,
+): number {
+  return _.sumBy(inputEntries, ({ trackingRequests: requests }) =>
+    property
+      ? requests.filter((request) => property(request)).length
+      : requests.length,
   );
 }
 
 function getSyntacticVerifStats(
-  inputEntries: SiteTrackingRequestsEntry[],
+  inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
   const entries = applyProperty(inputEntries, property);
+  const total = countCategoryRequests(entries);
+  const doCount = (countProperty: (request: TrackingRequest) => boolean) => {
+    const count = countCategoryRequests(entries, countProperty);
+    return [count, `${Math.round((count / total) * 100)}%`];
+  };
   return {
-    noMatchingRequestsRequests: countCategoryRequests(
-      entries,
-      (r) => r.noMatchingRequestsSyntactic,
-    ),
-    manyMatchingRequestsRequests: countCategoryRequests(
-      entries,
+    noMatchingRequestsRequests: doCount((r) => r.noMatchingRequestsSyntactic),
+    manyMatchingRequestsRequests: doCount(
       (r) => r.manyMatchingRequestsSyntactic,
     ),
-    confirmedRequests: countCategoryRequests(
-      entries,
-      (r) => r.confirmedSyntactic,
-    ),
-    refutedRequests: countCategoryRequests(entries, (r) => r.refutedSyntactic),
-    unknownRequests: countCategoryRequests(entries, (r) => r.unknownSyntactic),
+    confirmedRequests: doCount((r) => r.confirmedSyntactic),
+    refutedRequests: doCount((r) => r.refutedSyntactic),
+    unknownRequests: doCount((r) => r.unknownSyntactic),
   };
 }
 
 function getCategoryStats(
-  inputEntries: SiteTrackingRequestsEntry[],
+  inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
   const entries = applyProperty(inputEntries, property);
@@ -183,7 +176,7 @@ function getCategoryStats(
 }
 
 function getExclusiveCategoryTrackers(
-  inputEntries: SiteTrackingRequestsEntry[],
+  inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
   // trackers belonging to an exclusive category...

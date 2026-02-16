@@ -14,13 +14,13 @@ import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { TrackingRequest } from "../core/TrackingRequest";
 import { writeOutputFileSync } from "../data/outputDir";
 
-export interface TrackingRequestsLogEntry {
+export interface TrackingRequestsFile {
   totalSites: number;
   successSites: number;
-  entries: SiteTrackingRequestsEntry[];
+  entries: TrackingSiteEntry[];
 }
 
-export interface SiteTrackingRequestsEntry {
+export interface TrackingSiteEntry {
   site: string;
   trackingRequests: TrackingRequest[];
 }
@@ -42,7 +42,7 @@ export default async function cmdMeasure(args: {
 
   let totalSites = 0;
   let successSites = 0;
-  const entries: SiteTrackingRequestsEntry[] = [];
+  const entries: TrackingSiteEntry[] = [];
 
   await processTaskQueue(
     store.getDocumentsByCollection(analysisCollection.id),
@@ -80,14 +80,14 @@ export default async function cmdMeasure(args: {
     },
   );
 
-  const trackingRequestsLogEntry: TrackingRequestsLogEntry = {
+  const trackingRequestsFile: TrackingRequestsFile = {
     totalSites,
     successSites,
     entries,
   };
   writeOutputFileSync(
     path.join(outputName, "trackingRequests.json"),
-    JSON.stringify(trackingRequestsLogEntry),
+    JSON.stringify(trackingRequestsFile),
   );
 
   process.exit(0);
