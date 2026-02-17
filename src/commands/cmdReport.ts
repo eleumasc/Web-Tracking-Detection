@@ -1,15 +1,23 @@
 import _ from "lodash";
 import currentTime from "../util/currentTime";
 import path from "path";
+import { getDisconnect, initDisconnect } from "../util/Disconnect";
+import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
 import { TrackingRequest } from "../core/TrackingRequest";
-import { TrackingRequestsFile, TrackingSiteEntry } from "./cmdMeasure";
+import { TrackingRequestsFile } from "./cmdMeasure";
+import {
+  trackers as siteTrackers,
+  TrackingSiteEntry,
+} from "../core/TrackingRequest";
 
 export default async function cmdReport(args: { measureOutDir: string }) {
+  await initDisconnect();
+
   const { measureOutDir } = args;
 
   const trackingRequestsLogEntry = JSON.parse(
-    readFileSync(path.join(measureOutDir, "trackingRequests.json"), "utf8"),
+    readFileSync(path.join(measureOutDir, "trackingRequests.json")).toString(),
   ) as TrackingRequestsFile;
 
   const { totalSites, successSites, entries } = trackingRequestsLogEntry;
@@ -19,7 +27,10 @@ export default async function cmdReport(args: { measureOutDir: string }) {
     ...getStats(entries),
   };
   writeFileSync(
-    path.join(measureOutDir, `report-${currentTime()}.json`),
+    path.join(
+      outputDir,
+      `${currentTime()}-Report-${path.basename(measureOutDir)}.json`,
+    ),
     JSON.stringify(reportRecord),
   );
   console.log(reportRecord);
@@ -57,41 +68,35 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => !r.taint && r.syntactic,
     ),
 
-    taint: getCategoryStats(entries, (r) => r.taint),
-    syntactic: getCategoryStats(entries, (r) => r.syntactic),
-    union: getCategoryStats(entries, (r) => r.taint || r.syntactic),
-    intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
-    confirmedSyntactic: getCategoryStats(entries, (r) => r.confirmedSyntactic),
-    confirmedUnion: getCategoryStats(
+    trackersTaintVsSyntactic: compareTrackersByCategory(
       entries,
-      (r) => r.taint || r.confirmedSyntactic,
-    ),
-    __nonRefutedSyntactic: getCategoryStats(
-      entries,
-      (r) => r.syntactic && !r.refutedSyntactic,
-    ),
-    __nonRefutedUnion: getCategoryStats(
-      entries,
-      (r) => r.taint || (r.syntactic && !r.refutedSyntactic),
+      (r) => r.taint,
+      (r) => r.syntactic,
     ),
 
-    onlyTaintTrackers: getExclusiveCategoryTrackers(
+    trackersSyntacticVsConfirmedSyntactic: compareTrackersByCategory(
       entries,
-      (r) => r.taint && !r.syntactic,
-    ),
-    onlySyntacticTrackers: getExclusiveCategoryTrackers(
-      entries,
-      (r) => !r.taint && r.syntactic,
-    ),
-    fakeTrackers: getExclusiveCategoryTrackers(
-      entries,
-      (r) => r.refutedSyntactic,
+      (r) => r.taint,
+      (r) => r.syntactic && r.confirmedSyntactic,
     ),
 
-    trackerPopularityRanking: _.sortBy(
-      _.entries(_.countBy(entries.flatMap((entry) => getSiteTrackers(entry)))),
-      ([_, popularity]) => popularity,
-    ).reverse(),
+    // taint: getCategoryStats(entries, (r) => r.taint),
+    // syntactic: getCategoryStats(entries, (r) => r.syntactic),
+    // union: getCategoryStats(entries, (r) => r.taint || r.syntactic),
+    // intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
+    // confirmedSyntactic: getCategoryStats(entries, (r) => r.confirmedSyntactic),
+    // confirmedUnion: getCategoryStats(
+    //   entries,
+    //   (r) => r.taint || r.confirmedSyntactic,
+    // ),
+    // __nonRefutedSyntactic: getCategoryStats(
+    //   entries,
+    //   (r) => r.syntactic && !r.refutedSyntactic,
+    // ),
+    // __nonRefutedUnion: getCategoryStats(
+    //   entries,
+    //   (r) => r.taint || (r.syntactic && !r.refutedSyntactic),
+    // ),
   };
 }
 
@@ -108,11 +113,6 @@ function applyProperty(
   });
 }
 
-function getSiteTrackers(entry: TrackingSiteEntry): string[] {
-  const { trackingRequests: requests } = entry;
-  return _.uniq(requests.map((request) => request.tracker));
-}
-
 function countCategoryRequests(
   inputEntries: TrackingSiteEntry[],
   property?: (request: TrackingRequest) => boolean,
@@ -124,19 +124,25 @@ function countCategoryRequests(
   );
 }
 
+function percent(count: number, total: number): string {
+  return `${Math.round((count / total) * 100)}%`;
+}
+
 function getTaintVerifStats(
   inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
 ) {
   const entries = applyProperty(inputEntries, property);
   const total = countCategoryRequests(entries);
-  const doCount = (countProperty: (request: TrackingRequest) => boolean) => {
+  const countPercent = (
+    countProperty: (request: TrackingRequest) => boolean,
+  ) => {
     const count = countCategoryRequests(entries, countProperty);
-    return [count, `${Math.round((count / total) * 100)}%`];
+    return [count, percent(count, total)];
   };
   return {
-    confirmedRequests: doCount((r) => r.confirmedTaint),
-    unknownRequests: doCount((r) => r.unknownTaint),
+    confirmedRequests: countPercent((r) => r.confirmedTaint),
+    unknownRequests: countPercent((r) => r.unknownTaint),
   };
 }
 
@@ -146,18 +152,22 @@ function getSyntacticVerifStats(
 ) {
   const entries = applyProperty(inputEntries, property);
   const total = countCategoryRequests(entries);
-  const doCount = (countProperty: (request: TrackingRequest) => boolean) => {
+  const countPercent = (
+    countProperty: (request: TrackingRequest) => boolean,
+  ) => {
     const count = countCategoryRequests(entries, countProperty);
-    return [count, `${Math.round((count / total) * 100)}%`];
+    return [count, percent(count, total)];
   };
   return {
-    noMatchingRequestsRequests: doCount((r) => r.noMatchingRequestsSyntactic),
-    manyMatchingRequestsRequests: doCount(
+    noMatchingRequestsRequests: countPercent(
+      (r) => r.noMatchingRequestsSyntactic,
+    ),
+    manyMatchingRequestsRequests: countPercent(
       (r) => r.manyMatchingRequestsSyntactic,
     ),
-    confirmedRequests: doCount((r) => r.confirmedSyntactic),
-    refutedRequests: doCount((r) => r.refutedSyntactic),
-    unknownRequests: doCount((r) => r.unknownSyntactic),
+    confirmedRequests: countPercent((r) => r.confirmedSyntactic),
+    refutedRequests: countPercent((r) => r.refutedSyntactic),
+    unknownRequests: countPercent((r) => r.unknownSyntactic),
   };
 }
 
@@ -181,33 +191,104 @@ function getCategoryStats(
     sitesHavingTrackers: _.sumBy(entries, ({ trackingRequests: requests }) =>
       Number(requests.length > 0),
     ),
-    totalTrackers: _.uniq(entries.flatMap((entry) => getSiteTrackers(entry)))
+    totalTrackers: _.uniq(entries.flatMap((entry) => siteTrackers(entry)))
       .length,
     avgTrackersPerSite: _.meanBy(
       entries,
-      (entry) => getSiteTrackers(entry).length,
+      (entry) => siteTrackers(entry).length,
     ),
     maxTrackersPerSite: _.max(
-      entries.map((entry) => getSiteTrackers(entry).length),
+      entries.map((entry) => siteTrackers(entry).length),
     ),
   };
 }
 
-function getExclusiveCategoryTrackers(
+function compareTrackersByCategory(
   inputEntries: TrackingSiteEntry[],
-  property: (request: TrackingRequest) => boolean,
+  propertyA: (request: TrackingRequest) => boolean,
+  propertyB: (request: TrackingRequest) => boolean,
 ) {
-  // trackers belonging to an exclusive category...
-  // INTERSECTION: for *all* sites including them (more strict)
-  // UNION: for *any* sites including them (less strict)
-  return _.intersection(
-    ...inputEntries.map((entry) =>
-      _.difference(
-        getSiteTrackers(entry),
-        entry.trackingRequests
-          .filter((request) => !property(request))
-          .map(({ tracker }) => tracker),
-      ),
-    ),
+  const entriesA = applyProperty(inputEntries, propertyA);
+  const entriesB = applyProperty(inputEntries, propertyB);
+
+  let result = {};
+
+  const sitesHavingTrackers = (entries: TrackingSiteEntry[]): number =>
+    _.sumBy(entries, ({ trackingRequests: requests }) =>
+      Number(requests.length > 0),
+    );
+  const totalTrackers = (entries: TrackingSiteEntry[]): number =>
+    _.uniq(entries.flatMap((entry) => siteTrackers(entry))).length;
+  const avgTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
+    _.meanBy(entries, (entry) => siteTrackers(entry).length);
+  const maxTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
+    _.max(entries.map((entry) => siteTrackers(entry).length)) ?? NaN;
+
+  result = {
+    ...result,
+
+    sitesHavingTrackersA: sitesHavingTrackers(entriesA),
+    totalTrackersA: totalTrackers(entriesA),
+    avgTrackersPerSiteA: avgTrackersPerSite(entriesA),
+    maxTrackersPerSiteA: maxTrackersPerSite(entriesA),
+
+    sitesHavingTrackersB: sitesHavingTrackers(entriesB),
+    totalTrackersB: totalTrackers(entriesB),
+    avgTrackersPerSiteB: avgTrackersPerSite(entriesB),
+    maxTrackersPerSiteB: maxTrackersPerSite(entriesB),
+  };
+
+  interface TrackerRanking {
+    tracker: string;
+    rank: number;
+    popularity: number;
+    inDisconnect: boolean;
+  }
+  const checkInDisconnect = (tracker: string): boolean => {
+    const disconnect = getDisconnect();
+    return (
+      disconnect["Advertising"].includes(tracker) ||
+      disconnect["Analytics"].includes(tracker)
+    );
+  };
+  const trackerRankings = (entries: TrackingSiteEntry[]): TrackerRanking[] =>
+    _.sortBy(
+      _.entries(_.countBy(entries.flatMap((entry) => siteTrackers(entry)))),
+      ([_, popularity]) => popularity,
+    )
+      .reverse()
+      .map(([tracker, popularity], index) => ({
+        tracker,
+        rank: index + 1,
+        popularity,
+        inDisconnect: checkInDisconnect(tracker),
+      }));
+
+  const trackerRankingsA = trackerRankings(entriesA);
+  const trackerRankingsB = trackerRankings(entriesB);
+
+  const onlyATrackerRankings = _.differenceBy(
+    trackerRankingsA,
+    trackerRankingsB,
+    (x) => x.tracker,
   );
+  const onlyBTrackerRankings = _.differenceBy(
+    trackerRankingsB,
+    trackerRankingsA,
+    (x) => x.tracker,
+  );
+
+  const top = (trackerRankings: TrackerRanking[]) =>
+    trackerRankings.slice(0, 10);
+  result = {
+    ...result,
+
+    trackerRankingsA: top(trackerRankingsA),
+    trackerRankingsB: top(trackerRankingsB),
+
+    onlyATrackerRankings: top(onlyATrackerRankings),
+    onlyBTrackerRankings: top(onlyBTrackerRankings),
+  };
+
+  return result;
 }

@@ -11,18 +11,13 @@ import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
 import { processTaskQueue } from "../util/TaskQueue";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
-import { TrackingRequest } from "../core/TrackingRequest";
+import { TrackingSiteEntry } from "../core/TrackingRequest";
 import { writeOutputFileSync } from "../data/outputDir";
 
 export interface TrackingRequestsFile {
   totalSites: number;
   successSites: number;
   entries: TrackingSiteEntry[];
-}
-
-export interface TrackingSiteEntry {
-  site: string;
-  trackingRequests: TrackingRequest[];
 }
 
 export default async function cmdMeasure(args: {

@@ -1,3 +1,4 @@
+import _ from "lodash";
 import { Request } from "./Request";
 
 export interface TrackingRequest extends Request {
@@ -11,4 +12,14 @@ export interface TrackingRequest extends Request {
   unknownSyntactic: boolean;
   noMatchingRequestsSyntactic: boolean;
   manyMatchingRequestsSyntactic: boolean;
+}
+
+export interface TrackingSiteEntry {
+  site: string;
+  trackingRequests: TrackingRequest[];
+}
+
+export function trackers(entry: TrackingSiteEntry): string[] {
+  const { trackingRequests: requests } = entry;
+  return _.uniq(requests.map((request) => request.tracker));
 }
