@@ -19,7 +19,7 @@ export interface TrackingSiteEntry {
   trackingRequests: TrackingRequest[];
 }
 
-export function trackers(entry: TrackingSiteEntry): string[] {
+export function siteTrackers(entry: TrackingSiteEntry): string[] {
   const { trackingRequests: requests } = entry;
   return _.uniq(requests.map((request) => request.tracker));
 }

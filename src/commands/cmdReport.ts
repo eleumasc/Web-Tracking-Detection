@@ -4,12 +4,9 @@ import path from "path";
 import { getDisconnect, initDisconnect } from "../util/Disconnect";
 import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
+import { siteTrackers, TrackingSiteEntry } from "../core/TrackingRequest";
 import { TrackingRequest } from "../core/TrackingRequest";
 import { TrackingRequestsFile } from "./cmdMeasure";
-import {
-  trackers as siteTrackers,
-  TrackingSiteEntry,
-} from "../core/TrackingRequest";
 
 export default async function cmdReport(args: { measureOutDir: string }) {
   await initDisconnect();
@@ -73,30 +70,27 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.taint,
       (r) => r.syntactic,
     ),
+    trackersTaintVsConfirmedSyntactic: compareTrackersByCategory(
+      entries,
+      (r) => r.taint,
+      (r) => r.confirmedSyntactic,
+    ),
+    trackersTaintVsNonRefutedSyntactic: compareTrackersByCategory(
+      entries,
+      (r) => r.taint,
+      (r) => r.syntactic && !r.refutedSyntactic,
+    ),
 
     trackersSyntacticVsConfirmedSyntactic: compareTrackersByCategory(
       entries,
-      (r) => r.taint,
-      (r) => r.syntactic && r.confirmedSyntactic,
+      (r) => r.syntactic,
+      (r) => r.confirmedSyntactic,
     ),
-
-    // taint: getCategoryStats(entries, (r) => r.taint),
-    // syntactic: getCategoryStats(entries, (r) => r.syntactic),
-    // union: getCategoryStats(entries, (r) => r.taint || r.syntactic),
-    // intersect: getCategoryStats(entries, (r) => r.taint && r.syntactic),
-    // confirmedSyntactic: getCategoryStats(entries, (r) => r.confirmedSyntactic),
-    // confirmedUnion: getCategoryStats(
-    //   entries,
-    //   (r) => r.taint || r.confirmedSyntactic,
-    // ),
-    // __nonRefutedSyntactic: getCategoryStats(
-    //   entries,
-    //   (r) => r.syntactic && !r.refutedSyntactic,
-    // ),
-    // __nonRefutedUnion: getCategoryStats(
-    //   entries,
-    //   (r) => r.taint || (r.syntactic && !r.refutedSyntactic),
-    // ),
+    trackersSyntacticVsNonRefutedSyntactic: compareTrackersByCategory(
+      entries,
+      (r) => r.syntactic,
+      (r) => r.syntactic && !r.refutedSyntactic,
+    ),
   };
 }
 
@@ -171,45 +165,13 @@ function getSyntacticVerifStats(
   };
 }
 
-function getCategoryStats(
-  inputEntries: TrackingSiteEntry[],
-  property: (request: TrackingRequest) => boolean,
-) {
-  const entries = applyProperty(inputEntries, property);
-  return {
-    totalRequests: _.sumBy(
-      entries,
-      ({ trackingRequests: requests }) => requests.length,
-    ),
-    avgRequestsPerSite: _.meanBy(
-      entries,
-      ({ trackingRequests: requests }) => requests.length,
-    ),
-    maxRequestsPerSite: _.max(
-      entries.map(({ trackingRequests: requests }) => requests.length),
-    ),
-    sitesHavingTrackers: _.sumBy(entries, ({ trackingRequests: requests }) =>
-      Number(requests.length > 0),
-    ),
-    totalTrackers: _.uniq(entries.flatMap((entry) => siteTrackers(entry)))
-      .length,
-    avgTrackersPerSite: _.meanBy(
-      entries,
-      (entry) => siteTrackers(entry).length,
-    ),
-    maxTrackersPerSite: _.max(
-      entries.map((entry) => siteTrackers(entry).length),
-    ),
-  };
-}
-
 function compareTrackersByCategory(
   inputEntries: TrackingSiteEntry[],
-  propertyA: (request: TrackingRequest) => boolean,
-  propertyB: (request: TrackingRequest) => boolean,
+  aProperty: (request: TrackingRequest) => boolean,
+  bProperty: (request: TrackingRequest) => boolean,
 ) {
-  const entriesA = applyProperty(inputEntries, propertyA);
-  const entriesB = applyProperty(inputEntries, propertyB);
+  const aEntries = applyProperty(inputEntries, aProperty);
+  const bEntries = applyProperty(inputEntries, bProperty);
 
   let result = {};
 
@@ -221,21 +183,17 @@ function compareTrackersByCategory(
     _.uniq(entries.flatMap((entry) => siteTrackers(entry))).length;
   const avgTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
     _.meanBy(entries, (entry) => siteTrackers(entry).length);
-  const maxTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
-    _.max(entries.map((entry) => siteTrackers(entry).length)) ?? NaN;
 
   result = {
     ...result,
 
-    sitesHavingTrackersA: sitesHavingTrackers(entriesA),
-    totalTrackersA: totalTrackers(entriesA),
-    avgTrackersPerSiteA: avgTrackersPerSite(entriesA),
-    maxTrackersPerSiteA: maxTrackersPerSite(entriesA),
+    aSitesHavingTrackers: sitesHavingTrackers(aEntries),
+    aTotalTrackers: totalTrackers(aEntries),
+    aAvgTrackersPerSite: avgTrackersPerSite(aEntries),
 
-    sitesHavingTrackersB: sitesHavingTrackers(entriesB),
-    totalTrackersB: totalTrackers(entriesB),
-    avgTrackersPerSiteB: avgTrackersPerSite(entriesB),
-    maxTrackersPerSiteB: maxTrackersPerSite(entriesB),
+    bSitesHavingTrackers: sitesHavingTrackers(bEntries),
+    bTotalTrackers: totalTrackers(bEntries),
+    bAvgTrackersPerSite: avgTrackersPerSite(bEntries),
   };
 
   interface TrackerRanking {
@@ -264,30 +222,41 @@ function compareTrackersByCategory(
         inDisconnect: checkInDisconnect(tracker),
       }));
 
-  const trackerRankingsA = trackerRankings(entriesA);
-  const trackerRankingsB = trackerRankings(entriesB);
+  const aTrackerRankings = trackerRankings(aEntries);
+  const bTrackerRankings = trackerRankings(bEntries);
 
-  const onlyATrackerRankings = _.differenceBy(
-    trackerRankingsA,
-    trackerRankingsB,
+  const aOnlyTrackerRankings = _.differenceBy(
+    aTrackerRankings,
+    bTrackerRankings,
     (x) => x.tracker,
   );
-  const onlyBTrackerRankings = _.differenceBy(
-    trackerRankingsB,
-    trackerRankingsA,
+  const bOnlyTrackerRankings = _.differenceBy(
+    bTrackerRankings,
+    aTrackerRankings,
     (x) => x.tracker,
   );
 
   const top = (trackerRankings: TrackerRanking[]) =>
     trackerRankings.slice(0, 10);
+  const inDisconnect = (trackerRankings: TrackerRanking[]) =>
+    trackerRankings.filter((x) => x.inDisconnect);
+
   result = {
     ...result,
 
-    trackerRankingsA: top(trackerRankingsA),
-    trackerRankingsB: top(trackerRankingsB),
+    aTrackersCount: aTrackerRankings.length,
+    aTrackersInDisconnectCount: inDisconnect(aTrackerRankings).length,
+    aTrackerRankings: top(aTrackerRankings),
+    bTrackerRankingsCount: bTrackerRankings.length,
+    bTrackersInDisconnectCount: inDisconnect(bTrackerRankings).length,
+    bTrackerRankings: top(bTrackerRankings),
 
-    onlyATrackerRankings: top(onlyATrackerRankings),
-    onlyBTrackerRankings: top(onlyBTrackerRankings),
+    aOnlyTrackersCount: aOnlyTrackerRankings.length,
+    aOnlyTrackersInDisconnectCount: inDisconnect(aOnlyTrackerRankings).length,
+    aOnlyTrackerRankings: top(aOnlyTrackerRankings),
+    bOnlyTrackersCount: bOnlyTrackerRankings.length,
+    bOnlyTrackersInDisconnectCount: inDisconnect(bOnlyTrackerRankings).length,
+    bOnlyTrackerRankings: top(bOnlyTrackerRankings),
   };
 
   return result;
