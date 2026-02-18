@@ -247,7 +247,7 @@ function compareTrackersByCategory(
     aTrackersCount: aTrackerRankings.length,
     aTrackersInDisconnectCount: inDisconnect(aTrackerRankings).length,
     aTrackerRankings: top(aTrackerRankings),
-    bTrackerRankingsCount: bTrackerRankings.length,
+    bTrackersCount: bTrackerRankings.length,
     bTrackersInDisconnectCount: inDisconnect(bTrackerRankings).length,
     bTrackerRankings: top(bTrackerRankings),
 
