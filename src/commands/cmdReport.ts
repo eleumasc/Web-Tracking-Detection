@@ -1,7 +1,7 @@
 import _ from "lodash";
 import currentTime from "../util/currentTime";
 import path from "path";
-import { getDisconnect, initDisconnect } from "../util/Disconnect";
+import { checkInDisconnect, initDisconnect } from "../util/Disconnect";
 import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
 import { siteTrackers, TrackingSiteEntry } from "../core/TrackingRequest";
@@ -53,7 +53,7 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => !r.taint && r.syntactic,
     ),
 
-    taintVerif: getTaintVerifStats(entries, (r) => r.taint),
+    onlyTaintVerif: getTaintVerifStats(entries, (r) => r.taint && !r.syntactic),
 
     syntacticVerif: getSyntacticVerifStats(entries, (r) => r.syntactic),
     intersectVerif: getSyntacticVerifStats(
@@ -65,28 +65,44 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => !r.taint && r.syntactic,
     ),
 
-    trackersTaintVsSyntactic: compareTrackersByCategory(
+    compareTaintWithoutVsWithDisconnect: compareCategories(
+      entries,
+      (r) => r.taint,
+      (r) => r.taint && !checkInDisconnect(r.tracker),
+    ),
+    compareSyntacticWithoutVsWithDisconnect: compareCategories(
+      entries,
+      (r) => r.syntactic,
+      (r) => r.syntactic && !checkInDisconnect(r.tracker),
+    ),
+    compareConfirmedSyntacticWithoutVsWithDisconnect: compareCategories(
+      entries,
+      (r) => r.confirmedSyntactic,
+      (r) => r.confirmedSyntactic && !checkInDisconnect(r.tracker),
+    ),
+
+    compareTaintVsSyntactic: compareCategories(
       entries,
       (r) => r.taint,
       (r) => r.syntactic,
     ),
-    trackersTaintVsConfirmedSyntactic: compareTrackersByCategory(
+    compareTaintVsConfirmedSyntactic: compareCategories(
       entries,
       (r) => r.taint,
       (r) => r.confirmedSyntactic,
     ),
-    trackersTaintVsNonRefutedSyntactic: compareTrackersByCategory(
+    compareTaintVsNonRefutedSyntactic: compareCategories(
       entries,
       (r) => r.taint,
       (r) => r.syntactic && !r.refutedSyntactic,
     ),
 
-    trackersSyntacticVsConfirmedSyntactic: compareTrackersByCategory(
+    compareSyntacticVsConfirmedSyntactic: compareCategories(
       entries,
       (r) => r.syntactic,
       (r) => r.confirmedSyntactic,
     ),
-    trackersSyntacticVsNonRefutedSyntactic: compareTrackersByCategory(
+    compareSyntacticVsNonRefutedSyntactic: compareCategories(
       entries,
       (r) => r.syntactic,
       (r) => r.syntactic && !r.refutedSyntactic,
@@ -166,7 +182,7 @@ function getSyntacticVerifStats(
   };
 }
 
-function compareTrackersByCategory(
+function compareCategories(
   inputEntries: TrackingSiteEntry[],
   aProperty: (request: TrackingRequest) => boolean,
   bProperty: (request: TrackingRequest) => boolean,
@@ -176,9 +192,24 @@ function compareTrackersByCategory(
 
   let result = {};
 
+  const totalRequests = (entries: TrackingSiteEntry[]): number =>
+    _.sumBy(entries, ({ trackingRequests }) => trackingRequests.length);
+  const avgRequestsPerSite = (entries: TrackingSiteEntry[]): number =>
+    _.meanBy(entries, ({ trackingRequests }) => trackingRequests.length);
+
+  result = {
+    ...result,
+
+    aTotalRequests: totalRequests(aEntries),
+    aAvgRequestsPerSite: avgRequestsPerSite(aEntries),
+
+    bTotalRequests: totalRequests(bEntries),
+    bAvgRequestsPerSite: avgRequestsPerSite(bEntries),
+  };
+
   const sitesHavingTrackers = (entries: TrackingSiteEntry[]): number =>
-    _.sumBy(entries, ({ trackingRequests: requests }) =>
-      Number(requests.length > 0),
+    _.sumBy(entries, ({ trackingRequests }) =>
+      Number(trackingRequests.length > 0),
     );
   const totalTrackers = (entries: TrackingSiteEntry[]): number =>
     _.uniq(entries.flatMap((entry) => siteTrackers(entry))).length;
@@ -203,13 +234,6 @@ function compareTrackersByCategory(
     popularity: number;
     inDisconnect: boolean;
   }
-  const checkInDisconnect = (tracker: string): boolean => {
-    const disconnect = getDisconnect();
-    return (
-      disconnect["Advertising"].includes(tracker) ||
-      disconnect["Analytics"].includes(tracker)
-    );
-  };
   const trackerRankings = (entries: TrackingSiteEntry[]): TrackerRanking[] =>
     _.sortBy(
       _.entries(_.countBy(entries.flatMap((entry) => siteTrackers(entry)))),
@@ -239,24 +263,18 @@ function compareTrackersByCategory(
 
   const top = (trackerRankings: TrackerRanking[]) =>
     trackerRankings.slice(0, 10);
-  const inDisconnect = (trackerRankings: TrackerRanking[]) =>
-    trackerRankings.filter((x) => x.inDisconnect);
 
   result = {
     ...result,
 
     aTrackersCount: aTrackerRankings.length,
-    aTrackersInDisconnectCount: inDisconnect(aTrackerRankings).length,
     aTrackerRankings: top(aTrackerRankings),
     bTrackersCount: bTrackerRankings.length,
-    bTrackersInDisconnectCount: inDisconnect(bTrackerRankings).length,
     bTrackerRankings: top(bTrackerRankings),
 
     aOnlyTrackersCount: aOnlyTrackerRankings.length,
-    aOnlyTrackersInDisconnectCount: inDisconnect(aOnlyTrackerRankings).length,
     aOnlyTrackerRankings: top(aOnlyTrackerRankings),
     bOnlyTrackersCount: bOnlyTrackerRankings.length,
-    bOnlyTrackersInDisconnectCount: inDisconnect(bOnlyTrackerRankings).length,
     bOnlyTrackerRankings: top(bOnlyTrackerRankings),
   };
 

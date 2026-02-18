@@ -53,7 +53,8 @@ export async function initDisconnect() {
   );
 }
 
-export function getDisconnect(): Disconnect {
+export function checkInDisconnect(site: string): boolean {
   assert(disconnect, "Use initDisconnect() first");
-  return disconnect;
+  return Object.values(disconnect) //
+    .some((categoryTrackers) => categoryTrackers.includes(site));
 }
