@@ -145,7 +145,10 @@ function getSyntacticVerifStats(
   property: (request: TrackingRequest) => boolean,
 ) {
   const entries = applyProperty(inputEntries, property);
-  const total = countCategoryRequests(entries);
+  const total = countCategoryRequests(
+    entries,
+    (r) => r.confirmedSyntactic || r.refutedSyntactic || r.unknownSyntactic,
+  );
   const countPercent = (
     countProperty: (request: TrackingRequest) => boolean,
   ) => {
@@ -153,11 +156,9 @@ function getSyntacticVerifStats(
     return [count, percent(count, total)];
   };
   return {
-    noMatchingRequestsRequests: countPercent(
+    noMatchingRequestsRequests: countCategoryRequests(
+      entries,
       (r) => r.noMatchingRequestsSyntactic,
-    ),
-    manyMatchingRequestsRequests: countPercent(
-      (r) => r.manyMatchingRequestsSyntactic,
     ),
     confirmedRequests: countPercent((r) => r.confirmedSyntactic),
     refutedRequests: countPercent((r) => r.refutedSyntactic),
