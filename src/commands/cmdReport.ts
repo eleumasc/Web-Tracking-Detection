@@ -40,6 +40,10 @@ function getStats(entries: TrackingSiteEntry[]) {
     taintRequests: countCategoryRequests(entries, (r) => r.taint),
     syntacticRequests: countCategoryRequests(entries, (r) => r.syntactic),
 
+    unionRequests: countCategoryRequests(
+      entries,
+      (r) => r.taint || r.syntactic,
+    ),
     intersectRequests: countCategoryRequests(
       entries,
       (r) => r.taint && r.syntactic,
@@ -63,22 +67,6 @@ function getStats(entries: TrackingSiteEntry[]) {
     onlySyntacticVerif: getSyntacticVerifStats(
       entries,
       (r) => !r.taint && r.syntactic,
-    ),
-
-    compareTaintWithoutVsWithDisconnect: compareCategories(
-      entries,
-      (r) => r.taint,
-      (r) => r.taint && !checkInDisconnect(r.tracker),
-    ),
-    compareSyntacticWithoutVsWithDisconnect: compareCategories(
-      entries,
-      (r) => r.syntactic,
-      (r) => r.syntactic && !checkInDisconnect(r.tracker),
-    ),
-    compareConfirmedSyntacticWithoutVsWithDisconnect: compareCategories(
-      entries,
-      (r) => r.confirmedSyntactic,
-      (r) => r.confirmedSyntactic && !checkInDisconnect(r.tracker),
     ),
 
     compareTaintVsSyntactic: compareCategories(
@@ -107,6 +95,23 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.syntactic,
       (r) => r.syntactic && !r.refutedSyntactic,
     ),
+
+    compareUnionVsIntersect: compareCategories(
+      entries,
+      (r) => r.taint || r.syntactic,
+      (r) => r.taint && r.syntactic,
+    ),
+
+    compareTaintWithoutVsWithDisconnect: compareCategories(
+      entries,
+      (r) => r.taint,
+      (r) => r.taint && !checkInDisconnect(r.tracker),
+    ),
+    compareSyntacticWithoutVsWithDisconnect: compareCategories(
+      entries,
+      (r) => r.syntactic,
+      (r) => r.syntactic && !checkInDisconnect(r.tracker),
+    ),
   };
 }
 
@@ -114,6 +119,8 @@ function applyProperty(
   inputEntries: TrackingSiteEntry[],
   property: (request: TrackingRequest) => boolean,
 ): TrackingSiteEntry[] {
+  // do not remove entries which have no tracking requests:
+  // those are required for computing avg correctly
   return inputEntries.map((entry): TrackingSiteEntry => {
     const { trackingRequests: requests } = entry;
     return {
@@ -182,73 +189,130 @@ function getSyntacticVerifStats(
   };
 }
 
-function compareCategories(
+function getCategoryStats(
   inputEntries: TrackingSiteEntry[],
-  aProperty: (request: TrackingRequest) => boolean,
-  bProperty: (request: TrackingRequest) => boolean,
+  property: (request: TrackingRequest) => boolean,
 ) {
-  const aEntries = applyProperty(inputEntries, aProperty);
-  const bEntries = applyProperty(inputEntries, bProperty);
-
-  let result = {};
+  const entries = applyProperty(inputEntries, property);
+  const entriesInDisconnect = applyProperty(entries, (r) =>
+    checkInDisconnect(r.tracker),
+  );
 
   const totalRequests = (entries: TrackingSiteEntry[]): number =>
     _.sumBy(entries, ({ trackingRequests }) => trackingRequests.length);
+
   const avgRequestsPerSite = (entries: TrackingSiteEntry[]): number =>
     _.meanBy(entries, ({ trackingRequests }) => trackingRequests.length);
 
-  result = {
-    ...result,
+  const totalTrackers = (entries: TrackingSiteEntry[]): number =>
+    _.uniq(entries.flatMap((entry) => siteTrackers(entry))).length;
 
-    aTotalRequests: totalRequests(aEntries),
-    aAvgRequestsPerSite: avgRequestsPerSite(aEntries),
-
-    bTotalRequests: totalRequests(bEntries),
-    bAvgRequestsPerSite: avgRequestsPerSite(bEntries),
-  };
+  const avgTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
+    _.meanBy(entries, (entry) => siteTrackers(entry).length);
 
   const sitesHavingTrackers = (entries: TrackingSiteEntry[]): number =>
     _.sumBy(entries, ({ trackingRequests }) =>
       Number(trackingRequests.length > 0),
     );
-  const totalTrackers = (entries: TrackingSiteEntry[]): number =>
-    _.uniq(entries.flatMap((entry) => siteTrackers(entry))).length;
-  const avgTrackersPerSite = (entries: TrackingSiteEntry[]): number =>
-    _.meanBy(entries, (entry) => siteTrackers(entry).length);
 
+  return {
+    totalRequests: totalRequests(entries),
+    totalRequestsInDisconnect: totalRequests(entriesInDisconnect),
+
+    avgRequestsPerSite: avgRequestsPerSite(entries),
+    avgRequestsPerSiteInDisconnect: avgRequestsPerSite(entriesInDisconnect),
+
+    totalTrackers: totalTrackers(entries),
+    totalTrackersInDisconnect: totalTrackers(entriesInDisconnect),
+
+    avgTrackersPerSite: avgTrackersPerSite(entries),
+    avgTrackersPerSiteInDisconnect: avgTrackersPerSite(entriesInDisconnect),
+
+    sitesHavingTrackers: sitesHavingTrackers(entries),
+    sitesHavingTrackersInDisconnect: sitesHavingTrackers(entriesInDisconnect),
+  };
+}
+
+interface TrackerRanking {
+  tracker: string;
+  rank: number;
+  popularity: number;
+  inDisconnect: boolean;
+}
+
+function getTrackerRankings(
+  inputEntries: TrackingSiteEntry[],
+  property: (request: TrackingRequest) => boolean,
+): TrackerRanking[] {
+  const entries = applyProperty(inputEntries, property);
+  return _.sortBy(
+    _.entries(_.countBy(entries.flatMap((entry) => siteTrackers(entry)))),
+    ([_, popularity]) => popularity,
+  )
+    .reverse()
+    .map(([tracker, popularity], index) => ({
+      tracker,
+      rank: index + 1,
+      popularity,
+      inDisconnect: checkInDisconnect(tracker),
+    }));
+}
+
+function topTrackerRankings(
+  trackerRankings: TrackerRanking[],
+): TrackerRanking[] {
+  return trackerRankings.slice(0, 10);
+}
+
+function compareCategories(
+  inputEntries: TrackingSiteEntry[],
+  aProperty: (request: TrackingRequest) => boolean,
+  bProperty: (request: TrackingRequest) => boolean,
+) {
+  let result = {};
+
+  const a = getCategoryStats(inputEntries, aProperty);
   result = {
     ...result,
 
-    aSitesHavingTrackers: sitesHavingTrackers(aEntries),
-    aTotalTrackers: totalTrackers(aEntries),
-    aAvgTrackersPerSite: avgTrackersPerSite(aEntries),
-
-    bSitesHavingTrackers: sitesHavingTrackers(bEntries),
-    bTotalTrackers: totalTrackers(bEntries),
-    bAvgTrackersPerSite: avgTrackersPerSite(bEntries),
+    aTotalRequests: a.totalRequests,
+    aTotalRequestsInDisconnect: a.totalRequestsInDisconnect,
+    aAvgRequestsPerSite: a.avgRequestsPerSite,
+    aAvgRequestsPerSiteInDisconnect: a.avgRequestsPerSiteInDisconnect,
+    aTotalTrackers: a.totalTrackers,
+    aTotalTrackersInDisconnect: a.totalTrackersInDisconnect,
+    aAvgTrackersPerSite: a.avgTrackersPerSite,
+    aAvgTrackersPerSiteInDisconnect: a.avgTrackersPerSiteInDisconnect,
+    aSitesHavingTrackers: a.sitesHavingTrackers,
+    aSitesHavingTrackersInDisconnect: a.sitesHavingTrackersInDisconnect,
   };
 
-  interface TrackerRanking {
-    tracker: string;
-    rank: number;
-    popularity: number;
-    inDisconnect: boolean;
-  }
-  const trackerRankings = (entries: TrackingSiteEntry[]): TrackerRanking[] =>
-    _.sortBy(
-      _.entries(_.countBy(entries.flatMap((entry) => siteTrackers(entry)))),
-      ([_, popularity]) => popularity,
-    )
-      .reverse()
-      .map(([tracker, popularity], index) => ({
-        tracker,
-        rank: index + 1,
-        popularity,
-        inDisconnect: checkInDisconnect(tracker),
-      }));
+  const b = getCategoryStats(inputEntries, bProperty);
+  result = {
+    ...result,
 
-  const aTrackerRankings = trackerRankings(aEntries);
-  const bTrackerRankings = trackerRankings(bEntries);
+    bTotalRequests: b.totalRequests,
+    bTotalRequestsInDisconnect: b.totalRequestsInDisconnect,
+    bAvgRequestsPerSite: b.avgRequestsPerSite,
+    bAvgRequestsPerSiteInDisconnect: b.avgRequestsPerSiteInDisconnect,
+    bTotalTrackers: b.totalTrackers,
+    bTotalTrackersInDisconnect: b.totalTrackersInDisconnect,
+    bAvgTrackersPerSite: b.avgTrackersPerSite,
+    bAvgTrackersPerSiteInDisconnect: b.avgTrackersPerSiteInDisconnect,
+    bSitesHavingTrackers: b.sitesHavingTrackers,
+    bSitesHavingTrackersInDisconnect: b.sitesHavingTrackersInDisconnect,
+  };
+
+  const aTrackerRankings = getTrackerRankings(inputEntries, aProperty);
+  const bTrackerRankings = getTrackerRankings(inputEntries, bProperty);
+  result = {
+    ...result,
+
+    aTrackersCount: aTrackerRankings.length,
+    aTrackerRankings: topTrackerRankings(aTrackerRankings),
+    bTrackersCount: bTrackerRankings.length,
+    bTrackerRankings: topTrackerRankings(bTrackerRankings),
+  };
 
   const aOnlyTrackerRankings = _.differenceBy(
     aTrackerRankings,
@@ -260,22 +324,13 @@ function compareCategories(
     aTrackerRankings,
     (x) => x.tracker,
   );
-
-  const top = (trackerRankings: TrackerRanking[]) =>
-    trackerRankings.slice(0, 10);
-
   result = {
     ...result,
 
-    aTrackersCount: aTrackerRankings.length,
-    aTrackerRankings: top(aTrackerRankings),
-    bTrackersCount: bTrackerRankings.length,
-    bTrackerRankings: top(bTrackerRankings),
-
     aOnlyTrackersCount: aOnlyTrackerRankings.length,
-    aOnlyTrackerRankings: top(aOnlyTrackerRankings),
+    aOnlyTrackerRankings: topTrackerRankings(aOnlyTrackerRankings),
     bOnlyTrackersCount: bOnlyTrackerRankings.length,
-    bOnlyTrackerRankings: top(bOnlyTrackerRankings),
+    bOnlyTrackerRankings: topTrackerRankings(bOnlyTrackerRankings),
   };
 
   return result;
