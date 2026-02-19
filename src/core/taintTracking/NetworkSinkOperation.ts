@@ -4,7 +4,7 @@ import { FoxURL } from "../../foxhound/FoxURL";
 export interface NetworkSinkOperation {
   requestId?: string;
   url: string;
-  requestParam: TaintRequestParam;
+  taintParam: TaintRequestParam;
 }
 
 export type TaintRequestParam = "Url" | "PostData";
@@ -27,7 +27,7 @@ export function parseNetworkSinkOperation(
   const {
     requestId: rawRequestId,
     url: rawUrl,
-    requestParam,
+    taintParam,
   } = doParseNetworkSinkOperation(sinkOperation, foxReport);
 
   // fix to add redirectCountStr (first request of redirect chain, thus 0)
@@ -45,7 +45,7 @@ export function parseNetworkSinkOperation(
     throw new Error(`Not a network protocol: ${protocol}`);
   }
 
-  return { requestId, url: foxUrl.toString(), requestParam };
+  return { requestId, url: foxUrl.toString(), taintParam };
 }
 
 function doParseNetworkSinkOperation(
@@ -54,26 +54,26 @@ function doParseNetworkSinkOperation(
 ): {
   requestId?: string;
   url: string;
-  requestParam: TaintRequestParam;
+  taintParam: TaintRequestParam;
 } {
   const { str } = foxReport;
   const { arguments: args } = sinkOperation;
   switch (sinkOperation.operation) {
     // XMLHttpRequest
     case "XMLHttpRequest.open(url)":
-      return { requestId: args[0], url: str, requestParam: "Url" };
+      return { requestId: args[0], url: str, taintParam: "Url" };
     case "XMLHttpRequest.send":
-      return { requestId: args[1], url: args[0], requestParam: "PostData" };
+      return { requestId: args[1], url: args[0], taintParam: "PostData" };
     // fetch
     case "fetch.url":
-      return { requestId: args[0], url: str, requestParam: "Url" };
+      return { requestId: args[0], url: str, taintParam: "Url" };
     case "fetch.body":
-      return { requestId: args[1], url: args[0], requestParam: "PostData" };
+      return { requestId: args[1], url: args[0], taintParam: "PostData" };
     // sendBeacon
     case "navigator.sendBeacon(url)":
-      return { requestId: args[0], url: str, requestParam: "Url" };
+      return { requestId: args[0], url: str, taintParam: "Url" };
     case "navigator.sendBeacon(body)":
-      return { requestId: args[1], url: args[0], requestParam: "PostData" };
+      return { requestId: args[1], url: args[0], taintParam: "PostData" };
     // location
     case "location.pathname":
     case "location.search":
@@ -81,7 +81,7 @@ function doParseNetworkSinkOperation(
     case "location.assign":
     case "location.replace":
       if (!sinkOperation.source) {
-        return { url: str, requestParam: "Url" };
+        return { url: str, taintParam: "Url" };
       } else {
         break;
       }
@@ -89,7 +89,7 @@ function doParseNetworkSinkOperation(
     case "iframe.src":
     case "img.src":
     case "script.src":
-      return { url: str, requestParam: "Url" };
+      return { url: str, taintParam: "Url" };
   }
   throw new Error(
     `Cannot parse network sink operation: ${sinkOperation.operation}`,

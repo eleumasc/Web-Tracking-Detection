@@ -11,13 +11,19 @@ import {
   extractPathSegmentsWithLoc,
   extractPostDataComponentsWithLoc,
   extractQueryParametersWithLoc,
+  RequestParam,
+  RequestParamEntryWithLoc,
 } from "../RequestParam";
 
 export interface StorageTaint {
   storageItem: StorageItem;
-  requestParam: TaintRequestParam;
-  links: Link[];
+  linksEntries: LinksEntry[];
   intermeds: string[];
+}
+
+export interface LinksEntry {
+  requestParam: RequestParam;
+  links: Link[];
 }
 
 // 1st: requestIndex, 2nd: storageIndex
@@ -28,47 +34,54 @@ export interface UncheckedStorageTaint {
   storageType: string;
   key: string;
   value: string;
-  requestParam: TaintRequestParam;
-  links: Link[];
+  linksEntries: LinksEntry[];
   intermeds: string[];
 }
 
 export function getUncheckedStorageTaints(
   foxTaint: FoxRange[],
   foxReport: FoxReport,
-  requestParam: TaintRequestParam,
+  taintParam: TaintRequestParam,
 ): UncheckedStorageTaint[] {
   const origin = new URL(foxReport.loc).origin;
 
-  let fixLinks: ((links: Link[]) => Link[]) | undefined;
-  let filterLinks: (links: Link[]) => Link[];
-  if (requestParam === "Url") {
+  const doComputeLinksEntries = (
+    inputLinks: Link[],
+    paramEntries: RequestParamEntryWithLoc[],
+  ): LinksEntry[] =>
+    paramEntries
+      .map(
+        ({ param, begin, end }): LinksEntry => ({
+          requestParam: param,
+          links: inputLinks.filter(
+            ({ 0: requestIndex }) =>
+              requestIndex >= begin && requestIndex <= end,
+          ),
+        }),
+      )
+      .filter(({ links }) => links.length > 0);
+
+  let computeLinksEntries: (inputLinks: Link[]) => LinksEntry[];
+  if (taintParam === "Url") {
     const foxUrl = new FoxURL(foxReport.str, foxReport.baseURI);
-    fixLinks = (links) =>
-      links.map(
+    const paramEntries = [
+      ...extractPathSegmentsWithLoc(foxUrl),
+      ...extractQueryParametersWithLoc(foxUrl),
+    ];
+    computeLinksEntries = (inputLinks) => {
+      // fix misalignment between input and fully parsed URL
+      inputLinks = inputLinks.map(
         ([requestIndex, storageIndex]): Link =>
           //
           [requestIndex + foxUrl.inputLoc.begin, storageIndex],
       );
-
-    const taintableParams = [
-      ...extractPathSegmentsWithLoc(foxUrl),
-      ...extractQueryParametersWithLoc(foxUrl),
-    ];
-    filterLinks = (links) =>
-      links.filter(([requestIndex]) =>
-        taintableParams.some(
-          ({ begin, end }) => requestIndex >= begin && requestIndex <= end,
-        ),
-      );
+      return doComputeLinksEntries(inputLinks, paramEntries);
+    };
   } else {
-    const taintableParams = extractPostDataComponentsWithLoc(foxReport.str);
-    filterLinks = (links) =>
-      links.filter(([requestIndex]) =>
-        taintableParams.some(
-          ({ begin, end }) => requestIndex >= begin && requestIndex <= end,
-        ),
-      );
+    const paramEntries = extractPostDataComponentsWithLoc(foxReport.str);
+    computeLinksEntries = (inputLinks) => {
+      return doComputeLinksEntries(inputLinks, paramEntries);
+    };
   }
 
   return clusterObjectsBy(
@@ -81,14 +94,12 @@ export function getUncheckedStorageTaints(
     .map((cluster): UncheckedStorageTaint => {
       const { storageType, key, value } = cluster[0];
 
-      let links = cluster.flatMap(({ begin, end, storageIndex }) =>
+      const rawLinks = cluster.flatMap(({ begin, end, storageIndex }) =>
         toArray(range(begin, end)) //
           .map((requestIndex): Link => [requestIndex, storageIndex]),
       );
-      if (fixLinks) {
-        links = fixLinks(links);
-      }
-      links = filterLinks(links);
+
+      const linksEntries = computeLinksEntries(rawLinks);
 
       const intermeds = _.uniq(cluster.flatMap(({ intermeds }) => intermeds));
 
@@ -97,12 +108,11 @@ export function getUncheckedStorageTaints(
         storageType,
         key,
         value,
-        requestParam,
-        links,
+        linksEntries,
         intermeds,
       };
     })
-    .filter(({ links }) => links.length > 0);
+    .filter(({ linksEntries }) => linksEntries.length > 0);
 }
 
 export function tryCheckStorageTaintArray(
@@ -131,7 +141,7 @@ export function checkStorageTaint(
   unchecked: UncheckedStorageTaint,
   storageItems: StorageItem[],
 ): StorageTaint {
-  const { origin, storageType, key, value, requestParam, links, intermeds } =
+  const { origin, storageType, key, value, linksEntries, intermeds } =
     unchecked;
   const hostname = new URL(origin).hostname;
 
@@ -166,8 +176,7 @@ export function checkStorageTaint(
   const [storageItem] = candidates;
   return {
     storageItem,
-    requestParam,
-    links,
+    linksEntries,
     intermeds,
   };
 }

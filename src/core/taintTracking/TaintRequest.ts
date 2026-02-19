@@ -26,7 +26,7 @@ export function computeTaintRequests(
   interface TaintRequestReportEntry {
     requestId?: string;
     url: string;
-    requestParam: TaintRequestParam;
+    taintParam: TaintRequestParam;
     foxReport: FoxReport;
   }
 
@@ -66,7 +66,7 @@ export function computeTaintRequests(
 
     const urlReportEntry = taintRequestReportEntries.find(
       (entry) =>
-        entry.requestParam === "Url" &&
+        entry.taintParam === "Url" &&
         matchesRequest(entry) &&
         !urlReportEntryFoundSet.has(entry),
     );
@@ -89,7 +89,7 @@ export function computeTaintRequests(
 
     const postDataReportEntry = taintRequestReportEntries.find(
       (entry) =>
-        entry.requestParam === "PostData" &&
+        entry.taintParam === "PostData" &&
         matchesRequest(entry) &&
         !postDataReportEntryFoundSet.has(entry),
     );
@@ -134,14 +134,16 @@ function isCharConcatReadFromStorageIdentifiable(
 ): boolean {
   const {
     storageItem: { value },
-    links,
+    linksEntries,
   } = storageTaint;
 
-  const indexes = _.sortBy(
-    _.uniq(links.map(([, storageIndex]) => storageIndex)),
-  );
+  return linksEntries.some(({ links }) => {
+    const indexes = _.sortBy(
+      _.uniq(links.map(({ 1: storageIndex }) => storageIndex)),
+    );
 
-  const charConcat = indexes.map((i) => value.at(i)).join("");
+    const charConcat = indexes.map((i) => value.at(i)).join("");
 
-  return isIdentifiable(charConcat);
+    return isIdentifiable(charConcat);
+  });
 }

@@ -6,7 +6,11 @@ export function verifyTaintRequests(requests: TaintRequest[]) {
   const unknownRequests: TaintRequest[] = [];
 
   for (const request of requests) {
-    if (request.storageTaints.some(({ links }) => hasSequentialRun(links))) {
+    if (
+      request.storageTaints.some(({ linksEntries }) =>
+        linksEntries.some(({ links }) => hasSequentialRun(links)),
+      )
+    ) {
       confirmedRequests.push(request);
     } else {
       unknownRequests.push(request);

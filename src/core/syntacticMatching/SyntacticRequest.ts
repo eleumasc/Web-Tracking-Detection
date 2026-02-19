@@ -62,7 +62,7 @@ export function computeSyntacticRequests(
       transformTree: storageTransformTree,
     } of storageEntries) {
       for (const {
-        paramEntry,
+        paramEntry: { param },
         transformTree: requestTransformTree,
       } of requestEntries) {
         const syntacticMatches = syntacticMatcher(
@@ -71,7 +71,7 @@ export function computeSyntacticRequests(
         ).map(
           (syntacticMatch): SyntacticMatch => ({
             ...syntacticMatch,
-            requestParam: paramEntry.param,
+            requestParam: param,
           }),
         );
 
