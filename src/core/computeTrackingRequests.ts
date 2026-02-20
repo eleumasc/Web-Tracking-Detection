@@ -2,8 +2,8 @@ import _ from "lodash";
 import assert from "assert";
 import path from "path";
 import { computeUnverifiedTrackingRequests } from "./computeUnverifiedTrackingRequests";
+import { FoxURL } from "../foxhound/FoxURL";
 import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
-import { getSiteFromUrl } from "../util/site";
 import { Har } from "../util/Har";
 import { readFileSync } from "fs";
 import { Request, toAbstractRequests } from "./Request";
@@ -157,7 +157,7 @@ export function computeTrackingRequests(args: {
     ): boolean =>
       requests?.some((request) => request.requestId === requestId) ?? false;
 
-    const tracker = getSiteFromUrl(url);
+    const tracker = new FoxURL(url).hostname;
 
     const taint = includesThisRequest(taintRequests);
     const syntactic = includesThisRequest(syntacticRequests);

@@ -13,11 +13,11 @@ export default async function cmdReport(args: { measureOutDir: string }) {
 
   const { measureOutDir } = args;
 
-  const trackingRequestsLogEntry = JSON.parse(
+  const trackingRequestsFile = JSON.parse(
     readFileSync(path.join(measureOutDir, "trackingRequests.json")).toString(),
   ) as TrackingRequestsFile;
 
-  const { totalSites, successSites, entries } = trackingRequestsLogEntry;
+  const { totalSites, successSites, entries } = trackingRequestsFile;
   const reportRecord = {
     totalSites,
     successSites,
@@ -95,6 +95,11 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.syntactic,
       (r) => r.syntactic && !r.refutedSyntactic,
     ),
+    compareSyntacticVsUnion: compareCategories(
+      entries,
+      (r) => r.syntactic,
+      (r) => r.taint || r.syntactic,
+    ),
 
     compareUnionVsIntersect: compareCategories(
       entries,
@@ -102,14 +107,19 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.taint && r.syntactic,
     ),
 
-    compareTaintWithoutVsWithDisconnect: compareCategories(
+    compareTaintPreVsAfterDisconnect: compareCategories(
       entries,
       (r) => r.taint,
       (r) => r.taint && !checkInDisconnect(r.tracker),
     ),
-    compareSyntacticWithoutVsWithDisconnect: compareCategories(
+    compareSyntacticPreVsAfterDisconnect: compareCategories(
       entries,
       (r) => r.syntactic,
+      (r) => r.syntactic && !checkInDisconnect(r.tracker),
+    ),
+    compareTaintAfterDisconnectVsSyntacticAfterDisconnect: compareCategories(
+      entries,
+      (r) => r.taint && !checkInDisconnect(r.tracker),
       (r) => r.syntactic && !checkInDisconnect(r.tracker),
     ),
   };

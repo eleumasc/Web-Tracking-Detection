@@ -1,11 +1,13 @@
+import _ from "lodash";
 import assert from "assert";
 import path from "path";
 import { download } from "./download";
 import { existsSync, readFileSync, writeFileSync } from "fs";
+import { HostnameSuffixMap } from "./HostnameSuffixMap";
 import { rootDir } from "../env";
 import { text } from "stream/consumers";
 
-export type Disconnect = Record<string, string[]>;
+export type Disconnect = HostnameSuffixMap;
 
 let disconnect: Disconnect | undefined;
 
@@ -39,22 +41,22 @@ export async function initDisconnect() {
   //     }>;
   //   };
   // };
-  disconnect = Object.fromEntries(
-    Object.entries<any>(cooked.categories).map(
-      ([category, organizations]): [string, string[]] => [
-        category,
-        organizations.flatMap((organizationRecord: any): string[] => {
-          const homepageRecord = Object.values<any>(organizationRecord)[0];
+  const trackers = _.uniq(
+    Object.entries<any>(cooked.categories)
+      .flatMap(([_category, categoryOrgs]): string[] =>
+        categoryOrgs.flatMap((orgRecord: any): string[] => {
+          const homepageRecord = Object.values<any>(orgRecord)[0];
           const trackers = Object.values<string[]>(homepageRecord)[0];
           return trackers;
         }),
-      ],
-    ),
+      )
+      .filter((s) => /^[A-Za-z0-9\-.]+$/.test(s)),
   );
+
+  disconnect = new HostnameSuffixMap(trackers);
 }
 
-export function checkInDisconnect(site: string): boolean {
+export function checkInDisconnect(hostname: string): boolean {
   assert(disconnect, "Use initDisconnect() first");
-  return Object.values(disconnect) //
-    .some((categoryTrackers) => categoryTrackers.includes(site));
+  return disconnect.includes(hostname);
 }
