@@ -6,7 +6,7 @@ import { syntacticMatcher } from "./syntacticMatcher";
 import { Token } from "./Token";
 import { TransformTree } from "./TransformTree";
 import {
-  parseRequestValueRootNode,
+  decodeRequestValueRootNode,
   transformStorageValueRootNode,
 } from "./rootNodes";
 
@@ -50,7 +50,7 @@ export function computeSyntacticRequests(
       (paramEntry) => ({
         paramEntry,
         transformTree: new TransformTree(
-          parseRequestValueRootNode(),
+          decodeRequestValueRootNode(),
           paramEntry.value,
         ),
       }),

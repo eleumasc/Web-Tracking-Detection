@@ -55,16 +55,14 @@ export function transformStorageValueRootNode(): TransformTreeNode {
   }
 }
 
-export function parseRequestValueRootNode(): TransformTreeNode {
+export function decodeRequestValueRootNode(): TransformTreeNode {
   const Decoders = [fromBase64, fromUrlEncoding];
-  const Parsers = [split, fromJSON, fromQueryValues];
 
   return () => decodeParseLayer(3);
 
   function* decodeParseLayer(depth: number): Iterable<TransformTreeEdge> {
     if (depth === 0) return;
     yield* decode(() => decodeParseLayer(depth - 1));
-    yield* parse(() => []);
   }
 
   function decode(
@@ -73,17 +71,6 @@ export function parseRequestValueRootNode(): TransformTreeNode {
     return Decoders.map(
       (decoder): TransformTreeEdge => ({
         transformGenerator: decoder,
-        child,
-      }),
-    );
-  }
-
-  function parse(
-    child: () => Iterable<TransformTreeEdge>,
-  ): Iterable<TransformTreeEdge> {
-    return Parsers.map(
-      (parser): TransformTreeEdge => ({
-        transformGenerator: parser,
         child,
       }),
     );
