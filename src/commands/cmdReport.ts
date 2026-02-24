@@ -2,6 +2,7 @@ import _ from "lodash";
 import currentTime from "../util/currentTime";
 import path from "path";
 import { checkInDisconnect, initDisconnect } from "../util/Disconnect";
+import { FoxURL } from "../foxhound/FoxURL";
 import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
 import { siteTrackers, TrackingSiteEntry } from "../core/TrackingRequest";
@@ -121,6 +122,23 @@ function getStats(entries: TrackingSiteEntry[]) {
       entries,
       (r) => r.taint && !checkInDisconnect(r.tracker),
       (r) => r.syntactic && !checkInDisconnect(r.tracker),
+    ),
+
+    manValidRefutedSyntactic: sampleRequestsForManualValidation(
+      entries,
+      (r) => r.refutedSyntactic,
+    ),
+    manValidConfirmedOnlyTaint: sampleRequestsForManualValidation(
+      entries,
+      (r) => r.confirmedTaint && !r.syntactic,
+    ),
+    manValidUnknownOnlyTaint: sampleRequestsForManualValidation(
+      entries,
+      (r) => r.unknownTaint && !r.syntactic,
+    ),
+    manValidConfirmedOnlySyntactic: sampleRequestsForManualValidation(
+      entries,
+      (r) => !r.taint && r.confirmedSyntactic,
     ),
   };
 }
@@ -344,4 +362,41 @@ function compareCategories(
   };
 
   return result;
+}
+
+function sampleRequestsForManualValidation(
+  inputEntries: TrackingSiteEntry[],
+  property: (request: TrackingRequest) => boolean,
+) {
+  const entries = applyProperty(inputEntries, property);
+  const extRequests = entries
+    .flatMap(({ site, trackingRequests }) =>
+      trackingRequests.map(({ requestId, url }) => {
+        return { site, requestId, url };
+      }),
+    )
+    .map((extRequest) => {
+      const foxUrl = new FoxURL(extRequest.url);
+      const { origin, pathname } = foxUrl;
+      const aggregateUrl = origin + pathname;
+      return { aggregateUrl, ...extRequest };
+    });
+  return _.sortBy(
+    Object.values(
+      _.groupBy(extRequests, (extRequest) => extRequest.aggregateUrl),
+    ),
+    (extRequestsGroup) => extRequestsGroup.length,
+  )
+    .reverse()
+    .slice(0, 20)
+    .map((extRequestsGroup) => {
+      const { aggregateUrl, site, requestId, url } = extRequestsGroup[0];
+      return {
+        aggregateUrl,
+        requestsCount: extRequestsGroup.length,
+        testSite: site,
+        testRequestId: requestId,
+        testUrl: url,
+      };
+    });
 }
