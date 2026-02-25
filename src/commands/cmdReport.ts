@@ -1,4 +1,5 @@
 import _ from "lodash";
+import assert from "assert";
 import currentTime from "../util/currentTime";
 import path from "path";
 import { checkInDisconnect, initDisconnect } from "../util/Disconnect";
@@ -22,7 +23,7 @@ export default async function cmdReport(args: { measureOutDir: string }) {
   const reportRecord = {
     totalSites,
     successSites,
-    ...getStats(entries),
+    ...getStats(relabelSyntacticVerif(entries)),
   };
   writeFileSync(
     path.join(
@@ -149,13 +150,13 @@ function applyProperty(
 ): TrackingSiteEntry[] {
   // do not remove entries which have no tracking requests:
   // those are required for computing avg correctly
-  return inputEntries.map((entry): TrackingSiteEntry => {
-    const { trackingRequests: requests } = entry;
-    return {
+  return inputEntries.map(
+    (entry): TrackingSiteEntry => ({
       ...entry,
-      trackingRequests: requests.filter((request) => property(request)),
-    };
-  });
+      trackingRequests: entry.trackingRequests //
+        .filter((request) => property(request)),
+    }),
+  );
 }
 
 function countCategoryRequests(
@@ -399,4 +400,66 @@ function sampleRequestsForManualValidation(
         testUrl: url,
       };
     });
+}
+
+function relabelSyntacticVerif(
+  entries: TrackingSiteEntry[],
+): TrackingSiteEntry[] {
+  const getUrlTemplate = (url: string): string => {
+    const { origin, pathname } = new FoxURL(url);
+    return origin + pathname;
+  };
+
+  const getSyntacticVerifLabel = (request: TrackingRequest): number => {
+    if (request.confirmedSyntactic) {
+      return 2;
+    } else if (request.refutedSyntactic) {
+      return 1;
+    } else if (request.unknownSyntactic) {
+      return 0;
+    } else {
+      assert(request.noMatchingRequestsSyntactic);
+      return -1;
+    }
+  };
+
+  const labelMap = new Map<string, number>();
+  for (const request of entries.flatMap(
+    ({ trackingRequests }) => trackingRequests,
+  )) {
+    if (!request.syntactic) {
+      continue;
+    }
+    const urlTemplate = getUrlTemplate(request.url);
+    if (labelMap.has(urlTemplate)) {
+      labelMap.set(
+        urlTemplate,
+        Math.max(labelMap.get(urlTemplate)!, getSyntacticVerifLabel(request)),
+      );
+    } else {
+      labelMap.set(urlTemplate, getSyntacticVerifLabel(request));
+    }
+  }
+
+  return entries.map(
+    (entry): TrackingSiteEntry => ({
+      ...entry,
+      trackingRequests: entry.trackingRequests //
+        .map((request): TrackingRequest => {
+          if (!request.syntactic) {
+            return request;
+          }
+          const urlTemplate = getUrlTemplate(request.url);
+          const label = labelMap.get(urlTemplate);
+          assert(label !== undefined);
+          return {
+            ...request,
+            confirmedSyntactic: label === 2,
+            refutedSyntactic: label === 1,
+            unknownSyntactic: label === 0,
+            noMatchingRequestsSyntactic: label === -1,
+          };
+        }),
+    }),
+  );
 }
