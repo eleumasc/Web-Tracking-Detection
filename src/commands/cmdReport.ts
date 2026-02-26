@@ -114,6 +114,11 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.taint || r.syntactic,
       (r) => r.taint && r.syntactic,
     ),
+    compareConfirmedSyntacticUnionVsIntersect: compareCategories(
+      entries,
+      (r) => r.taint || r.syntacticVerifLabel === "CONFIRMED",
+      (r) => r.taint && r.syntacticVerifLabel === "CONFIRMED",
+    ),
 
     compareTaintPreVsAfterDisconnect: compareCategories(
       entries,
@@ -125,11 +130,25 @@ function getStats(entries: TrackingSiteEntry[]) {
       (r) => r.syntactic,
       (r) => r.syntactic && !checkInDisconnect(r.tracker),
     ),
+    compareConfirmedSyntacticPreVsAfterDisconnect: compareCategories(
+      entries,
+      (r) => r.syntacticVerifLabel === "CONFIRMED",
+      (r) =>
+        r.syntacticVerifLabel === "CONFIRMED" && !checkInDisconnect(r.tracker),
+    ),
     compareTaintAfterDisconnectVsSyntacticAfterDisconnect: compareCategories(
       entries,
       (r) => r.taint && !checkInDisconnect(r.tracker),
       (r) => r.syntactic && !checkInDisconnect(r.tracker),
     ),
+    compareTaintAfterDisconnectVsConfirmedSyntacticAfterDisconnect:
+      compareCategories(
+        entries,
+        (r) => r.taint && !checkInDisconnect(r.tracker),
+        (r) =>
+          r.syntacticVerifLabel === "CONFIRMED" &&
+          !checkInDisconnect(r.tracker),
+      ),
 
     manValidRefutedSyntactic: sampleRequestsForManualValidation(
       entries,
