@@ -13,7 +13,7 @@ export class RequestTemplate {
     readonly holes: RequestParam[],
     readonly origin: string,
     readonly fixedUrlPathSegments: (string | undefined)[],
-    readonly urlQueryParamNames: string[],
+    readonly queryParamNames: string[],
   ) {}
 
   matchesUrl(url: string): boolean {
@@ -39,15 +39,15 @@ export class RequestTemplate {
       return false;
     }
 
-    const urlQueryParamNames = extractQueryParameters(foxUrl).map(
+    const queryParamNames = extractQueryParameters(foxUrl).map(
       ({ param: p }) => (assert(p.type === "QueryParameter"), p.name),
     );
-    if (urlQueryParamNames.length !== this.urlQueryParamNames.length) {
+    if (queryParamNames.length !== this.queryParamNames.length) {
       return false;
     }
     if (
-      _.intersection(urlQueryParamNames, this.urlQueryParamNames).length !==
-      this.urlQueryParamNames.length
+      _.intersection(queryParamNames, this.queryParamNames).length !==
+      this.queryParamNames.length
     ) {
       return false;
     }
@@ -67,7 +67,7 @@ export class RequestTemplate {
       .map((x) => (x !== undefined ? x : "$ID"))
       .join("/");
     s += "?";
-    s += this.urlQueryParamNames
+    s += this.queryParamNames
       .map((name) =>
         this.holes.some(
           (hole) => hole.type === "QueryParameter" && hole.name === name,
@@ -81,9 +81,6 @@ export class RequestTemplate {
 
   static fromSyntacticRequest(request: SyntacticRequest): RequestTemplate {
     const { url, storageMatches } = request;
-    const foxUrl = new FoxURL(url);
-
-    const { origin } = foxUrl;
 
     const holes = _.uniqWith(
       storageMatches.flatMap(({ syntacticMatches }) =>
@@ -92,12 +89,20 @@ export class RequestTemplate {
       _.isEqual,
     );
 
+    return RequestTemplate.fromUrlAndHoles(url, holes);
+  }
+
+  static fromUrlAndHoles(url: string, holes: RequestParam[]): RequestTemplate {
+    const foxUrl = new FoxURL(url);
+
+    const { origin } = foxUrl;
+
     const fixedUrlPathSegments = extractPathSegments(foxUrl).map(
       ({ param: p, value }) =>
         holes.some((hole) => _.isEqual(hole, p)) ? undefined : value,
     );
 
-    const urlQueryParamNames = extractQueryParameters(foxUrl)
+    const queryParamNames = extractQueryParameters(foxUrl)
       .map(({ param: p }) => (assert(p.type === "QueryParameter"), p.name))
       .sort();
 
@@ -105,7 +110,7 @@ export class RequestTemplate {
       holes,
       origin,
       fixedUrlPathSegments,
-      urlQueryParamNames,
+      queryParamNames,
     );
   }
 }

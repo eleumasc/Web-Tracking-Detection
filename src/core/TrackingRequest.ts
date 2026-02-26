@@ -1,18 +1,33 @@
 import _ from "lodash";
 import { Request } from "./Request";
+import { RequestParam } from "./RequestParam";
 
 export interface TrackingRequest extends Request {
   tracker: string;
   taint: boolean;
   syntactic: boolean;
-  confirmedTaint: boolean;
-  unknownTaint: boolean;
-  confirmedSyntactic: boolean;
-  refutedSyntactic: boolean;
-  unknownSyntactic: boolean;
-  noMatchingRequestsSyntactic: boolean;
-  manyMatchingRequestsSyntactic: boolean;
+  taintVerifLabel?: TaintVerifLabel;
+  syntacticVerifLabel?: SyntacticVerifLabel;
+  syntacticHoles?: RequestParam[];
 }
+
+export const TaintVerifLabel = {
+  CONFIRMED: "CONFIRMED",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type TaintVerifLabel =
+  (typeof TaintVerifLabel)[keyof typeof TaintVerifLabel];
+
+export const SyntacticVerifLabel = {
+  CONFIRMED: "CONFIRMED",
+  REFUTED: "REFUTED",
+  UNKNOWN: "UNKNOWN",
+  NO_MATCHING_REQUESTS: "NO_MATCHING_REQUESTS",
+} as const;
+
+export type SyntacticVerifLabel =
+  (typeof SyntacticVerifLabel)[keyof typeof SyntacticVerifLabel];
 
 export interface TrackingSiteEntry {
   site: string;

@@ -3,12 +3,18 @@ import assert from "assert";
 import currentTime from "../util/currentTime";
 import path from "path";
 import { checkInDisconnect, initDisconnect } from "../util/Disconnect";
+import { clusterObjectsBy } from "../util/cluster";
 import { FoxURL } from "../foxhound/FoxURL";
 import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
-import { siteTrackers, TrackingSiteEntry } from "../core/TrackingRequest";
+import { RequestTemplate } from "../core/syntacticMatching/RequestTemplate";
 import { TrackingRequest } from "../core/TrackingRequest";
 import { TrackingRequestsFile } from "./cmdMeasure";
+import {
+  siteTrackers,
+  SyntacticVerifLabel,
+  TrackingSiteEntry,
+} from "../core/TrackingRequest";
 
 export default async function cmdReport(args: { measureOutDir: string }) {
   await initDisconnect();
@@ -79,23 +85,23 @@ function getStats(entries: TrackingSiteEntry[]) {
     compareTaintVsConfirmedSyntactic: compareCategories(
       entries,
       (r) => r.taint,
-      (r) => r.confirmedSyntactic,
+      (r) => r.syntacticVerifLabel === "CONFIRMED",
     ),
     compareTaintVsNonRefutedSyntactic: compareCategories(
       entries,
       (r) => r.taint,
-      (r) => r.syntactic && !r.refutedSyntactic,
+      (r) => r.syntactic && r.syntacticVerifLabel !== "REFUTED",
     ),
 
     compareSyntacticVsConfirmedSyntactic: compareCategories(
       entries,
       (r) => r.syntactic,
-      (r) => r.confirmedSyntactic,
+      (r) => r.syntacticVerifLabel === "CONFIRMED",
     ),
     compareSyntacticVsNonRefutedSyntactic: compareCategories(
       entries,
       (r) => r.syntactic,
-      (r) => r.syntactic && !r.refutedSyntactic,
+      (r) => r.syntactic && r.syntacticVerifLabel !== "REFUTED",
     ),
     compareSyntacticVsUnion: compareCategories(
       entries,
@@ -127,19 +133,19 @@ function getStats(entries: TrackingSiteEntry[]) {
 
     manValidRefutedSyntactic: sampleRequestsForManualValidation(
       entries,
-      (r) => r.refutedSyntactic,
+      (r) => r.syntacticVerifLabel === "REFUTED",
     ),
     manValidConfirmedOnlyTaint: sampleRequestsForManualValidation(
       entries,
-      (r) => r.confirmedTaint && !r.syntactic,
+      (r) => r.taintVerifLabel === "CONFIRMED" && !r.syntactic,
     ),
     manValidUnknownOnlyTaint: sampleRequestsForManualValidation(
       entries,
-      (r) => r.unknownTaint && !r.syntactic,
+      (r) => r.taintVerifLabel === "UNKNOWN" && !r.syntactic,
     ),
     manValidConfirmedOnlySyntactic: sampleRequestsForManualValidation(
       entries,
-      (r) => !r.taint && r.confirmedSyntactic,
+      (r) => !r.taint && r.syntacticVerifLabel === "CONFIRMED",
     ),
   };
 }
@@ -187,8 +193,8 @@ function getTaintVerifStats(
     return [count, percent(count, total)];
   };
   return {
-    confirmedRequests: countPercent((r) => r.confirmedTaint),
-    unknownRequests: countPercent((r) => r.unknownTaint),
+    confirmedRequests: countPercent((r) => r.taintVerifLabel === "CONFIRMED"),
+    unknownRequests: countPercent((r) => r.taintVerifLabel === "UNKNOWN"),
   };
 }
 
@@ -199,7 +205,10 @@ function getSyntacticVerifStats(
   const entries = applyProperty(inputEntries, property);
   const total = countCategoryRequests(
     entries,
-    (r) => r.confirmedSyntactic || r.refutedSyntactic || r.unknownSyntactic,
+    (r) =>
+      r.syntacticVerifLabel === "CONFIRMED" ||
+      r.syntacticVerifLabel === "REFUTED" ||
+      r.syntacticVerifLabel === "UNKNOWN",
   );
   const countPercent = (
     countProperty: (request: TrackingRequest) => boolean,
@@ -210,11 +219,13 @@ function getSyntacticVerifStats(
   return {
     noMatchingRequestsRequests: countCategoryRequests(
       entries,
-      (r) => r.noMatchingRequestsSyntactic,
+      (r) => r.syntacticVerifLabel === "NO_MATCHING_REQUESTS",
     ),
-    confirmedRequests: countPercent((r) => r.confirmedSyntactic),
-    refutedRequests: countPercent((r) => r.refutedSyntactic),
-    unknownRequests: countPercent((r) => r.unknownSyntactic),
+    confirmedRequests: countPercent(
+      (r) => r.syntacticVerifLabel === "CONFIRMED",
+    ),
+    refutedRequests: countPercent((r) => r.syntacticVerifLabel === "REFUTED"),
+    unknownRequests: countPercent((r) => r.syntacticVerifLabel === "UNKNOWN"),
   };
 }
 
@@ -405,41 +416,90 @@ function sampleRequestsForManualValidation(
 function relabelSyntacticVerif(
   entries: TrackingSiteEntry[],
 ): TrackingSiteEntry[] {
-  const getUrlTemplate = (url: string): string => {
-    const { origin, pathname } = new FoxURL(url);
-    return origin + pathname;
-  };
-
-  const getSyntacticVerifLabel = (request: TrackingRequest): number => {
-    if (request.confirmedSyntactic) {
-      return 2;
-    } else if (request.refutedSyntactic) {
-      return 1;
-    } else if (request.unknownSyntactic) {
-      return 0;
-    } else {
-      assert(request.noMatchingRequestsSyntactic);
-      return -1;
+  const getValueOfSyntacticVerifLabel = (
+    label: SyntacticVerifLabel,
+  ): number => {
+    switch (label) {
+      case "CONFIRMED":
+        return 2;
+      case "REFUTED":
+        return 1;
+      case "UNKNOWN":
+        return 0;
+      case "NO_MATCHING_REQUESTS":
+        return -1;
     }
   };
+  const getSyntacticVerifLabelFromValue = (
+    labelValue: number,
+  ): SyntacticVerifLabel => {
+    switch (labelValue) {
+      case 2:
+        return "CONFIRMED";
+      case 1:
+        return "REFUTED";
+      case 0:
+        return "UNKNOWN";
+      case -1:
+        return "NO_MATCHING_REQUESTS";
+      default:
+        throw new Error(); // This should never happen
+    }
+  };
 
-  const labelMap = new Map<string, number>();
-  for (const request of entries.flatMap(
-    ({ trackingRequests }) => trackingRequests,
-  )) {
-    if (!request.syntactic) {
-      continue;
-    }
-    const urlTemplate = getUrlTemplate(request.url);
-    if (labelMap.has(urlTemplate)) {
-      labelMap.set(
-        urlTemplate,
-        Math.max(labelMap.get(urlTemplate)!, getSyntacticVerifLabel(request)),
-      );
-    } else {
-      labelMap.set(urlTemplate, getSyntacticVerifLabel(request));
-    }
-  }
+  // Cluster requests using origin + fixedUrlPathSegments
+  const looseClusters = clusterObjectsBy(
+    entries
+      .flatMap(({ trackingRequests }) => trackingRequests)
+      .filter((request) => request.syntactic)
+      .map((request) => ({
+        request,
+        requestTemplate: RequestTemplate.fromUrlAndHoles(
+          request.url,
+          request.syntacticHoles!,
+        ),
+      })),
+    (
+      { requestTemplate: { origin, fixedUrlPathSegments } }, //
+    ) => [origin, fixedUrlPathSegments],
+  );
+
+  // For all loose clusters:
+  // 1. compute the union set of param names in holes
+  // 2. intersect the param names in each template with the union set
+  // 3. re-cluster requests using origin + fixedUrlPathSegments + queryParamNames
+  const clusters = looseClusters.flatMap((looseCluster) => {
+    const unionQueryParamNamesInHoles = looseCluster
+      .flatMap(({ requestTemplate: { holes } }) => holes)
+      .filter((hole) => hole.type === "QueryParameter")
+      .map((hole) => hole.name)
+      .sort();
+
+    return clusterObjectsBy(
+      looseCluster.map(({ request, requestTemplate }) => ({
+        request,
+        requestTemplate,
+        queryParamNames: _.intersection(
+          unionQueryParamNamesInHoles,
+          requestTemplate.queryParamNames,
+        ),
+      })),
+      ({ queryParamNames }) => queryParamNames,
+    );
+  });
+
+  // For all clusters, compute the new label and populate a map request-label
+  const labelMap = new WeakMap(
+    clusters.flatMap((cluster): [TrackingRequest, SyntacticVerifLabel][] => {
+      const labelValue = _.max(
+        cluster.map(({ request }) =>
+          getValueOfSyntacticVerifLabel(request.syntacticVerifLabel!),
+        ),
+      )!;
+      const label = getSyntacticVerifLabelFromValue(labelValue);
+      return cluster.map(({ request }) => [request, label]);
+    }),
+  );
 
   return entries.map(
     (entry): TrackingSiteEntry => ({
@@ -449,15 +509,11 @@ function relabelSyntacticVerif(
           if (!request.syntactic) {
             return request;
           }
-          const urlTemplate = getUrlTemplate(request.url);
-          const label = labelMap.get(urlTemplate);
-          assert(label !== undefined);
+          const syntacticVerifLabel = labelMap.get(request);
+          assert(syntacticVerifLabel);
           return {
             ...request,
-            confirmedSyntactic: label === 2,
-            refutedSyntactic: label === 1,
-            unknownSyntactic: label === 0,
-            noMatchingRequestsSyntactic: label === -1,
+            syntacticVerifLabel,
           };
         }),
     }),

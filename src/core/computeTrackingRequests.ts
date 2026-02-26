@@ -7,12 +7,18 @@ import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { Har } from "../util/Har";
 import { readFileSync } from "fs";
 import { Request, toAbstractRequests } from "./Request";
+import { RequestParam } from "./RequestParam";
+import { RequestTemplate } from "./syntacticMatching/RequestTemplate";
 import { StatefulTrackingAnalysisResult } from "./AnalysisResult";
 import { SyntacticRequest } from "./syntacticMatching/SyntacticRequest";
 import { TaintRequest } from "./taintTracking/TaintRequest";
-import { TrackingRequest } from "./TrackingRequest";
 import { verifySyntacticRequests } from "./syntacticMatching/verifySyntacticRequests";
 import { verifyTaintRequests } from "./taintTracking/verifyTaintRequests";
+import {
+  SyntacticVerifLabel,
+  TaintVerifLabel,
+  TrackingRequest,
+} from "./TrackingRequest";
 
 export function computeTrackingRequests(args: {
   site: string;
@@ -126,7 +132,6 @@ export function computeTrackingRequests(args: {
       refutedRequests,
       unknownRequests,
       noMatchingRequestsRequests,
-      manyMatchingRequestsRequests,
     } = syntacticVerifResult;
     addDetails({
       confirmedSyntacticRequests: toAbstractRequests(confirmedRequests),
@@ -134,9 +139,6 @@ export function computeTrackingRequests(args: {
       unknownSyntacticRequests: toAbstractRequests(unknownRequests),
       noMatchingRequestsRequests: toAbstractRequests(
         noMatchingRequestsRequests,
-      ),
-      manyMatchingRequestsRequests: toAbstractRequests(
-        manyMatchingRequestsRequests,
       ),
     });
   }
@@ -166,18 +168,20 @@ export function computeTrackingRequests(args: {
       taintVerifResult.confirmedRequests,
     );
     const unknownTaint = includesThisRequest(taintVerifResult.unknownRequests);
-
-    {
+    if (true) {
       // the following verif flags should be mutually exclusive
       const verifFlagsCount = Number(confirmedTaint) + Number(unknownTaint);
       assert(taint ? verifFlagsCount === 1 : verifFlagsCount === 0);
     }
+    let taintVerifLabel: TaintVerifLabel | undefined;
+    if (confirmedTaint) {
+      taintVerifLabel = "CONFIRMED";
+    } else if (unknownTaint) {
+      taintVerifLabel = "UNKNOWN";
+    }
 
     const noMatchingRequestsSyntactic = includesThisRequest(
       syntacticVerifResult?.noMatchingRequestsRequests,
-    );
-    const manyMatchingRequestsSyntactic = includesThisRequest(
-      syntacticVerifResult?.manyMatchingRequestsRequests,
     );
     const confirmedSyntactic = includesThisRequest(
       syntacticVerifResult?.confirmedRequests,
@@ -188,7 +192,6 @@ export function computeTrackingRequests(args: {
     const unknownSyntactic = includesThisRequest(
       syntacticVerifResult?.unknownRequests,
     );
-
     if (syntacticVerifResult) {
       // the following verif flags should be mutually exclusive
       const verifFlagsCount =
@@ -198,6 +201,26 @@ export function computeTrackingRequests(args: {
         Number(unknownSyntactic);
       assert(syntactic ? verifFlagsCount === 1 : verifFlagsCount === 0);
     }
+    let syntacticVerifLabel: SyntacticVerifLabel | undefined;
+    if (confirmedSyntactic) {
+      syntacticVerifLabel = "CONFIRMED";
+    } else if (refutedSyntactic) {
+      syntacticVerifLabel = "REFUTED";
+    } else if (unknownSyntactic) {
+      syntacticVerifLabel = "UNKNOWN";
+    } else if (noMatchingRequestsSyntactic) {
+      syntacticVerifLabel = "NO_MATCHING_REQUESTS";
+    }
+
+    let syntacticHoles: RequestParam[] | undefined;
+    if (syntactic) {
+      const syntacticRequest = syntacticRequests.find(
+        (request) => request.requestId === requestId,
+      );
+      assert(syntacticRequest, JSON.stringify({ site, requestId }));
+      syntacticHoles =
+        RequestTemplate.fromSyntacticRequest(syntacticRequest).holes;
+    }
 
     return {
       requestId,
@@ -205,13 +228,9 @@ export function computeTrackingRequests(args: {
       tracker,
       taint,
       syntactic,
-      confirmedTaint,
-      unknownTaint,
-      noMatchingRequestsSyntactic,
-      manyMatchingRequestsSyntactic,
-      confirmedSyntactic,
-      refutedSyntactic,
-      unknownSyntactic,
+      taintVerifLabel,
+      syntacticVerifLabel,
+      syntacticHoles,
     };
   });
 }
