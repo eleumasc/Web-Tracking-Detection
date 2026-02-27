@@ -289,6 +289,8 @@ function getCategoryStats(
 
     sitesHavingTrackers: sitesHavingTrackers(entries),
     sitesHavingTrackersInDisconnect: sitesHavingTrackers(entriesInDisconnect),
+
+    requests: entries.flatMap(({ trackingRequests }) => trackingRequests),
   };
 }
 
@@ -344,6 +346,7 @@ function compareCategories(
     aAvgTrackersPerSiteInDisconnect: a.avgTrackersPerSiteInDisconnect,
     aSitesHavingTrackers: a.sitesHavingTrackers,
     aSitesHavingTrackersInDisconnect: a.sitesHavingTrackersInDisconnect,
+    aRequests: _.countBy(a.requests, (x) => x.tracker),
   };
 
   const b = getCategoryStats(inputEntries, bProperty);
@@ -360,6 +363,7 @@ function compareCategories(
     bAvgTrackersPerSiteInDisconnect: b.avgTrackersPerSiteInDisconnect,
     bSitesHavingTrackers: b.sitesHavingTrackers,
     bSitesHavingTrackersInDisconnect: b.sitesHavingTrackersInDisconnect,
+    bRequests: _.countBy(b.requests, (x) => x.tracker),
   };
 
   const aTrackerRankings = getTrackerRankings(inputEntries, aProperty);
@@ -390,6 +394,19 @@ function compareCategories(
     aOnlyTrackerRankings: topTrackerRankings(aOnlyTrackerRankings),
     bOnlyTrackersCount: bOnlyTrackerRankings.length,
     bOnlyTrackerRankings: topTrackerRankings(bOnlyTrackerRankings),
+  };
+
+  result = {
+    ...result,
+
+    aOnlyRequests: _.countBy(
+      _.differenceBy(a.requests, b.requests, (x) => x.requestId),
+      (x) => x.tracker,
+    ),
+    bOnlyRequests: _.countBy(
+      _.differenceBy(b.requests, a.requests, (x) => x.requestId),
+      (x) => x.tracker,
+    ),
   };
 
   return result;
