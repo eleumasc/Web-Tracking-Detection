@@ -1,6 +1,6 @@
-# Login Taint Analysis
+# Web Tracking Detection
 
-A tool for automated taint analysis of login pages.
+A tool for automated comparison of web tracking detection techniques.
 
 ## System requirements
 
@@ -10,7 +10,7 @@ A tool for automated taint analysis of login pages.
 
 ## Setup
 
-1. Clone this repository: `git clone https://github.com/eleumasc/Login-Taint-Analysis && cd Login-Taint-Analysis`
+1. Clone this repository: `git clone https://github.com/eleumasc/Web-Tracking-Detection && cd Web-Tracking-Detection`
 2. Install the dependencies: `npm i`
 3. Run the init script: `npm run init`
 4. Copy `.env.example` to `.env`, then edit `.env` by setting the correct values
@@ -19,7 +19,7 @@ A tool for automated taint analysis of login pages.
 
 ## How to use
 
-The tool performs the analysis in stages. Each stage generates a collection in the database (the default location is the "login-taint-analysis.sqlite" file in the project root), which serves as the input for the subsequent stages.
+The tool performs the analysis in stages. Each stage generates a collection in the database (the default location is the "web-tracking-detection.sqlite" file in the project root), which serves as the input for the subsequent stages.
 
 In the following, execute each command by running `npm run start -- <command>`.
 

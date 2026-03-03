@@ -1,11 +1,11 @@
 {
-  "name": "login-taint-analysis",
+  "name": "web-tracking-detection",
   "version": "1.0.0",
   "scripts": {
     "init": "npx playwright install-deps",
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node src/index",
-    "build-container-image": "docker build -t lta-worker .",
+    "build-container-image": "docker build -t wtd-worker .",
     "build": "tsc",
     "start": "node build/index"
   },
