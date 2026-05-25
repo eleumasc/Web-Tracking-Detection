@@ -1,0 +1,4162 @@
+diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
+index b4d479dce13b..7726d83bb3a1 100644
+--- a/dom/base/Document.cpp
++++ b/dom/base/Document.cpp
+@@ -6748,7 +6748,7 @@ void Document::GetCookie(nsAString& aCookie, ErrorResult& aRv) {
+   UTF_8_ENCODING->DecodeWithoutBOMHandling(cookieString, aCookie);
+ 
+   // Foxhound: document.cookie source.
+-  MarkTaintSource(aCookie, "document.cookie");
++  MarkTaintSourceCookieString(aCookie, "document.cookie");
+ }
+ 
+ void Document::SetCookie(const nsAString& aCookieString, ErrorResult& aRv) {
+@@ -6785,9 +6785,6 @@ void Document::SetCookie(const nsAString& aCookieString, ErrorResult& aRv) {
+     return;
+   }
+ 
+-  // Foxhound: document.cookie sink.
+-  ReportTaintSink(aCookieString, "document.cookie");
+-
+   NS_ConvertUTF16toUTF8 cookieString(aCookieString);
+ 
+   nsCOMPtr<nsIURI> documentURI;
+@@ -6829,6 +6826,9 @@ void Document::SetCookie(const nsAString& aCookieString, ErrorResult& aRv) {
+     return;
+   }
+ 
++  // Foxhound: document.cookie sink.
++  ReportTaintSink(aCookieString, "document.cookie", NS_ConvertUTF8toUTF16(cookie->Name()));
++
+   bool thirdParty = true;
+   nsPIDOMWindowInner* innerWindow = GetInnerWindow();
+   // in gtests we don't have a window, let's consider those requests as 3rd
+diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
+index bceb9e5850dc..d39675a98d61 100644
+--- a/dom/base/Navigator.cpp
++++ b/dom/base/Navigator.cpp
+@@ -13,6 +13,7 @@
+ #include "nsMimeTypeArray.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/ContentBlockingNotifier.h"
++#include "mozilla/HttpRequestId.h"
+ #include "mozilla/MemoryReporting.h"
+ #include "mozilla/dom/BodyExtractor.h"
+ #include "mozilla/dom/FetchBinding.h"
+@@ -1164,42 +1165,51 @@ BeaconStreamListener::OnDataAvailable(nsIRequest* aRequest,
+ bool Navigator::SendBeacon(const nsAString& aUrl,
+                            const Nullable<fetch::BodyInit>& aData,
+                            ErrorResult& aRv) {
+-  ReportTaintSink(aUrl, "navigator.sendBeacon(url)");
++  nsAutoCString requestId;
++  mozilla::NextHttpRequestId(requestId);
++
++  ReportTaintSink(aUrl, "navigator.sendBeacon(url)",
++                  {NS_ConvertUTF8toUTF16(requestId)});
++
+   if (aData.IsNull()) {
+-    return SendBeaconInternal(aUrl, nullptr, eBeaconTypeOther, aRv);
++    return SendBeaconInternal(aUrl, nullptr, eBeaconTypeOther, requestId, aRv);
+   }
+ 
+   if (aData.Value().IsArrayBuffer()) {
+     BodyExtractor<const ArrayBuffer> body(&aData.Value().GetAsArrayBuffer());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeArrayBuffer, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeArrayBuffer, requestId,
++                              aRv);
+   }
+ 
+   if (aData.Value().IsArrayBufferView()) {
+     BodyExtractor<const ArrayBufferView> body(
+         &aData.Value().GetAsArrayBufferView());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeArrayBuffer, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeArrayBuffer, requestId,
++                              aRv);
+   }
+ 
+   if (aData.Value().IsBlob()) {
+     BodyExtractor<const Blob> body(&aData.Value().GetAsBlob());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeBlob, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeBlob, requestId, aRv);
+   }
+ 
+   if (aData.Value().IsFormData()) {
+     BodyExtractor<const FormData> body(&aData.Value().GetAsFormData());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, requestId, aRv);
+   }
+ 
+   if (aData.Value().IsUSVString()) {
+-    ReportTaintSink(aData.Value().GetAsUSVString(), "navigator.sendBeacon(body)", aUrl);
++    ReportTaintSink(aData.Value().GetAsUSVString(),
++                    "navigator.sendBeacon(body)",
++                    {nsString(aUrl), NS_ConvertUTF8toUTF16(requestId)});
+     BodyExtractor<const nsAString> body(&aData.Value().GetAsUSVString());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, requestId, aRv);
+   }
+ 
+   if (aData.Value().IsURLSearchParams()) {
+     BodyExtractor<const URLSearchParams> body(
+         &aData.Value().GetAsURLSearchParams());
+-    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, aRv);
++    return SendBeaconInternal(aUrl, &body, eBeaconTypeOther, requestId, aRv);
+   }
+ 
+   MOZ_CRASH("Invalid data type.");
+@@ -1208,6 +1218,7 @@ bool Navigator::SendBeacon(const nsAString& aUrl,
+ 
+ bool Navigator::SendBeaconInternal(const nsAString& aUrl,
+                                    BodyExtractorBase* aBody, BeaconType aType,
++                                   const nsACString& aRequestId,
+                                    ErrorResult& aRv) {
+   if (!mWindow) {
+     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+@@ -1298,6 +1309,10 @@ bool Navigator::SendBeaconInternal(const nsAString& aUrl,
+     MOZ_ASSERT(NS_SUCCEEDED(rv));
+   }
+ 
++  rv = httpChannel->SetRequestHeader("X-Foxhound-RequestId"_ns, aRequestId,
++                                     false);
++  MOZ_ASSERT(NS_SUCCEEDED(rv));
++
+   nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(channel);
+   if (p) {
+     p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
+diff --git a/dom/base/Navigator.h b/dom/base/Navigator.h
+index 6abf6cef230c..c4b42a7e87dd 100644
+--- a/dom/base/Navigator.h
++++ b/dom/base/Navigator.h
+@@ -276,7 +276,8 @@ class Navigator final : public nsISupports, public nsWrapperCache {
+   enum BeaconType { eBeaconTypeBlob, eBeaconTypeArrayBuffer, eBeaconTypeOther };
+ 
+   bool SendBeaconInternal(const nsAString& aUrl, BodyExtractorBase* aBody,
+-                          BeaconType aType, ErrorResult& aRv);
++                          BeaconType aType, const nsACString& aRequestId,
++                          ErrorResult& aRv);
+ 
+   nsIDocShell* GetDocShell() const {
+     return mWindow ? mWindow->GetDocShell() : nullptr;
+diff --git a/dom/base/nsContentUtils.cpp b/dom/base/nsContentUtils.cpp
+index c7117136ba23..29e31c12aaaf 100644
+--- a/dom/base/nsContentUtils.cpp
++++ b/dom/base/nsContentUtils.cpp
+@@ -8325,7 +8325,8 @@ bool nsContentUtils::IsCORSSafelistedRequestHeader(const nsACString& aName,
+          (aName.LowerCaseEqualsLiteral("range") &&
+           nsContentUtils::IsAllowedNonCorsRange(aValue)) ||
+          (StaticPrefs::network_http_idempotencyKey_enabled() &&
+-          aName.LowerCaseEqualsLiteral("idempotency-key"));
++          aName.LowerCaseEqualsLiteral("idempotency-key")) ||
++         (aName.LowerCaseEqualsLiteral("x-foxhound-requestid"));
+ }
+ 
+ mozilla::LogModule* nsContentUtils::ResistFingerprintingLog() {
+diff --git a/dom/fetch/Fetch.cpp b/dom/fetch/Fetch.cpp
+index fdf21515572d..89b83db7f6c4 100644
+--- a/dom/fetch/Fetch.cpp
++++ b/dom/fetch/Fetch.cpp
+@@ -510,11 +510,6 @@ already_AddRefed<Promise> FetchRequest(nsIGlobalObject* aGlobal,
+     return nullptr;
+   }
+ 
+-  // Foxhound: Sink: Add fetch sink here...
+-  nsAutoCString url;
+-  request->GetUrl(url);
+-  ReportTaintSink(url, "fetch.url");
+-
+   SafeRefPtr<InternalRequest> internalRequest = request->GetInternalRequest();
+ 
+   // Restore information of InterceptedHttpChannel if they are passed with the
+diff --git a/dom/fetch/Request.cpp b/dom/fetch/Request.cpp
+index 243f4236bd36..7f258b279872 100644
+--- a/dom/fetch/Request.cpp
++++ b/dom/fetch/Request.cpp
+@@ -13,6 +13,7 @@
+ #include "nsTaintingUtils.h"
+ 
+ #include "mozilla/ErrorResult.h"
++#include "mozilla/HttpRequestId.h"
+ #include "mozilla/StaticPrefs_network.h"
+ #include "mozilla/dom/Headers.h"
+ #include "mozilla/dom/Fetch.h"
+@@ -373,10 +374,14 @@ SafeRefPtr<Request> Request::Constructor(
+     request->SetMethod(outMethod);
+   }
+ 
+-  // Foxhound:
+-  nsCString cUrl;
++  nsAutoCString requestId;
++  mozilla::NextHttpRequestId(requestId);
++
++  // Foxhound: fetch.url sink
++  nsAutoCString cUrl;
+   request->GetURL(cUrl);
+-  nsString url = NS_ConvertUTF8toUTF16(cUrl);
++  nsAutoString url = NS_ConvertUTF8toUTF16(cUrl);
++  ReportTaintSink(url, "fetch.url", {NS_ConvertUTF8toUTF16(requestId)});
+ 
+   RefPtr<InternalHeaders> requestHeaders = request->Headers();
+ 
+@@ -388,14 +393,13 @@ SafeRefPtr<Request> Request::Constructor(
+     }
+     headers = h->GetInternalHeaders();
+ 
+-    // Foxhound:
++    // Foxhound: fetch.header(key) sink, fetch.header(value) sink
+     nsTArray<InternalHeaders::Entry> headerEntries;
+     headers->GetEntries(headerEntries);
+-    for(InternalHeaders::Entry entry : headerEntries) {
++    for (InternalHeaders::Entry entry : headerEntries) {
+       ReportTaintSink(entry.mName, "fetch.header(key)", url);
+       ReportTaintSink(entry.mValue, "fetch.header(value)", url);
+     }
+-
+   } else {
+     headers = new InternalHeaders(*requestHeaders);
+   }
+@@ -425,6 +429,12 @@ SafeRefPtr<Request> Request::Constructor(
+     return nullptr;
+   }
+ 
++  requestHeaders->Append("X-Foxhound-RequestId"_ns, requestId, aRv);
++
++  if (NS_WARN_IF(aRv.Failed())) {
++    return nullptr;
++  }
++
+   if ((aInit.mBody.WasPassed() && !aInit.mBody.Value().IsNull()) ||
+       hasCopiedBody) {
+     // HEAD and GET are not allowed to have a body.
+@@ -445,9 +455,10 @@ SafeRefPtr<Request> Request::Constructor(
+       nsCOMPtr<nsIInputStream> stream;
+       nsAutoCString contentTypeWithCharset;
+       uint64_t contentLength = 0;
+-      // Foxhound:
++      // Foxhound: fetch.body sink
+       if (bodyInit.IsUSVString()) {
+-        ReportTaintSink(bodyInit.GetAsUSVString(), "fetch.body", url);
++        ReportTaintSink(bodyInit.GetAsUSVString(), "fetch.body",
++                        {url, NS_ConvertUTF8toUTF16(requestId)});
+       }
+       aRv = ExtractByteStreamFromBody(bodyInit, getter_AddRefs(stream),
+                                       contentTypeWithCharset, contentLength);
+diff --git a/dom/localstorage/LSObject.cpp b/dom/localstorage/LSObject.cpp
+index ac354b6937d7..79ec3eb5e52f 100644
+--- a/dom/localstorage/LSObject.cpp
++++ b/dom/localstorage/LSObject.cpp
+@@ -574,7 +574,10 @@ void LSObject::GetItem(const nsAString& aKey, nsAString& aResult,
+   aResult = result;
+ 
+   // Foxhound: localStorage.getItem source
+-  MarkTaintSource(aResult, "localStorage.getItem", aKey);
++  nsTArray<nsString> args;
++  args.AppendElement(aKey);
++  args.AppendElement(result);
++  MarkTaintSourceStorageValue(aResult, "localStorage.getItem", args);
+ }
+ 
+ void LSObject::GetSupportedNames(nsTArray<nsString>& aNames) {
+@@ -629,7 +632,6 @@ void LSObject::SetItem(const nsAString& aKey, const nsAString& aValue,
+   if (info.changed()) {
+     OnChange(aKey, info.oldValue(), aValue);
+   }
+-
+ }
+ 
+ void LSObject::RemoveItem(const nsAString& aKey,
+diff --git a/dom/storage/LocalStorage.cpp b/dom/storage/LocalStorage.cpp
+index c5a3d9341ab4..d3b588eccd3b 100644
+--- a/dom/storage/LocalStorage.cpp
++++ b/dom/storage/LocalStorage.cpp
+@@ -104,7 +104,10 @@ void LocalStorage::GetItem(const nsAString& aKey, nsAString& aResult,
+   aRv = mCache->GetItem(this, aKey, aResult);
+ 
+   // Foxhound: localStorage.getItem source
+-  MarkTaintSource(aResult, "localStorage.getItem", aKey);
++  nsTArray<nsString> args;
++  args.AppendElement(aKey);
++  args.AppendElement(aResult);
++  MarkTaintSourceStorageValue(aResult, "localStorage.getItem", args);
+ }
+ 
+ void LocalStorage::SetItem(const nsAString& aKey, const nsAString& aData,
+diff --git a/dom/storage/PartitionedLocalStorage.cpp b/dom/storage/PartitionedLocalStorage.cpp
+index 7c45f6e787f7..65c7aed024e3 100644
+--- a/dom/storage/PartitionedLocalStorage.cpp
++++ b/dom/storage/PartitionedLocalStorage.cpp
+@@ -67,7 +67,10 @@ void PartitionedLocalStorage::GetItem(const nsAString& aKey, nsAString& aResult,
+   mCache->GetItem(aKey, aResult);
+ 
+   // Foxhound: localStorage.getItem source
+-  MarkTaintSource(aResult, "localStorage.getItem", aKey);
++  nsTArray<nsString> args;
++  args.AppendElement(aKey);
++  args.AppendElement(aResult);
++  MarkTaintSourceStorageValue(aResult, "localStorage.getItem", args);
+ }
+ 
+ void PartitionedLocalStorage::GetSupportedNames(nsTArray<nsString>& aKeys) {
+@@ -103,7 +106,6 @@ void PartitionedLocalStorage::SetItem(const nsAString& aKey,
+   if (rv == NS_SUCCESS_DOM_NO_OPERATION) {
+     return;
+   }
+-
+ }
+ 
+ void PartitionedLocalStorage::RemoveItem(const nsAString& aKey,
+diff --git a/dom/tainting/nsTaintingUtils.cpp b/dom/tainting/nsTaintingUtils.cpp
+index dda15abd95a4..0627ff066474 100644
+--- a/dom/tainting/nsTaintingUtils.cpp
++++ b/dom/tainting/nsTaintingUtils.cpp
+@@ -34,7 +34,8 @@ using namespace mozilla::dom;
+ static LazyLogModule gTaintLog("Taint");
+ 
+ inline bool isActive(const char* name) {
+-  return Preferences::GetBool(PREFERENCES_TAINTING_ACTIVE, true) && Preferences::GetBool(name, true);
++  return Preferences::GetBool(PREFERENCES_TAINTING_ACTIVE, true) &&
++         Preferences::GetBool(name, true);
+ }
+ 
+ inline bool isSinkActive(const char* name) {
+@@ -49,8 +50,7 @@ inline bool isSourceActive(const char* name) {
+   return isActive(s.c_str());
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name) {
+   if (cx) {
+     return JS_GetTaintOperation(cx, name);
+   }
+@@ -58,8 +58,8 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name)
+   return TaintOperation(name);
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsAString& arg)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsAString& arg) {
+   if (cx && JS::CurrentGlobalOrNull(cx)) {
+     JS::Rooted<JS::Value> argval(cx);
+     if (mozilla::dom::ToJSValue(cx, arg, &argval)) {
+@@ -70,8 +70,8 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsACString& arg)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsACString& arg) {
+   if (cx && JS::CurrentGlobalOrNull(cx)) {
+     JS::Rooted<JS::Value> argval(cx);
+     if (mozilla::dom::ToJSValue(cx, arg, &argval)) {
+@@ -82,8 +82,8 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsTArray<nsString> &args)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsTArray<nsString>& args) {
+   if (cx && JS::CurrentGlobalOrNull(cx)) {
+     JS::Rooted<JS::Value> argval(cx);
+ 
+@@ -95,8 +95,8 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsTArray<nsCString> &args)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsTArray<nsCString>& args) {
+   if (cx && JS::CurrentGlobalOrNull(cx)) {
+     JS::Rooted<JS::Value> argval(cx);
+ 
+@@ -108,8 +108,7 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-static void DescribeElement(const nsINode* node, nsAString& aInput)
+-{
++static void DescribeElement(const nsINode* node, nsAString& aInput) {
+   aInput.Truncate();
+   if (node) {
+     // Disable any taint sources for elements to prevent recursion
+@@ -123,8 +122,8 @@ static void DescribeElement(const nsINode* node, nsAString& aInput)
+   }
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsINode* node)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsINode* node) {
+   if (node) {
+     nsTArray<nsString> args;
+     nsAutoString elementDesc;
+@@ -138,9 +137,10 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const nsINode* node,
+-                                        const nsAString &str, const nsAString &attr)
+-{
++static TaintOperation GetTaintOperation(JSContext* cx, const char* name,
++                                        const nsINode* node,
++                                        const nsAString& str,
++                                        const nsAString& attr) {
+   if (node) {
+     nsTArray<nsString> args;
+ 
+@@ -166,8 +166,7 @@ static TaintOperation GetTaintOperation(JSContext *cx, const char* name, const n
+   return TaintOperation(name);
+ }
+ 
+-TaintOperation GetTaintOperation(const char* name)
+-{
++TaintOperation GetTaintOperation(const char* name) {
+   return GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name);
+ }
+ 
+@@ -176,131 +175,137 @@ TaintLocation GetTaintLocation() {
+ }
+ 
+ nsresult MarkTaintOperation(StringTaint& aTaint, const char* name) {
+-  JSContext *cx = nsContentUtils::GetCurrentJSContext();
++  JSContext* cx = nsContentUtils::GetCurrentJSContext();
+   auto op = GetTaintOperation(cx, name);
+   op.setNative();
+   aTaint.extend(op);
+   return NS_OK;
+ }
+ 
+-static nsresult MarkTaintOperation(JSContext *cx, nsACString &str, const char* name)
+-{
++static nsresult MarkTaintOperation(JSContext* cx, nsACString& str,
++                                   const char* name) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(cx, name);
++    auto op = GetTaintOperation(cx, name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsACString &str, const char* name)
+-{
++nsresult MarkTaintOperation(nsACString& str, const char* name) {
+   return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name);
+ }
+ 
+-static nsresult MarkTaintOperation(JSContext *cx, nsAString &str, const char* name)
+-{
++static nsresult MarkTaintOperation(JSContext* cx, nsAString& str,
++                                   const char* name) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(cx, name);
++    auto op = GetTaintOperation(cx, name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsAString &str, const char* name, const nsINode* node)
+-{
++nsresult MarkTaintOperation(nsAString& str, const char* name,
++                            const nsINode* node) {
+   if (str.isTainted()) {
+-    TaintOperation op = GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, node);
++    TaintOperation op =
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsAString &str, const char* name)
+-{
++nsresult MarkTaintOperation(nsAString& str, const char* name) {
+   return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name);
+ }
+ 
+-static nsresult MarkTaintOperation(JSContext *cx, nsAString &str, const char* name, const nsTArray<nsString> &args)
+-{
++static nsresult MarkTaintOperation(JSContext* cx, nsAString& str,
++                                   const char* name,
++                                   const nsTArray<nsString>& args) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(cx, name, args);
++    auto op = GetTaintOperation(cx, name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsAString &str, const char* name, const nsTArray<nsString> &args)
+-{
+-  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name, args);
++nsresult MarkTaintOperation(nsAString& str, const char* name,
++                            const nsTArray<nsString>& args) {
++  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name,
++                            args);
+ }
+ 
+-static nsresult MarkTaintOperation(JSContext *cx, nsACString &str, const char* name, const nsTArray<nsString> &args)
+-{
++static nsresult MarkTaintOperation(JSContext* cx, nsACString& str,
++                                   const char* name,
++                                   const nsTArray<nsString>& args) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(cx, name, args);
++    auto op = GetTaintOperation(cx, name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsACString &str, const char* name, const nsTArray<nsString> &args)
+-{
+-  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name, args);
++nsresult MarkTaintOperation(nsACString& str, const char* name,
++                            const nsTArray<nsString>& args) {
++  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name,
++                            args);
+ }
+ 
+-static nsresult MarkTaintOperation(JSContext *cx, nsCString &str, const char* name, const nsTArray<nsCString> &args)
+-{
++static nsresult MarkTaintOperation(JSContext* cx, nsCString& str,
++                                   const char* name,
++                                   const nsTArray<nsCString>& args) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(cx, name, args);
++    auto op = GetTaintOperation(cx, name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintOperation(nsCString &str, const char* name, const nsTArray<nsCString> &args)
+-{
+-  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name, args);
++nsresult MarkTaintOperation(nsCString& str, const char* name,
++                            const nsTArray<nsCString>& args) {
++  return MarkTaintOperation(nsContentUtils::GetCurrentJSContext(), str, name,
++                            args);
+ }
+ 
+-nsresult MarkTaintOperation(nsACString &str, const char* name, const nsACString &arg)
+-{
++nsresult MarkTaintOperation(nsACString& str, const char* name,
++                            const nsACString& arg) {
+   if (str.isTainted()) {
+-    auto op = GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg);
++    auto op =
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, str);
+     op.setNative();
+     str.Taint().extend(op);
+   }
+   return NS_OK;
+ }
+ 
+-static nsresult MarkTaintSource(nsAString &str, TaintOperation operation) {
++static nsresult MarkTaintSource(nsAString& str, TaintOperation operation) {
+   operation.setSource();
+   operation.setNative();
+   str.Taint().overlay(0, str.Length(), operation);
+   return NS_OK;
+ }
+ 
+-static nsresult MarkTaintSource(nsACString &str, TaintOperation operation) {
++static nsresult MarkTaintSource(nsACString& str, TaintOperation operation) {
+   operation.setSource();
+   operation.setNative();
+   str.Taint().overlay(0, str.Length(), operation);
+   return NS_OK;
+ }
+ 
+-static nsresult MarkTaintSource(mozilla::dom::DOMString &str, TaintOperation operation) {
++static nsresult MarkTaintSource(mozilla::dom::DOMString& str,
++                                TaintOperation operation) {
+   operation.setSource();
+   operation.setNative();
+   str.Taint().overlay(0, str.Length(), operation);
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(JSContext* cx, JSString* str, const char* name)
+-{
++nsresult MarkTaintSource(JSContext* cx, JSString* str, const char* name) {
+   if (isSourceActive(name)) {
+     TaintOperation op = GetTaintOperation(cx, name);
+     op.setSource();
+@@ -310,7 +315,8 @@ nsresult MarkTaintSource(JSContext* cx, JSString* str, const char* name)
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name, const nsAString &arg) {
++nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name,
++                         const nsAString& arg) {
+   if (isSourceActive(name)) {
+     TaintOperation op = GetTaintOperation(aCx, name, arg);
+     op.setSource();
+@@ -320,7 +326,8 @@ nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name, const
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue, const char* name) {
++nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue,
++                         const char* name) {
+   if (isSourceActive(name)) {
+     TaintOperation op = GetTaintOperation(cx, name);
+     op.setSource();
+@@ -330,8 +337,8 @@ nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue, con
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue, const char* name, const nsAString &arg)
+-{
++nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue,
++                         const char* name, const nsAString& arg) {
+   if (isSourceActive(name)) {
+     TaintOperation op = GetTaintOperation(cx, name, arg);
+     op.setSource();
+@@ -341,129 +348,209 @@ nsresult MarkTaintSource(JSContext* cx, JS::MutableHandle<JS::Value> aValue, con
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(nsAString &str, const char* name)
+-{
++nsresult MarkTaintSource(nsAString& str, const char* name) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
++    return MarkTaintSource(
++        str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(nsACString &str, const char* name)
+-{
++nsresult MarkTaintSource(nsACString& str, const char* name) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
++    return MarkTaintSource(
++        str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(nsAString &str, const char* name, const nsAString &arg)
+-{
++nsresult MarkTaintSource(nsAString& str, const char* name,
++                         const nsAString& arg) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
+   }
+   return NS_OK;
+ }
+ 
+-static nsresult MarkTaintSource(TaintFlow &flow, TaintOperation operation) {
++static nsresult MarkTaintSource(TaintFlow& flow, TaintOperation operation) {
+   operation.setSource();
+   operation.setNative();
+   flow.extend(operation);
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(TaintFlow &flow, const char* name, const nsAString &arg)
+-{
++nsresult MarkTaintSource(TaintFlow& flow, const char* name,
++                         const nsAString& arg) {
+   if (isSourceActive(name)) {
+-    flow.extend(GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
++    flow.extend(
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(nsAString &str, const char* name, const nsTArray<nsString> &arg)
+-{
++nsresult MarkTaintSource(nsAString& str, const char* name,
++                         const nsTArray<nsString>& arg) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSourceElement(nsAString &str, const char* name, const nsINode* node)
+-{
++nsresult MarkTaintSourceElement(nsAString& str, const char* name,
++                                const nsINode* node) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, node));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, node));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name)
+-{
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
++    return MarkTaintSource(
++        str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name, const nsAString &arg)
+-{
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name,
++                         const nsAString& arg) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name, const nsTArray<nsString> &arg)
+-{
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name,
++                         const nsTArray<nsString>& arg) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, arg));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSourceElement(mozilla::dom::DOMString &str, const char* name, const nsINode* node)
+-{
++nsresult MarkTaintSourceElement(mozilla::dom::DOMString& str, const char* name,
++                                const nsINode* node) {
+   if (isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, node));
++    return MarkTaintSource(
++        str,
++        GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, node));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSourceAttribute(nsAString &str, const char* name, const mozilla::dom::Element* element,
+-                                  const nsAString &attr)
+-{
++nsresult MarkTaintSourceAttribute(nsAString& str, const char* name,
++                                  const mozilla::dom::Element* element,
++                                  const nsAString& attr) {
+   // Check if the element has incoming taint flows
+   if (element) {
+     const TaintList& taintList = element->GetSelectorTaintFlowList();
+     if (taintList.hasTaint()) {
+-      str.Taint().overlay(0, str.Length(),*taintList.begin());
++      str.Taint().overlay(0, str.Length(), *taintList.begin());
+     }
+   }
+   if (nsContentUtils::IsInitialized() && isSourceActive(name)) {
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, element, str, attr));
++    return MarkTaintSource(
++        str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name,
++                               element, str, attr));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult MarkTaintSourceAttribute(mozilla::dom::DOMString &str, const char* name,  const mozilla::dom::Element* element,
+-                                  const nsAString &attr)
+-{
++nsresult MarkTaintSourceAttribute(mozilla::dom::DOMString& str,
++                                  const char* name,
++                                  const mozilla::dom::Element* element,
++                                  const nsAString& attr) {
+   // Check if the element has incoming taint flows
+   if (element) {
+     const TaintList& taintList = element->GetSelectorTaintFlowList();
+     if (taintList.hasTaint()) {
+-      str.Taint().overlay(0, str.Length(),*taintList.begin());
++      str.Taint().overlay(0, str.Length(), *taintList.begin());
+     }
+   }
+   if (nsContentUtils::IsInitialized() && isSourceActive(name)) {
+     nsAutoString nsStr;
+     str.ToString(nsStr);
+-    return MarkTaintSource(str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name, element, nsStr, attr));
++    return MarkTaintSource(
++        str, GetTaintOperation(nsContentUtils::GetCurrentJSContext(), name,
++                               element, nsStr, attr));
+   }
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name, const nsAString &arg)
+-{
++nsresult MarkTaintSourceCookieString(nsAString& aCookieString,
++                                     const char* name) {
++  int32_t pos = 0;
++  int32_t len = aCookieString.Length();
++
++  while (pos < len) {
++    int32_t start = pos;
++    int32_t end = aCookieString.FindChar(';', start);
++    if (end == kNotFound) {
++      end = len;
++    }
++
++    pos = end < len ? end + 2 : end;  // next cookie is after ';' and ' '
++
++    int32_t sep = aCookieString.FindChar('=', start);
++    if (sep == kNotFound || sep > end) {
++      sep = kNotFound;
++    }
++
++    nsTArray<nsString> args;
++    int32_t valueStart;
++    if (sep != kNotFound) {
++      args.AppendElement(Substring(aCookieString, start, sep - start));
++      valueStart = sep + 1;
++    } else {
++      args.AppendElement(VoidString());
++      valueStart = start;
++    }
++    args.AppendElement(Substring(aCookieString, valueStart, end - valueStart));
++
++    MarkTaintSourceStorageValue(aCookieString, name, args, valueStart, end);
++  }
++
++  return NS_OK;
++}
++
++nsresult MarkTaintSourceStorageValue(nsAString& aStorageValue, const char* name,
++                                     const nsTArray<nsString>& baseArgs,
++                                     uint32_t start, uint32_t end) {
++  auto* cx = nsContentUtils::GetCurrentJSContext();
++
++  for (uint32_t i = start, j = 0; i < end; ++i, ++j) {
++    nsTArray<nsString> args = baseArgs.Clone();
++    nsString index;
++    index.AppendInt(j);
++    args.AppendElement(index);
++
++    TaintOperation op = GetTaintOperation(cx, name, args);
++    op.setSource();
++    op.setNative();
++    aStorageValue.Taint().overlay(i, i + 1, op);
++  }
++
++  return NS_OK;
++}
++
++nsresult MarkTaintSourceStorageValue(nsAString& aStorageValue, const char* name,
++                                     const nsTArray<nsString>& baseArgs) {
++  return MarkTaintSourceStorageValue(aStorageValue, name, baseArgs, 0,
++                                     (int32_t)aStorageValue.Length());
++}
++
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str, const char* name,
++                         const nsAString& arg) {
+   if (!str.isTainted()) {
+     return NS_OK;
+   }
+@@ -481,20 +568,18 @@ nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name,
+   }
+ 
+   JS::Rooted<JS::Value> argval(cx);
+-  if (!mozilla::dom::ToJSValue(cx, arg, &argval))
+-    return NS_ERROR_FAILURE;
++  if (!mozilla::dom::ToJSValue(cx, arg, &argval)) return NS_ERROR_FAILURE;
+ 
+   JS::Rooted<JS::Value> strval(cx);
+-  if (!mozilla::dom::ToJSValue(cx, str, &strval))
+-    return NS_ERROR_FAILURE;
++  if (!mozilla::dom::ToJSValue(cx, str, &strval)) return NS_ERROR_FAILURE;
+ 
+   JS_ReportTaintSink(cx, strval, name, argval);
+ 
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsACString &str, const char* name, const nsAString &arg)
+-{
++nsresult ReportTaintSink(JSContext* cx, const nsACString& str, const char* name,
++                         const nsAString& arg) {
+   if (!str.isTainted()) {
+     return NS_OK;
+   }
+@@ -512,20 +597,18 @@ nsresult ReportTaintSink(JSContext *cx, const nsACString &str, const char* name,
+   }
+ 
+   JS::Rooted<JS::Value> argval(cx);
+-  if (!mozilla::dom::ToJSValue(cx, arg, &argval))
+-    return NS_ERROR_FAILURE;
++  if (!mozilla::dom::ToJSValue(cx, arg, &argval)) return NS_ERROR_FAILURE;
+ 
+   JS::Rooted<JS::Value> strval(cx);
+-  if (!mozilla::dom::ToJSValue(cx, str, &strval))
+-    return NS_ERROR_FAILURE;
++  if (!mozilla::dom::ToJSValue(cx, str, &strval)) return NS_ERROR_FAILURE;
+ 
+   JS_ReportTaintSink(cx, strval, name, argval);
+ 
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name)
+-{
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str,
++                         const char* name) {
+   if (!str.isTainted()) {
+     return NS_OK;
+   }
+@@ -552,8 +635,8 @@ nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name)
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsACString &str, const char* name)
+-{
++nsresult ReportTaintSink(JSContext* cx, const nsACString& str,
++                         const char* name) {
+   if (!str.isTainted()) {
+     return NS_OK;
+   }
+@@ -580,18 +663,18 @@ nsresult ReportTaintSink(JSContext *cx, const nsACString &str, const char* name)
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(const nsAString &str, const char* name, const nsAString &arg)
+-{
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsAString& arg) {
+   return ReportTaintSink(nsContentUtils::GetCurrentJSContext(), str, name, arg);
+ }
+ 
+-nsresult ReportTaintSink(const nsACString &str, const char* name, const nsAString &arg)
+-{
++nsresult ReportTaintSink(const nsACString& str, const char* name,
++                         const nsAString& arg) {
+   return ReportTaintSink(nsContentUtils::GetCurrentJSContext(), str, name, arg);
+ }
+ 
+-nsresult ReportTaintSink(const nsAString &str, const char* name, const nsINode* node)
+-{
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsINode* node) {
+   if (!str.isTainted()) {
+     return NS_OK;
+   }
+@@ -604,18 +687,16 @@ nsresult ReportTaintSink(const nsAString &str, const char* name, const nsINode*
+   return ReportTaintSink(str, name, elementDesc);
+ }
+ 
+-nsresult ReportTaintSink(const nsAString &str, const char* name)
+-{
++nsresult ReportTaintSink(const nsAString& str, const char* name) {
+   return ReportTaintSink(nsContentUtils::GetCurrentJSContext(), str, name);
+ }
+ 
+-nsresult ReportTaintSink(const nsACString &str, const char* name)
+-{
++nsresult ReportTaintSink(const nsACString& str, const char* name) {
+   return ReportTaintSink(nsContentUtils::GetCurrentJSContext(), str, name);
+ }
+ 
+-nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char* name)
+-{
++nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue,
++                         const char* name) {
+   if (!nsContentUtils::IsSafeToRunScript() || !JS::CurrentGlobalOrNull(cx)) {
+     return NS_ERROR_FAILURE;
+   }
+@@ -629,8 +710,8 @@ nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char
+   return NS_OK;
+ }
+ 
+-nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char* name, const nsAString &arg)
+-{
++nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue,
++                         const char* name, const nsAString& arg) {
+   if (!nsContentUtils::IsSafeToRunScript() || !JS::CurrentGlobalOrNull(cx)) {
+     return NS_ERROR_FAILURE;
+   }
+@@ -648,3 +729,34 @@ nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char
+ 
+   return NS_OK;
+ }
++
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str, const char* name,
++                         const nsTArray<nsString>& args) {
++  if (!nsContentUtils::IsSafeToRunScript() || !JS::CurrentGlobalOrNull(cx)) {
++    return NS_ERROR_FAILURE;
++  }
++
++  if (!isSinkActive(name)) {
++    return NS_OK;
++  }
++
++  JS::RootedValue argval(cx);
++  if (!mozilla::dom::ToJSValue(cx, args, &argval)) {
++    return nsresult::NS_ERROR_FAILURE;
++  }
++
++  JS::Rooted<JS::Value> strval(cx);
++  if (!mozilla::dom::ToJSValue(cx, str, &strval)) {
++    return NS_ERROR_FAILURE;
++  }
++
++  JS_ReportTaintSink(cx, strval, name, argval);
++
++  return NS_OK;
++}
++
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsTArray<nsString>& args) {
++  return ReportTaintSink(nsContentUtils::GetCurrentJSContext(), str, name,
++                         args);
++}
+diff --git a/dom/tainting/nsTaintingUtils.h b/dom/tainting/nsTaintingUtils.h
+index 583d21984fcf..af50f6d2dce9 100644
+--- a/dom/tainting/nsTaintingUtils.h
++++ b/dom/tainting/nsTaintingUtils.h
+@@ -17,80 +17,120 @@
+ 
+ #include "jsapi.h"
+ 
+-
+ // Get a taint operation
+ TaintOperation GetTaintOperation(const char* name);
+ 
+ TaintLocation GetTaintLocation();
+ 
+ // Extend the taintflow
+-nsresult MarkTaintOperation(nsAString &str, const char* name);
+-nsresult MarkTaintOperation(nsAString &str, const char* name, const nsINode* node);
+-nsresult MarkTaintOperation(nsACString &str, const char* name);
+-nsresult MarkTaintOperation(nsACString &str, const char* name, const nsACString &arg);
+-nsresult MarkTaintOperation(nsAString &str, const char* name, const nsTArray<nsString> &arg);
+-nsresult MarkTaintOperation(nsACString &str, const char* name, const nsTArray<nsString> &arg);
+-nsresult MarkTaintOperation(nsCString &str, const char* name, const nsTArray<nsCString> &arg);
++nsresult MarkTaintOperation(nsAString& str, const char* name);
++nsresult MarkTaintOperation(nsAString& str, const char* name,
++                            const nsINode* node);
++nsresult MarkTaintOperation(nsACString& str, const char* name);
++nsresult MarkTaintOperation(nsACString& str, const char* name,
++                            const nsACString& arg);
++nsresult MarkTaintOperation(nsAString& str, const char* name,
++                            const nsTArray<nsString>& arg);
++nsresult MarkTaintOperation(nsACString& str, const char* name,
++                            const nsTArray<nsString>& arg);
++nsresult MarkTaintOperation(nsCString& str, const char* name,
++                            const nsTArray<nsCString>& arg);
+ nsresult MarkTaintOperation(StringTaint& aTaint, const char* name);
+ 
+ // Foxhound: Add taint source information to a string
+-nsresult MarkTaintSource(nsAString &str, const char* name);
+-nsresult MarkTaintSource(nsACString &str, const char* name);
++nsresult MarkTaintSource(nsAString& str, const char* name);
++nsresult MarkTaintSource(nsACString& str, const char* name);
+ 
+ // Foxhound: Add taint source information to a string
+-nsresult MarkTaintSource(nsAString &str, const char* name, const nsAString &arg);
++nsresult MarkTaintSource(nsAString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult MarkTaintSource(nsAString &str, const char* name, const nsTArray<nsString> &arg);
++nsresult MarkTaintSource(nsAString& str, const char* name,
++                         const nsTArray<nsString>& arg);
+ 
+-nsresult MarkTaintSourceElement(nsAString &str, const char* name, const nsINode* node);
++nsresult MarkTaintSourceElement(nsAString& str, const char* name,
++                                const nsINode* node);
+ 
+ // Foxhound: Add taint source information to a string
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name);
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name);
+ 
+ // Foxhound: Add taint source information to a string
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name, const nsAString &arg);
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult MarkTaintSource(mozilla::dom::DOMString &str, const char* name, const nsTArray<nsString> &arg);
++nsresult MarkTaintSource(mozilla::dom::DOMString& str, const char* name,
++                         const nsTArray<nsString>& arg);
+ 
+-nsresult MarkTaintSourceElement(mozilla::dom::DOMString &str, const char* name, const nsINode* node);
++nsresult MarkTaintSourceElement(mozilla::dom::DOMString& str, const char* name,
++                                const nsINode* node);
+ 
+ // Foxhound: Add taint source information to a string
+-nsresult MarkTaintSourceAttribute(nsAString &str, const char* name, const mozilla::dom::Element* node,
+-                                  const nsAString &attr);
++nsresult MarkTaintSourceAttribute(nsAString& str, const char* name,
++                                  const mozilla::dom::Element* node,
++                                  const nsAString& attr);
+ 
+-nsresult MarkTaintSourceAttribute(mozilla::dom::DOMString &str, const char* name, const mozilla::dom::Element* node,
+-                                  const nsAString &attr);
++nsresult MarkTaintSourceAttribute(mozilla::dom::DOMString& str,
++                                  const char* name,
++                                  const mozilla::dom::Element* node,
++                                  const nsAString& attr);
+ 
+-nsresult MarkTaintSource(JSContext* aCx, JS::MutableHandle<JS::Value> aValue, const char* name);
++nsresult MarkTaintSource(JSContext* aCx, JS::MutableHandle<JS::Value> aValue,
++                         const char* name);
+ 
+-nsresult MarkTaintSource(JSContext* aCx, JS::MutableHandle<JS::Value> aValue, const char* name, const nsAString &arg);
++nsresult MarkTaintSource(JSContext* aCx, JS::MutableHandle<JS::Value> aValue,
++                         const char* name, const nsAString& arg);
+ 
+ nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name);
+ 
+-nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name, const nsAString &arg);
++nsresult MarkTaintSource(JSContext* aCx, JSString* str, const char* name,
++                         const nsAString& arg);
++
++nsresult MarkTaintSource(TaintFlow& flow, const char* name,
++                         const nsAString& arg);
++
++nsresult MarkTaintSourceCookieString(nsAString& aCookieString,
++                                     const char* name);
+ 
+-nsresult MarkTaintSource(TaintFlow &flow, const char* name, const nsAString &arg);
++nsresult MarkTaintSourceStorageValue(nsAString& aStorageValue, const char* name,
++                                     const nsTArray<nsString>& baseArgs,
++                                     uint32_t start, uint32_t end);
++
++nsresult MarkTaintSourceStorageValue(nsAString& aStorageValue, const char* name,
++                                     const nsTArray<nsString>& baseArgs);
+ 
+ // Foxhound: Report taint flows into DOM related sinks.
+-nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name);
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str, const char* name);
+ 
+ // Foxhound: Report taint flows into DOM related sinks.
+-nsresult ReportTaintSink(const nsAString &str, const char* name);
++nsresult ReportTaintSink(const nsAString& str, const char* name);
++
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsINode* node);
++
++nsresult ReportTaintSink(const nsACString& str, const char* name);
+ 
+-nsresult ReportTaintSink(const nsAString &str, const char* name, const nsINode* node);
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult ReportTaintSink(const nsACString &str, const char* name);
++nsresult ReportTaintSink(JSContext* cx, const nsACString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsAString &str, const char* name, const nsAString &arg);
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult ReportTaintSink(JSContext *cx, const nsACString &str, const char* name, const nsAString &arg);
++nsresult ReportTaintSink(const nsACString& str, const char* name,
++                         const nsAString& arg);
+ 
+-nsresult ReportTaintSink(const nsAString &str, const char* name, const nsAString &arg);
++nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue,
++                         const char* name);
+ 
+-nsresult ReportTaintSink(const nsACString &str, const char* name, const nsAString &arg);
++nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue,
++                         const char* name, const nsAString& arg);
+ 
+-nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char* name);
++nsresult ReportTaintSink(JSContext* cx, const nsAString& str, const char* name,
++                         const nsTArray<nsString>& args);
+ 
+-nsresult ReportTaintSink(JSContext* cx, JS::Handle<JS::Value> aValue, const char* name, const nsAString &arg);
++nsresult ReportTaintSink(const nsAString& str, const char* name,
++                         const nsTArray<nsString>& args);
+ 
+ #endif /* nsTaintingUtils_h__ */
+diff --git a/dom/xhr/XMLHttpRequestMainThread.cpp b/dom/xhr/XMLHttpRequestMainThread.cpp
+index 73b279a22b3b..7d726d32abf5 100644
+--- a/dom/xhr/XMLHttpRequestMainThread.cpp
++++ b/dom/xhr/XMLHttpRequestMainThread.cpp
+@@ -41,6 +41,7 @@
+ #include "mozilla/EventDispatcher.h"
+ #include "mozilla/EventListenerManager.h"
+ #include "mozilla/HoldDropJSObjects.h"
++#include "mozilla/HttpRequestId.h"
+ #include "mozilla/LoadInfo.h"
+ #include "mozilla/LoadContext.h"
+ #include "mozilla/MemoryReporting.h"
+@@ -635,25 +636,25 @@ void XMLHttpRequestMainThread::GetResponseText(DOMString& aResponseText,
+                                                ErrorResult& aRv) {
+   MOZ_DIAGNOSTIC_ASSERT(!mForWorker);
+ 
+-  #if (DEBUG_E2E_TAINTING)
+-    if(mResponseText.Taint().hasTaint()) {
+-      puts("!!!!! GetResponseText with non empty Taint !!!!!");
+-      PrintTaint(mResponseText.Taint());
+-    } else {
+-      puts("!!!!! GettResponseText with empty Taint !!!!!");
+-    }
+-  #endif
++#if (DEBUG_E2E_TAINTING)
++  if (mResponseText.Taint().hasTaint()) {
++    puts("!!!!! GetResponseText with non empty Taint !!!!!");
++    PrintTaint(mResponseText.Taint());
++  } else {
++    puts("!!!!! GettResponseText with empty Taint !!!!!");
++  }
++#endif
+ 
+   XMLHttpRequestStringSnapshot snapshot;
+   GetResponseText(snapshot, aRv);
+-    #if (DEBUG_E2E_TAINTING)
+-    if(snapshot.Taint().hasTaint()) {
+-      puts("!!!!! GetResponseText with tainted snapshot !!!!!");
+-      PrintTaint(snapshot.Taint());
+-    } else {
+-      puts("!!!!! GetResponseText with untainted snapshot !!!!!");
+-    }
+-    #endif
++#if (DEBUG_E2E_TAINTING)
++  if (snapshot.Taint().hasTaint()) {
++    puts("!!!!! GetResponseText with tainted snapshot !!!!!");
++    PrintTaint(snapshot.Taint());
++  } else {
++    puts("!!!!! GetResponseText with untainted snapshot !!!!!");
++  }
++#endif
+   if (aRv.Failed()) {
+     return;
+   }
+@@ -663,14 +664,14 @@ void XMLHttpRequestMainThread::GetResponseText(DOMString& aResponseText,
+     return;
+   }
+ 
+-      #if (DEBUG_E2E_TAINTING)
+-    if(aResponseText.Taint().hasTaint()) {
+-      puts("!!!!! GetResponseText with tainted snapshot !!!!!");
+-      PrintTaint(aResponseText.Taint());
+-    } else {
+-      puts("!!!!! GetResponseText with untainted snapshot !!!!!");
+-    }
+-    #endif
++#if (DEBUG_E2E_TAINTING)
++  if (aResponseText.Taint().hasTaint()) {
++    puts("!!!!! GetResponseText with tainted snapshot !!!!!");
++    PrintTaint(aResponseText.Taint());
++  } else {
++    puts("!!!!! GetResponseText with untainted snapshot !!!!!");
++  }
++#endif
+ 
+   // Foxhound: XMLHttpRequest.response source
+   nsTArray<nsString> args;
+@@ -731,9 +732,10 @@ void XMLHttpRequestMainThread::GetResponseText(
+                  mState == XMLHttpRequest_Binding::DONE,
+              "Unexpected mResponseBodyDecodedPos");
+   Span<const uint8_t> span = mResponseBody;
+-  aRv = AppendToResponseText(span.From(mResponseBodyDecodedPos),
+-                             mResponseBody.Taint().subtaint(mResponseBodyDecodedPos, -1),
+-                             mState == XMLHttpRequest_Binding::DONE);
++  aRv = AppendToResponseText(
++      span.From(mResponseBodyDecodedPos),
++      mResponseBody.Taint().subtaint(mResponseBodyDecodedPos, -1),
++      mState == XMLHttpRequest_Binding::DONE);
+   if (aRv.Failed()) {
+     return;
+   }
+@@ -768,12 +770,13 @@ nsresult XMLHttpRequestMainThread::CreateResponseParsedJSON(JSContext* aCx) {
+     url = NS_ConvertUTF8toUTF16(cUrl);
+   }
+   args.AppendElement(url);
+-  
++
+   MarkTaintSource(string, "XMLHttpRequest.response(json)", args);
+ 
+   // The Unicode converter has already zapped the BOM if there was one
+   JS::Rooted<JS::Value> value(aCx);
+-  if (!JS_ParseJSON(aCx, string.BeginReading(), string.Length(), string.Taint(), &value)) {
++  if (!JS_ParseJSON(aCx, string.BeginReading(), string.Length(), string.Taint(),
++                    &value)) {
+     return NS_ERROR_FAILURE;
+   }
+ 
+@@ -1694,12 +1697,15 @@ void XMLHttpRequestMainThread::Open(const nsACString& aMethod,
+   // This is already handled by the other Open() method, which passes
+   // username and password in as NullStrings.
+ 
++  mozilla::NextHttpRequestId(mRequestId);
++
+   // Foxhound: XMLHttpRequest.open sink
+-  nsCString parsedUrlStr = parsedURL->GetSpecOrDefault();
+-  nsAutoString aParsedUrlStr = NS_ConvertUTF8toUTF16(parsedUrlStr);
+-  ReportTaintSink(parsedUrlStr, "XMLHttpRequest.open(url)");
+-  ReportTaintSink(aUsername, "XMLHttpRequest.open(username)", aParsedUrlStr);
+-  ReportTaintSink(aPassword, "XMLHttpRequest.open(password)", aParsedUrlStr);
++  nsAutoString parsedUrlStr =
++      NS_ConvertUTF8toUTF16(parsedURL->GetSpecOrDefault());
++  ReportTaintSink(parsedUrlStr, "XMLHttpRequest.open(url)",
++                  {NS_ConvertUTF8toUTF16(mRequestId)});
++  ReportTaintSink(aUsername, "XMLHttpRequest.open(username)", parsedUrlStr);
++  ReportTaintSink(aPassword, "XMLHttpRequest.open(password)", parsedUrlStr);
+ 
+   // Step 8
+   nsAutoCString host;
+@@ -1776,8 +1782,8 @@ void XMLHttpRequestMainThread::SetOriginAttributes(
+  * "Copy" from a stream.
+  */
+ nsresult XMLHttpRequestMainThread::HandleStreamInput(
+-    void* closure, const char* fromRawSegment,
+-    uint32_t toOffset, uint32_t count, const StringTaint& taint, uint32_t* writeCount) {
++    void* closure, const char* fromRawSegment, uint32_t toOffset,
++    uint32_t count, const StringTaint& taint, uint32_t* writeCount) {
+   XMLHttpRequestMainThread* xmlHttpRequest =
+       static_cast<XMLHttpRequestMainThread*>(closure);
+   if (!xmlHttpRequest || !writeCount) {
+@@ -1814,9 +1820,9 @@ nsresult XMLHttpRequestMainThread::HandleStreamInput(
+                                               fallible)) {
+       return NS_ERROR_OUT_OF_MEMORY;
+     } else {
+-      #if (DEBUG_E2E_TAINTING)
+-        puts("!!!!! Appending Taint to response body !!!!!");
+-      #endif
++#if (DEBUG_E2E_TAINTING)
++      puts("!!!!! Appending Taint to response body !!!!!");
++#endif
+       xmlHttpRequest->mResponseBody.AppendTaint(taint);
+     }
+   } else if (xmlHttpRequest->mResponseType ==
+@@ -1829,27 +1835,27 @@ nsresult XMLHttpRequestMainThread::HandleStreamInput(
+                "We shouldn't be parsing a doc here");
+     rv = xmlHttpRequest->AppendToResponseText(
+         AsBytes(Span(fromRawSegment, count)), taint);
+-        #if (DEBUG_E2E_TAINTING)
+-          if(taint.hasTaint()) {
+-            puts("!!!!! Appending non empty Taint to response text !!!!!");
+-          } else {
+-            puts("!!!!! Appending empty Taint to response text !!!!!");
+-          }
+-        #endif
++#if (DEBUG_E2E_TAINTING)
++    if (taint.hasTaint()) {
++      puts("!!!!! Appending non empty Taint to response text !!!!!");
++    } else {
++      puts("!!!!! Appending empty Taint to response text !!!!!");
++    }
++#endif
+     if (NS_WARN_IF(NS_FAILED(rv))) {
+       return rv;
+     }
+   }
+ 
+   if (xmlHttpRequest->mFlagParseBody) {
+-    // Give the same data to the parser.
+-    #if (DEBUG_E2E_TAINTING)
+-      if(taint.hasTaint()) {
+-        puts("!!!!!Parsing Body with ByteInputStream and non empty Taint !!!!!");
+-      } else {
+-        puts("!!!!!Parsing Body with ByteInputStream and empty Taint !!!!!");
+-      }
+-    #endif
++// Give the same data to the parser.
++#if (DEBUG_E2E_TAINTING)
++    if (taint.hasTaint()) {
++      puts("!!!!!Parsing Body with ByteInputStream and non empty Taint !!!!!");
++    } else {
++      puts("!!!!!Parsing Body with ByteInputStream and empty Taint !!!!!");
++    }
++#endif
+ 
+     // We need to wrap the data in a new lightweight stream and pass that
+     // to the parser, because calling ReadSegments() recursively on the same
+@@ -1882,34 +1888,26 @@ nsresult XMLHttpRequestMainThread::HandleStreamInput(
+   return rv;
+ }
+ 
+-nsresult
+-XMLHttpRequestMainThread::StreamReaderFunc(nsITaintawareInputStream* in,
+-                                 void* closure,
+-                                 const char* fromRawSegment,
+-                                 uint32_t toOffset,
+-                                 uint32_t count,
+-                                 const StringTaint& aTaint,
+-                                 uint32_t *writeCount)
+-{
+-  #if (DEBUG_E2E_TAINTING)
+-    if(aTaint.hasTaint()) {
+-      puts("!!!!! StreamReaderFunc with  non empty Taint !!!!!");
+-    } else {
+-      puts("!!!!! StreamReaderFunc with empty Taint !!!!!");
+-    }
+-  #endif
+-  return HandleStreamInput(closure, fromRawSegment, toOffset, count, aTaint, writeCount);
++nsresult XMLHttpRequestMainThread::StreamReaderFunc(
++    nsITaintawareInputStream* in, void* closure, const char* fromRawSegment,
++    uint32_t toOffset, uint32_t count, const StringTaint& aTaint,
++    uint32_t* writeCount) {
++#if (DEBUG_E2E_TAINTING)
++  if (aTaint.hasTaint()) {
++    puts("!!!!! StreamReaderFunc with  non empty Taint !!!!!");
++  } else {
++    puts("!!!!! StreamReaderFunc with empty Taint !!!!!");
++  }
++#endif
++  return HandleStreamInput(closure, fromRawSegment, toOffset, count, aTaint,
++                           writeCount);
+ }
+ 
+-nsresult
+-XMLHttpRequestMainThread::StreamReaderFuncNoTaint(nsIInputStream* in,
+-                                        void* closure,
+-                                        const char* fromRawSegment,
+-                                        uint32_t toOffset,
+-                                        uint32_t count,
+-                                        uint32_t *writeCount)
+-{
+-  return HandleStreamInput(closure, fromRawSegment, toOffset, count, EmptyTaint, writeCount);
++nsresult XMLHttpRequestMainThread::StreamReaderFuncNoTaint(
++    nsIInputStream* in, void* closure, const char* fromRawSegment,
++    uint32_t toOffset, uint32_t count, uint32_t* writeCount) {
++  return HandleStreamInput(closure, fromRawSegment, toOffset, count, EmptyTaint,
++                           writeCount);
+ }
+ 
+ namespace {
+@@ -2076,15 +2074,21 @@ XMLHttpRequestMainThread::OnDataAvailable(nsIRequest* request,
+ 
+   nsCOMPtr<nsITaintawareInputStream> taintInputStream(do_QueryInterface(inStr));
+   if (!taintInputStream) {
+-    #if (DEBUG_E2E_TAINTING)
+-      puts("!!!!! NO taint-aware input stream available in XMLHttpRequest::OnDataAvailable !!!!!");
+-    #endif
+-    rv = inStr->ReadSegments(StreamReaderFuncNoTaint, (void*)this, count, &totalRead);
++#if (DEBUG_E2E_TAINTING)
++    puts(
++        "!!!!! NO taint-aware input stream available in "
++        "XMLHttpRequest::OnDataAvailable !!!!!");
++#endif
++    rv = inStr->ReadSegments(StreamReaderFuncNoTaint, (void*)this, count,
++                             &totalRead);
+   } else {
+-    #if (DEBUG_E2E_TAINTING)
+-      puts("+++++ Taint-aware input stream available in XMLHttpRequest::OnDataAvailable +++++");
+-    #endif
+-    rv = taintInputStream->TaintedReadSegments(StreamReaderFunc, (void*)this, count, &totalRead);
++#if (DEBUG_E2E_TAINTING)
++    puts(
++        "+++++ Taint-aware input stream available in "
++        "XMLHttpRequest::OnDataAvailable +++++");
++#endif
++    rv = taintInputStream->TaintedReadSegments(StreamReaderFunc, (void*)this,
++                                               count, &totalRead);
+   }
+ 
+   NS_ENSURE_SUCCESS(rv, rv);
+@@ -2789,6 +2793,10 @@ nsresult XMLHttpRequestMainThread::CreateChannel() {
+     if (timedChannel) {
+       timedChannel->SetInitiatorType(u"xmlhttprequest"_ns);
+     }
++
++    rv = httpChannel->SetRequestHeader("X-Foxhound-RequestId"_ns, mRequestId,
++                                       false);
++    NS_ENSURE_SUCCESS(rv, rv);
+   }
+ 
+   return NS_OK;
+@@ -3196,12 +3204,12 @@ void XMLHttpRequestMainThread::Send(
+   if (aData.Value().IsUSVString()) {
+     BodyExtractor<const nsAString> body(&aData.Value().GetAsUSVString());
+     // Foxhound: XMLHttpRequest.send() sink
+-    nsAutoString aUrl;
++    nsAutoString url;
+     if (mRequestURL) {
+-      nsCString url = mRequestURL->GetSpecOrDefault();
+-      aUrl = NS_ConvertUTF8toUTF16(url);
++      url = NS_ConvertUTF8toUTF16(mRequestURL->GetSpecOrDefault());
+     }
+-    ReportTaintSink(aData.Value().GetAsUSVString(), "XMLHttpRequest.send", aUrl);
++    ReportTaintSink(aData.Value().GetAsUSVString(), "XMLHttpRequest.send",
++                    {url, NS_ConvertUTF8toUTF16(mRequestId)});
+     SendInternal(&body, true, aRv);
+     return;
+   }
+@@ -3483,8 +3491,10 @@ void XMLHttpRequestMainThread::SetRequestHeader(const nsACString& aName,
+     nsCString cUrl = mRequestURL->GetSpecOrDefault();
+     url = NS_ConvertUTF8toUTF16(cUrl);
+   }
+-  ReportTaintSink(NS_ConvertUTF8toUTF16(value), "XMLHttpRequest.setRequestHeader(value)", url);
+-  ReportTaintSink(NS_ConvertUTF8toUTF16(aName), "XMLHttpRequest.setRequestHeader(name)", url);
++  ReportTaintSink(NS_ConvertUTF8toUTF16(value),
++                  "XMLHttpRequest.setRequestHeader(value)", url);
++  ReportTaintSink(NS_ConvertUTF8toUTF16(aName),
++                  "XMLHttpRequest.setRequestHeader(name)", url);
+ 
+   // Step 5
+   bool isPrivilegedCaller = IsSystemXHR();
+@@ -3509,7 +3519,6 @@ void XMLHttpRequestMainThread::SetRequestHeader(const nsACString& aName,
+   } else {
+     mAuthorRequestHeaders.MergeOrSet(aName, value);
+   }
+-
+ }
+ 
+ void XMLHttpRequestMainThread::SetTimeout(uint32_t aTimeout, ErrorResult& aRv) {
+diff --git a/dom/xhr/XMLHttpRequestMainThread.h b/dom/xhr/XMLHttpRequestMainThread.h
+index 67be9ce466d9..3e473bc4222e 100644
+--- a/dom/xhr/XMLHttpRequestMainThread.h
++++ b/dom/xhr/XMLHttpRequestMainThread.h
+@@ -807,6 +807,9 @@ class XMLHttpRequestMainThread final : public XMLHttpRequest,
+   UniquePtr<SerializedStackHolder> mOriginStack;
+ 
+   static bool sDontWarnAboutSyncXHR;
++
++ private:
++  nsAutoCString mRequestId;
+ };
+ 
+ class MOZ_STACK_CLASS AutoDontWarnAboutSyncXHR {
+diff --git a/js/src/builtin/Array.cpp b/js/src/builtin/Array.cpp
+index f78cead88244..b0a28ef7020f 100644
+--- a/js/src/builtin/Array.cpp
++++ b/js/src/builtin/Array.cpp
+@@ -1428,15 +1428,18 @@ bool js::array_join(JSContext* cx, unsigned argc, Value* vp) {
+   }
+ 
+   // Step 8.
+-  // Foxhound: We have to root the string here, as we introduce the TaintOperationFromContext call, which can trigger the GC.
++  // Foxhound: We have to root the string here, as we introduce the
++  // TaintOperationFromContext call, which can trigger the GC.
+   JS::Rooted<JSString*> str(cx, sb.finishString());
+   if (!str) {
+     return false;
+   }
+ 
+-  if(str->isTainted()) {
++  if (str->isTainted()) {
+     // Foxhound: add taint operation.
+-    str->taint().extend(TaintOperationFromContext(cx, "Array.join", true, sepstr));
++    str->taint().extend(TaintOperation("Array.join", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+   }
+ 
+   args.rval().setString(str);
+diff --git a/js/src/builtin/JSON.cpp b/js/src/builtin/JSON.cpp
+index 9cea7068ef96..44ce8c406991 100644
+--- a/js/src/builtin/JSON.cpp
++++ b/js/src/builtin/JSON.cpp
+@@ -2154,8 +2154,9 @@ bool json_stringify(JSContext* cx, unsigned argc, Value* vp) {
+ 
+     // Foxhound: Add stringify operation to taint flows.
+     if (str->isTainted()) {
+-      str->taint().extend(
+-          TaintOperationFromContext(cx, "JSON.stringify", true));
++      str->taint().extend(TaintOperation("JSON.stringify", true,
++                                         TaintLocationFromContext(cx),
++                                         taintargs_jsstring(cx, str)));
+     }
+     args.rval().setString(str);
+   } else {
+diff --git a/js/src/builtin/RegExp.cpp b/js/src/builtin/RegExp.cpp
+index b48d736fb177..4b69369f3320 100644
+--- a/js/src/builtin/RegExp.cpp
++++ b/js/src/builtin/RegExp.cpp
+@@ -150,10 +150,10 @@ bool js::CreateRegExpMatchResult(JSContext* cx, HandleRegExpShared re,
+       // Foxhound: taint propagated by NewDependentString, just need
+       // to add the operation here. Do this after adding to the rooted
+       // array to avoid GC issues.
+-      if (str->taint().hasTaint()) {
+-        str->taint().extend(
+-          TaintOperation("RegExp.prototype.exec", true, TaintLocationFromContext(cx),
+-                         { taintarg_jsstring_full(cx, srcStr), taintarg_jsstring(cx, str), taintarg(cx, i) }));
++      if (str->isTainted()) {
++        str->taint().extend(TaintOperation("RegExp.prototype.exec", true,
++                                           TaintLocationFromContext(cx),
++                                           taintargs_jsstring(cx, str)));
+       }
+       arr->setDenseInitializedLength(i + 1);
+       arr->initDenseElement(i, StringValue(str));
+diff --git a/js/src/builtin/String.cpp b/js/src/builtin/String.cpp
+index 1de3ffe1b21a..dbb84f4a1f09 100644
+--- a/js/src/builtin/String.cpp
++++ b/js/src/builtin/String.cpp
+@@ -81,12 +81,11 @@ using mozilla::Utf16ValidUpTo;
+ using JS::AutoCheckCannotGC;
+ using JS::AutoStableStringChars;
+ 
+-// Foxhound: Calls the handler function for every (densely stored) element in the given JavaScript array.
++// Foxhound: Calls the handler function for every (densely stored) element in
++// the given JavaScript array.
+ template <typename Handler>
+-void ForEachElement(JSContext* cx, HandleObject obj, Handler handler)
+-{
+-  if (!obj->is<NativeObject>())
+-    return;
++void ForEachElement(JSContext* cx, HandleObject obj, Handler handler) {
++  if (!obj->is<NativeObject>()) return;
+ 
+   NativeObject& array = obj->as<NativeObject>();
+   for (uint32_t i = 0; i < array.getDenseInitializedLength(); i++) {
+@@ -131,31 +130,29 @@ static bool foxhound_sink(JSContext* cx, unsigned argc, Value* vp);
+ /*
+  * Foxhound: String.tainted() implementation.
+  */
+-bool
+-js::str_tainted(JSContext* cx, unsigned argc, Value* vp)
+-{
++bool js::str_tainted(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+ 
+   RootedString str(cx, ArgToLinearString(cx, args, 0));
+-  if (!str || str->length() == 0)
+-    return false;
++  if (!str || str->length() == 0) return false;
+ 
+   std::string source("manual taint source");
+-  if(args.length() >= 2 && args.hasDefined(1)) {
++  if (args.length() >= 2 && args.hasDefined(1)) {
+     RootedString src_str(cx, ArgToLinearString(cx, args, 1));
+     if (src_str && src_str->length() > 0) {
+       UniqueChars src = JS_EncodeStringToLatin1(cx, src_str);
+       source = std::string(src.get());
+     }
+   }
+-  // We store the string as argument for a manual taint operation. This way it's easy to see what
+-  // the original value of a manually tainted string was for debugging/testing.
+-  TaintOperation op = TaintOperation(source.c_str(), true, TaintLocationFromContext(cx), { taintarg(cx, str) });
++  // We store the string as argument for a manual taint operation. This way it's
++  // easy to see what the original value of a manually tainted string was for
++  // debugging/testing.
++  TaintOperation op = TaintOperation(
++      source.c_str(), true, TaintLocationFromContext(cx), {taintarg(cx, str)});
+   op.setSource();
+ 
+   JSString* tainted_str = NewDependentString(cx, str, 0, str->length());
+-  if (!tainted_str)
+-    return false;
++  if (!tainted_str) return false;
+   JS_MarkTaintSource(cx, tainted_str, op);
+   MOZ_ASSERT(tainted_str->isTainted());
+ 
+@@ -166,140 +163,168 @@ js::str_tainted(JSContext* cx, unsigned argc, Value* vp)
+ /*
+  * Foxhound: taint property implementation.
+  *
+- * This builds a JS representation of the taint information associated with a string.
++ * This builds a JS representation of the taint information associated with a
++ * string.
+  */
+-static bool
+-str_taint_getter(JSContext* cx, unsigned argc, Value* vp)
+-{
++static bool str_taint_getter(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+ 
+   RootedString str(cx, ToString<CanGC>(cx, args.thisv()));
+-  if (!str)
+-    return false;
++  if (!str) return false;
+ 
+   // Wrap all taint ranges of the string.
+   RootedValueVector ranges(cx);
+   for (const TaintRange& taint_range : str->taint()) {
+     RootedObject range(cx, JS_NewObject(cx, nullptr));
+-    if(!range)
+-      return false;
+-
+-    if (!JS_DefineProperty(cx, range, "begin", taint_range.begin(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-        !JS_DefineProperty(cx, range, "end", taint_range.end(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++    if (!range) return false;
++
++    if (!JS_DefineProperty(
++            cx, range, "begin", taint_range.begin(),
++            JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++        !JS_DefineProperty(
++            cx, range, "end", taint_range.end(),
++            JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+       return false;
+ 
+     // Wrap the taint flow for the current range.
+     RootedValueVector taint_flow(cx);
+     for (TaintNode& taint_node : taint_range.flow()) {
+       RootedObject node(cx, JS_NewObject(cx, nullptr));
+-      if (!node)
+-        return false;
++      if (!node) return false;
+ 
+-      RootedString operation(cx, JS_NewStringCopyZ(cx, taint_node.operation().name()));
+-      if (!operation)
+-        return false;
++      RootedString operation(
++          cx, JS_NewStringCopyZ(cx, taint_node.operation().name()));
++      if (!operation) return false;
+ 
+-      if (!JS_DefineProperty(cx, node, "operation", operation, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++      if (!JS_DefineProperty(
++              cx, node, "operation", operation,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+       RootedValue isBuiltIn(cx);
+       isBuiltIn.setBoolean(taint_node.operation().isNative());
+ 
+-      if (!JS_DefineProperty(cx, node, "builtin", isBuiltIn, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++      if (!JS_DefineProperty(
++              cx, node, "builtin", isBuiltIn,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+       RootedValue isSource(cx);
+       isSource.setBoolean(taint_node.operation().isSource());
+ 
+-      if (!JS_DefineProperty(cx, node, "source", isSource, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++      if (!JS_DefineProperty(
++              cx, node, "source", isSource,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+       // Wrap the location
+       RootedObject location(cx, JS_NewObject(cx, nullptr));
+-      if (!location)
+-        return false;
+-      RootedString filename(cx, JS_NewUCStringCopyZ(cx, taint_node.operation().location().filename().c_str()));
+-      if (!filename)
+-        return false;
+-      RootedString function(cx, JS_NewUCStringCopyZ(cx, taint_node.operation().location().function().c_str()));
+-      if (!function)
+-        return false;
++      if (!location) return false;
++      RootedString filename(
++          cx, JS_NewUCStringCopyZ(
++                  cx, taint_node.operation().location().filename().c_str()));
++      if (!filename) return false;
++      RootedString function(
++          cx, JS_NewUCStringCopyZ(
++                  cx, taint_node.operation().location().function().c_str()));
++      if (!function) return false;
+       // Also add the MD5 hash of the containing function
+-      RootedString hash(cx, JS_NewStringCopyZ(cx, JS::convertDigestToHexString(taint_node.operation().location().scriptHash()).c_str()));
+-      if (!hash)
++      RootedString hash(
++          cx, JS_NewStringCopyZ(
++                  cx, JS::convertDigestToHexString(
++                          taint_node.operation().location().scriptHash())
++                          .c_str()));
++      if (!hash) return false;
++
++      if (!JS_DefineProperty(
++              cx, location, "filename", filename,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "function", function,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "line", taint_node.operation().location().line(),
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "pos", taint_node.operation().location().pos(),
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "next_line",
++              taint_node.operation().location().next_line(),
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "next_pos",
++              taint_node.operation().location().next_pos(),
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "scriptline",
++              taint_node.operation().location().scriptStartLine(),
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
++          !JS_DefineProperty(
++              cx, location, "scripthash", hash,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+-      if (!JS_DefineProperty(cx, location, "filename", filename, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "function", function, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "line", taint_node.operation().location().line(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "pos", taint_node.operation().location().pos(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "next_line", taint_node.operation().location().next_line(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "next_pos", taint_node.operation().location().next_pos(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "scriptline", taint_node.operation().location().scriptStartLine(), JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT) ||
+-          !JS_DefineProperty(cx, location, "scripthash", hash, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+-        return false;
+-
+-      if (!JS_DefineProperty(cx, node, "location", location, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++      if (!JS_DefineProperty(
++              cx, node, "location", location,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+       // Wrap the arguments
+       RootedValueVector taint_arguments(cx);
+       for (auto& taint_argument : taint_node.operation().arguments()) {
+-        RootedString argument(cx, JS_NewUCStringCopyZ(cx, taint_argument.c_str()));
+-        if (!argument)
+-          return false;
++        RootedString argument(cx,
++                              JS_NewUCStringCopyZ(cx, taint_argument.c_str()));
++        if (!argument) return false;
+ 
+-        if (!taint_arguments.append(StringValue(argument)))
+-          return false;
++        if (!taint_arguments.append(StringValue(argument))) return false;
+       }
+ 
+-      RootedObject arguments(cx, NewDenseCopiedArray(cx, taint_arguments.length(), taint_arguments.begin()));
+-      if (!JS_DefineProperty(cx, node, "arguments", arguments, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++      RootedObject arguments(cx,
++                             NewDenseCopiedArray(cx, taint_arguments.length(),
++                                                 taint_arguments.begin()));
++      if (!JS_DefineProperty(
++              cx, node, "arguments", arguments,
++              JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+         return false;
+ 
+-      if (!taint_flow.append(ObjectValue(*node)))
+-        return false;
++      if (!taint_flow.append(ObjectValue(*node))) return false;
+     }
+ 
+-    RootedObject flow(cx, NewDenseCopiedArray(cx, taint_flow.length(), taint_flow.begin()));
+-    if (!flow)
+-      return false;
+-    if (!JS_DefineProperty(cx, range, "flow", flow, JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
++    RootedObject flow(
++        cx, NewDenseCopiedArray(cx, taint_flow.length(), taint_flow.begin()));
++    if (!flow) return false;
++    if (!JS_DefineProperty(
++            cx, range, "flow", flow,
++            JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT))
+       return false;
+ 
+-    if (!ranges.append(ObjectValue(*range)))
+-      return false;
++    if (!ranges.append(ObjectValue(*range))) return false;
+   }
+ 
+   JSObject* array = NewDenseCopiedArray(cx, ranges.length(), ranges.begin());
+-  if (!array)
+-    return false;
++  if (!array) return false;
+ 
+   args.rval().setObject(*array);
+   return true;
+ }
+ 
+-static bool
+-construct_taint_flow(JSContext* cx, HandleObject flow_object, TaintNode** flow)
+-{
+-  if (!flow)
+-    return false;
++static bool construct_taint_flow(JSContext* cx, HandleObject flow_object,
++                                 TaintNode** flow) {
++  if (!flow) return false;
+ 
+   bool is_array;
+-  if (!JS::IsArrayObject(cx, flow_object, &is_array) || !is_array)
+-    return false;
++  if (!JS::IsArrayObject(cx, flow_object, &is_array) || !is_array) return false;
+ 
+   uint32_t length;
+-  if (!JS::GetArrayLength(cx, flow_object, &length))
+-    return false;
++  if (!JS::GetArrayLength(cx, flow_object, &length)) return false;
+ 
+   RootedValue v(cx);
+   *flow = nullptr;
+ 
+   MOZ_ASSERT(length <= 0x7fffffff);
+   for (int32_t i = length - 1; i >= 0; --i) {
+-    if (!JS_GetElement(cx, flow_object, i, &v) || !v.isObject())
+-      return false;
++    if (!JS_GetElement(cx, flow_object, i, &v) || !v.isObject()) return false;
+     RootedObject node(cx, &v.toObject());
+ 
+     if (!JS_GetProperty(cx, node, "operation", &v) || !v.isString())
+@@ -310,61 +335,47 @@ construct_taint_flow(JSContext* cx, HandleObject flow_object, TaintNode** flow)
+     UniqueChars op_str = JS_EncodeStringToUTF8(cx, operation);
+ 
+     *flow = new TaintNode(*flow, TaintOperation(op_str.get()));
+-    if ((*flow)->parent())
+-      (*flow)->parent()->release();
++    if ((*flow)->parent()) (*flow)->parent()->release();
+   }
+ 
+   return true;
+ }
+ 
+-static bool
+-str_taint_setter(JSContext* cx, unsigned argc, Value* vp)
+-{
++static bool str_taint_setter(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+ 
+   RootedString str(cx, ToString<CanGC>(cx, args.thisv()));
+-  if (!str)
+-    return false;
++  if (!str) return false;
+ 
+   RootedObject array(cx, ToObject(cx, args.get(0)));
+-  if (!array)
+-    return false;
++  if (!array) return false;
+ 
+   bool is_array;
+-  if (!JS::IsArrayObject(cx, array, &is_array) || !is_array)
+-    return false;
++  if (!JS::IsArrayObject(cx, array, &is_array) || !is_array) return false;
+ 
+   uint32_t length;
+-  if (!JS::GetArrayLength(cx, array, &length))
+-    return false;
++  if (!JS::GetArrayLength(cx, array, &length)) return false;
+ 
+   RootedValue v(cx);
+   SafeStringTaint taint;
+ 
+   for (uint32_t i = 0; i < length; ++i) {
+-    if (!JS_GetElement(cx, array, i, &v) || !v.isObject())
+-      return false;
++    if (!JS_GetElement(cx, array, i, &v) || !v.isObject()) return false;
+     RootedObject range(cx, &v.toObject());
+ 
+     uint32_t begin, end;
+ 
+-    if (!JS_GetProperty(cx, range, "begin", &v))
+-      return false;
+-    if (!ToUint32(cx, v, &begin))
+-      return false;
++    if (!JS_GetProperty(cx, range, "begin", &v)) return false;
++    if (!ToUint32(cx, v, &begin)) return false;
+ 
+-    if (!JS_GetProperty(cx, range, "end", &v))
+-      return false;
+-    if (!ToUint32(cx, v, &end))
+-      return false;
++    if (!JS_GetProperty(cx, range, "end", &v)) return false;
++    if (!ToUint32(cx, v, &end)) return false;
+ 
+-    if (!JS_GetProperty(cx, range, "flow", &v) || !v.isObject())
+-      return false;
++    if (!JS_GetProperty(cx, range, "flow", &v) || !v.isObject()) return false;
+     RootedObject flow_object(cx, &v.toObject());
+ 
+     TaintNode* flow = nullptr;
+-    if (!construct_taint_flow(cx, flow_object, &flow))
+-      return false;
++    if (!construct_taint_flow(cx, flow_object, &flow)) return false;
+ 
+     taint.append(TaintRange(begin, end, TaintFlow(flow)));
+   }
+@@ -459,13 +470,13 @@ static bool Escape(JSContext* cx, const CharT* chars, uint32_t length,
+ 
+     // Foxhound: Build new taint ranges.
+     if (current != inTaint.end()) {
+-        if (i == current->end()) {
+-            outTaint->append(TaintRange(ti, ni, current->flow()));
+-            current++;
+-        }
+-        if (i == current->begin()) {
+-            ti = ni;
+-        }
++      if (i == current->end()) {
++        outTaint->append(TaintRange(ti, ni, current->flow()));
++        current++;
++      }
++      if (i == current->begin()) {
++        ti = ni;
++      }
+     }
+   }
+   MOZ_ASSERT(ni == newLength);
+@@ -490,8 +501,8 @@ static bool str_escape(JSContext* cx, unsigned argc, Value* vp) {
+   uint32_t newLength = 0;  // initialize to silence GCC warning
+   if (str->hasLatin1Chars()) {
+     AutoCheckCannotGC nogc;
+-    if (!Escape(cx, str->latin1Chars(nogc), str->length(), newChars,
+-                &newLength, str->taint(), &newtaint)) {
++    if (!Escape(cx, str->latin1Chars(nogc), str->length(), newChars, &newLength,
++                str->taint(), &newtaint)) {
+       return false;
+     }
+   } else {
+@@ -508,15 +519,16 @@ static bool str_escape(JSContext* cx, unsigned argc, Value* vp) {
+     return true;
+   }
+ 
+-  // Foxhound: We have to root the string here, as we introduce the TaintOperationFromContext call, which can trigger the GC.
+-  // Double check if this is OK (CanGC is set below...)
++  // Foxhound: We have to root the string here, as we introduce the
++  // TaintOperationFromContext call, which can trigger the GC. Double check if
++  // this is OK (CanGC is set below...)
+   JSString* res = newChars.toStringDontDeflateNonStatic<CanGC>(cx, newLength);
+   if (!res) {
+     return false;
+   }
+ 
+   // Foxhound: set new taint
+-  if(newtaint.hasTaint()) {
++  if (newtaint.hasTaint()) {
+     newtaint.extend(TaintOperationFromContext(cx, "escape", true, str));
+     res->setTaint(cx, newtaint);
+   }
+@@ -557,8 +569,8 @@ static inline bool Unhex2(const RangedPtr<const CharT> chars,
+ }
+ 
+ template <typename CharT>
+-static bool Unescape(StringBuilder& sb,
+-                     const mozilla::Range<const CharT> chars, const StringTaint& inTaint, StringTaint* outTaint) {
++static bool Unescape(StringBuilder& sb, const mozilla::Range<const CharT> chars,
++                     const StringTaint& inTaint, StringTaint* outTaint) {
+   // Step 2.
+   uint32_t length = chars.length();
+ 
+@@ -579,8 +591,8 @@ static bool Unescape(StringBuilder& sb,
+ 
+   // Step 4.
+   uint32_t k = 0;
+-  uint32_t ni = 0;         // Foxhound: current index in output string
+-  uint32_t ti = 0;         // Foxhound: start of current taint range in output string
++  uint32_t ni = 0;  // Foxhound: current index in output string
++  uint32_t ti = 0;  // Foxhound: start of current taint range in output string
+ 
+   // Foxhound: make sure output taint is empty.
+   outTaint->clear();
+@@ -622,9 +634,9 @@ static bool Unescape(StringBuilder& sb,
+ 
+     // Foxhound: Build new taint ranges.
+     if (current != inTaint.end()) {
+-      // Need to use <= and >= here since k can increase by more than 1 per iteration
+-      // Note: if just the '%' of an escaped sequence is tainted, then this will still mark
+-      // the resulting character as tainted.
++      // Need to use <= and >= here since k can increase by more than 1 per
++      // iteration Note: if just the '%' of an escaped sequence is tainted, then
++      // this will still mark the resulting character as tainted.
+       if (k >= current->end()) {
+         outTaint->append(TaintRange(ti, ni, current->flow()));
+         current++;
+@@ -666,17 +678,19 @@ static bool str_unescape(JSContext* cx, unsigned argc, Value* vp) {
+   bool unescapeFailed = false;
+   if (str->hasLatin1Chars()) {
+     AutoCheckCannotGC nogc;
+-    unescapeFailed = !Unescape(sb, str->latin1Range(nogc), str->taint(), &newtaint);
++    unescapeFailed =
++        !Unescape(sb, str->latin1Range(nogc), str->taint(), &newtaint);
+   } else {
+     AutoCheckCannotGC nogc;
+-    unescapeFailed = !Unescape(sb, str->twoByteRange(nogc), str->taint(), &newtaint);
++    unescapeFailed =
++        !Unescape(sb, str->twoByteRange(nogc), str->taint(), &newtaint);
+   }
+   if (unescapeFailed) {
+     return false;
+   }
+ 
+   // Foxhound: add taint operation.
+-  if(newtaint.hasTaint()) {
++  if (newtaint.hasTaint()) {
+     newtaint.extend(TaintOperationFromContext(cx, "unescape", true, str));
+   }
+ 
+@@ -692,7 +706,7 @@ static bool str_unescape(JSContext* cx, unsigned argc, Value* vp) {
+   }
+ 
+   // Foxhound: add taint operation.
+-  if(newtaint.hasTaint()) {
++  if (newtaint.hasTaint()) {
+     result->setTaint(cx, newtaint);
+   }
+ 
+@@ -768,7 +782,8 @@ static bool str_resolve(JSContext* cx, HandleObject obj, HandleId id,
+     JSString* str1 = NewDependentString(cx, str, slot, 1);
+     // Originally:
+     //    JSString* str1 =
+-    //        cx->staticStrings().getUnitStringForElement(cx, str, size_t(slot));
++    //        cx->staticStrings().getUnitStringForElement(cx, str,
++    //        size_t(slot));
+     if (!str1) {
+       return false;
+     }
+@@ -940,7 +955,7 @@ static JSLinearString* SubstringInlineString(JSContext* cx,
+     }
+   }
+ 
+-  JSLinearString* ret =  NewInlineString<CanGC>(cx, chars, length);
++  JSLinearString* ret = NewInlineString<CanGC>(cx, chars, length);
+   if (ret && taint) {
+     ret->setTaint(taint);
+   }
+@@ -1010,8 +1025,8 @@ JSString* js::SubstringKernel(JSContext* cx, HandleString str, int32_t beginInt,
+       size_t rhsLength = len - lhsLength;
+ 
+       if (rope->hasLatin1Chars()) {
+-        return SubstringInlineString<Latin1Char>(cx, left, right, begin,
+-                                                 lhsLength, rhsLength, newTaint);
++        return SubstringInlineString<Latin1Char>(
++            cx, left, right, begin, lhsLength, rhsLength, newTaint);
+       }
+       return SubstringInlineString<char16_t>(cx, left, right, begin, lhsLength,
+                                              rhsLength, newTaint);
+@@ -1176,16 +1191,11 @@ static size_t ToLowerCaseLength(const char16_t* chars, size_t startIndex,
+ }
+ 
+ template <typename CharT>
+-static JSLinearString* ToLowerCase(JSContext* cx, JSLinearString* str) {
++static JSLinearString* ToLowerCaseInternal(JSContext* cx, JSLinearString* str) {
+   // Unlike toUpperCase, toLowerCase has the nice invariant that if the
+   // input is a Latin-1 string, the output is also a Latin-1 string.
+ 
+   StringChars<CharT> newChars(cx);
+-  // Foxhound: cache the taint up here to prevent GC issues
+-  SafeStringTaint taint(str->taint());
+-  if (taint.hasTaint()) {
+-    taint.extend(TaintOperationFromContextJSString(cx, "toLowerCase", true, str));
+-  }
+ 
+   const size_t length = str->length();
+   size_t resultLength;
+@@ -1238,11 +1248,7 @@ static JSLinearString* ToLowerCase(JSContext* cx, JSLinearString* str) {
+     }
+ 
+     // If no character needs to change, return the input string.
+-    // Foxhound: disabled. We need to return a new string here (so we can correctly
+-    // set the taint). However, we are in an AutoCheckCannotGC block, so cannot
+-    // allocate a new string here.
+     if (i == length) {
+-      str->setTaint(cx, taint);
+       return str;
+     }
+ 
+@@ -1273,15 +1279,24 @@ static JSLinearString* ToLowerCase(JSContext* cx, JSLinearString* str) {
+     }
+   }
+ 
+-  // Foxhound: Add taint operation to all taint ranges of the input string.
+-  JSLinearString* res = newChars.template toStringDontDeflate<CanGC>(cx, resultLength);
+-  if (res && taint.hasTaint()) {
+-    res->setTaint(cx, taint);
+-  }
++  JSLinearString* res =
++      newChars.template toStringDontDeflate<CanGC>(cx, resultLength);
+ 
+   return res;
+ }
+ 
++template <typename CharT>
++static JSLinearString* ToLowerCase(JSContext* cx, JSLinearString* str) {
++  SafeStringTaint taint(str->taint());
++  JSLinearString* res = ToLowerCaseInternal<CharT>(cx, str);
++  if (res == str) {
++    res = NewDependentString(cx, str, 0, str->length());
++  }
++  taint.extend(TaintOperationFromContextJSString(cx, "toLowerCase", true, res));
++  res->setTaint(taint);
++  return res;
++}
++
+ JSLinearString* js::StringToLowerCase(JSContext* cx, JSString* string) {
+   JSLinearString* linear = string->ensureLinear(cx);
+   if (!linear) {
+@@ -1426,8 +1441,10 @@ static bool str_toLocaleLowerCase(JSContext* cx, unsigned argc, Value* vp) {
+ 
+     // Foxhound: propagate taint and add operation
+     MOZ_ASSERT(result.isString());
+-    if(str->isTainted()) {
+-      result.toString()->setTaint(cx, str->taint().safeCopy().extend(TaintOperationFromContext(cx, "toLocaleLowerCase", true, str)));
++    if (str->isTainted()) {
++      result.toString()->setTaint(
++          cx, str->taint().safeCopy().extend(TaintOperationFromContext(
++                  cx, "toLocaleLowerCase", true, str)));
+     }
+ 
+     args.rval().set(result);
+@@ -1591,15 +1608,11 @@ static inline bool ToUpperCase(JSContext* cx, StringChars<DestChar>& newChars,
+ }
+ 
+ template <typename CharT>
+-static JSLinearString* ToUpperCase(JSContext* cx, JSLinearString* str) {
++static JSLinearString* ToUpperCaseInternal(JSContext* cx, JSLinearString* str) {
+   using Latin1StringChars = StringChars<Latin1Char>;
+   using TwoByteStringChars = StringChars<char16_t>;
+ 
+   mozilla::MaybeOneOf<Latin1StringChars, TwoByteStringChars> newChars;
+-  SafeStringTaint taint(str->taint());
+-  if (taint.hasTaint()) {
+-    taint.extend(TaintOperationFromContextJSString(cx, "toUpperCase", true, str));
+-  }
+ 
+   const size_t length = str->length();
+   size_t resultLength;
+@@ -1654,11 +1667,7 @@ static JSLinearString* ToUpperCase(JSContext* cx, JSLinearString* str) {
+     }
+ 
+     // If no character needs to change, return the input string.
+-    // Foxhound: disabled. We need to return a new string here (so we can correctly
+-    // set the taint). However, we are in an AutoCheckCannotGC block, so cannot
+-    // allocate a new string here.
+     if (i == length) {
+-      str->setTaint(cx, taint);
+       return str;
+     }
+ 
+@@ -1713,14 +1722,22 @@ static JSLinearString* ToUpperCase(JSContext* cx, JSLinearString* str) {
+   };
+ 
+   JSLinearString* res = newChars.mapNonEmpty(toString);
+-  // Foxhound: Add taint operation to all taint ranges of the input string.
+-  if(taint.hasTaint()) {
+-    res->setTaint(cx, taint);
+-  }
+ 
+   return res;
+ }
+ 
++template <typename CharT>
++static JSLinearString* ToUpperCase(JSContext* cx, JSLinearString* str) {
++  SafeStringTaint taint(str->taint());
++  JSLinearString* res = ToUpperCaseInternal<CharT>(cx, str);
++  if (res == str) {
++    res = NewDependentString(cx, str, 0, str->length());
++  }
++  taint.extend(TaintOperationFromContextJSString(cx, "toUpperCase", true, res));
++  res->setTaint(taint);
++  return res;
++}
++
+ JSLinearString* js::StringToUpperCase(JSContext* cx, JSString* string) {
+   JSLinearString* linear = string->ensureLinear(cx);
+   if (!linear) {
+@@ -1837,8 +1854,10 @@ static bool str_toLocaleUpperCase(JSContext* cx, unsigned argc, Value* vp) {
+ 
+     // Foxhound: propagate taint and add operation
+     MOZ_ASSERT(result.isString());
+-    if(str->isTainted()) {
+-      result.toString()->setTaint(cx, str->taint().safeCopy().extend(TaintOperationFromContext(cx, "toLocaleUpperCase", true, str)));
++    if (str->isTainted()) {
++      result.toString()->setTaint(
++          cx, str->taint().safeCopy().extend(TaintOperationFromContext(
++                  cx, "toLocaleUpperCase", true, str)));
+     }
+ 
+     args.rval().set(result);
+@@ -1922,8 +1941,9 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+ 
+   // Steps 1-2.
+-  RootedString str(cx,
+-                   ToStringForStringFunction(cx, "normalize", args.thisv()));
++  RootedString str1(cx,
++                    ToStringForStringFunction(cx, "normalize", args.thisv()));
++  auto* str = NewDependentString(cx, str1, 0, str1->length());
+   if (!str) {
+     return false;
+   }
+@@ -1936,7 +1956,8 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
+     form = NormalizationForm::NFC;
+   } else {
+     // Step 4.
+-    // Foxhound: We have to root the string here, as we introduce the TaintOperationFromContext call, which can trigger the GC.
++    // Foxhound: We have to root the string here, as we introduce the
++    // TaintOperationFromContext call, which can trigger the GC.
+     JS::Rooted<JSLinearString*> formStr(cx, ArgToLinearString(cx, args, 0));
+     if (!formStr) {
+       return false;
+@@ -1961,7 +1982,9 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
+   // Latin-1 strings are already in Normalization Form C.
+   if (form == NormalizationForm::NFC && str->hasLatin1Chars()) {
+     if (str->isTainted()) {
+-      str->taint().extend(TaintOperationFromContext(cx, "normalize", true, str));
++      str->taint().extend(TaintOperation("normalize", true,
++                                         TaintLocationFromContext(cx),
++                                         taintargs_jsstring(cx, str)));
+     }
+     // Step 7.
+     args.rval().setString(str);
+@@ -1992,7 +2015,9 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
+   // Return if the input string is already normalized.
+   if (alreadyNormalized.unwrap() == AlreadyNormalized::Yes) {
+     if (str->isTainted()) {
+-      str->taint().extend(TaintOperationFromContext(cx, "normalize", true, str));
++      str->taint().extend(TaintOperation("normalize", true,
++                                         TaintLocationFromContext(cx),
++                                         taintargs_jsstring(cx, str)));
+     }
+     // Step 7.
+     args.rval().setString(str);
+@@ -2006,7 +2031,10 @@ static bool str_normalize(JSContext* cx, unsigned argc, Value* vp) {
+ 
+   // Foxhound: Add taint operation.
+   if (str->isTainted()) {
+-    ns->setTaint(cx, str->taint().safeCopy().extend(TaintOperationFromContext(cx, "normalize", true, str)));
++    SafeStringTaint taint(str->taint());
++    taint.extend(TaintOperation("normalize", true, TaintLocationFromContext(cx),
++                                taintargs_jsstring(cx, str)));
++    ns->setTaint(cx, taint);
+   }
+ 
+   // Step 7.
+@@ -2223,9 +2251,11 @@ static bool str_charAt(JSContext* cx, unsigned argc, Value* vp) {
+   // Foxhound: avoid atoms here if the base string is tainted. TODO(samuel)
+   if (str->isTainted() && index.isSome()) {
+     str = NewDependentString(cx, str, index.value(), 1);
+-    str->taint().extend(TaintOperation("charAt", true, TaintLocationFromContext(cx), { taintarg(cx, index.value()) }));
++    str->taint().extend(TaintOperation("charAt", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+     args.rval().setString(str);
+-  } else { // Foxhound: only use static string if not tainted
++  } else {  // Foxhound: only use static string if not tainted
+     // Step 6.
+     auto* result = cx->staticStrings().getUnitStringForElement(cx, str, *index);
+     if (!result) {
+@@ -3273,8 +3303,10 @@ static JSLinearString* TrimString(JSContext* cx, JSString* str, bool trimStart,
+     TrimString(linear->twoByteChars(nogc), trimStart, trimEnd, length, &begin,
+                &end);
+   }
+-  // Foxhound: We have to root the string here, as we introduce the TaintOperationFromContext call, which can trigger the GC.
+-  JS::Rooted<JSLinearString*> result(cx, NewDependentString(cx, linear, begin, end - begin));
++  // Foxhound: We have to root the string here, as we introduce the
++  // TaintOperationFromContext call, which can trigger the GC.
++  JS::Rooted<JSLinearString*> result(
++      cx, NewDependentString(cx, linear, begin, end - begin));
+ 
+   // Foxhound: Add trim operation to current taint flow.
+   // the acutal trimming of taint ranges has been done in
+@@ -3282,13 +3314,21 @@ static JSLinearString* TrimString(JSContext* cx, JSString* str, bool trimStart,
+   if (result && result->isTainted()) {
+     AutoCheckCannotGC nogc;
+     if (trimStart && trimEnd) {
+-      result->taint().extend(TaintOperationFromContext(cx, "trim", true));
++      result->taint().extend(TaintOperation("trim", true,
++                                            TaintLocationFromContext(cx),
++                                            taintargs_jsstring(cx, result)));
+     } else if (trimStart) {
+-      result->taint().extend(TaintOperationFromContext(cx, "trimStart", true));
++      result->taint().extend(TaintOperation("trimStart", true,
++                                            TaintLocationFromContext(cx),
++                                            taintargs_jsstring(cx, result)));
+     } else if (trimEnd) {
+-      result->taint().extend(TaintOperationFromContext(cx, "trimEnd", true));
++      result->taint().extend(TaintOperation("trimEnd", true,
++                                            TaintLocationFromContext(cx),
++                                            taintargs_jsstring(cx, result)));
+     } else {
+-      result->taint().extend(TaintOperationFromContext(cx, "trim", true));
++      result->taint().extend(TaintOperation("trim", true,
++                                            TaintLocationFromContext(cx),
++                                            taintargs_jsstring(cx, result)));
+     }
+   }
+ 
+@@ -3342,13 +3382,10 @@ static bool str_trimEnd(JSContext* cx, unsigned argc, Value* vp) {
+ }
+ 
+ // Foxhound - move down here so we can call ToStringForStringFunction
+-static bool
+-str_untaint(JSContext* cx, unsigned argc, Value* vp)
+-{
++static bool str_untaint(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-  RootedString str(cx,
+-                   ToStringForStringFunction(cx, "untaint", args.thisv()));
++  RootedString str(cx, ToStringForStringFunction(cx, "untaint", args.thisv()));
+   if (!str) {
+     return false;
+   }
+@@ -3475,7 +3512,8 @@ static JSString* BuildFlatRopeReplacement(JSContext* cx, HandleString textstr,
+          * replacement string here.
+          */
+         RootedString leftSide(cx, NewDependentString(cx, str, 0, match - pos));
+-        if (!leftSide || !builder.appendQuiet(leftSide) || !builder.appendQuiet(repstr)) {
++        if (!leftSide || !builder.appendQuiet(leftSide) ||
++            !builder.appendQuiet(repstr)) {
+           return nullptr;
+         }
+       }
+@@ -3525,9 +3563,10 @@ static bool AppendDollarReplacement(StringBuilder& newReplaceChars,
+   const CharT* repLimit = repChars + repLength;
+   // Foxhound: index to keep track of taint information
+   size_t index = firstDollarIndex;
+-  for (const CharT* it = repChars + firstDollarIndex; it < repLimit; ++it, ++index) {
++  for (const CharT* it = repChars + firstDollarIndex; it < repLimit;
++       ++it, ++index) {
+     // Foxhound: propagate the taint information
+-    const TaintFlow *flow = repTaint.at(index);
++    const TaintFlow* flow = repTaint.at(index);
+ 
+     if (*it != '$' || it == repLimit - 1) {
+       if (flow) {
+@@ -3617,16 +3656,14 @@ static JSLinearString* InterpretDollarReplacement(
+   bool res;
+   if (repstr->hasLatin1Chars()) {
+     AutoCheckCannotGC nogc;
+-    res = AppendDollarReplacement(newReplaceChars, firstDollarIndex, matchStart,
+-                                  matchLimit, textstr,
+-                                  repstr->latin1Chars(nogc), repstr->length(),
+-                                  repstr->taint());
++    res = AppendDollarReplacement(
++        newReplaceChars, firstDollarIndex, matchStart, matchLimit, textstr,
++        repstr->latin1Chars(nogc), repstr->length(), repstr->taint());
+   } else {
+     AutoCheckCannotGC nogc;
+-    res = AppendDollarReplacement(newReplaceChars, firstDollarIndex, matchStart,
+-                                  matchLimit, textstr,
+-                                  repstr->twoByteChars(nogc), repstr->length(),
+-                                  repstr->taint());
++    res = AppendDollarReplacement(
++        newReplaceChars, firstDollarIndex, matchStart, matchLimit, textstr,
++        repstr->twoByteChars(nogc), repstr->length(), repstr->taint());
+   }
+   if (!res) {
+     return nullptr;
+@@ -3853,7 +3890,9 @@ static bool ReplaceAllInternal(const AutoCheckCannotGC& nogc,
+     // Append the substring before the current match.
+ 
+     // Foxhound - first append taint for the substring before the current match
+-    result.taint().concat(string->taint().safeSubTaint(endOfLastMatch, position), result.length());
++    result.taint().concat(
++        string->taint().safeSubTaint(endOfLastMatch, position),
++        result.length());
+ 
+     if (!result.append(strChars + endOfLastMatch, position - endOfLastMatch)) {
+       return false;
+@@ -3885,7 +3924,9 @@ static bool ReplaceAllInternal(const AutoCheckCannotGC& nogc,
+ 
+   // Foxhound: append the final taint
+   // Foxhound - first append taint for the substring before the current match
+-  result.taint().concat(string->taint().safeSubTaint(endOfLastMatch, stringLength), result.length());
++  result.taint().concat(
++      string->taint().safeSubTaint(endOfLastMatch, stringLength),
++      result.length());
+ 
+   // Step 15.
+   // Append the substring after the last match.
+@@ -3939,18 +3980,19 @@ static JSString* ReplaceAll(JSContext* cx, JSLinearString* string,
+     return nullptr;
+   }
+ 
+-  // Foxhound: extend the taint flow
+-  if(result.taint().hasTaint()) {
+-    result.taint().extend(
+-      TaintOperationFromContextJSString(cx, "replaceAll", true, searchString, replaceString));
+-  }
+-
+   // Step 16.
+   auto* resultString = result.finishString();
+   if (!resultString) {
+     return nullptr;
+   }
+ 
++  // Foxhound: extend the taint flow
++  if (resultString->isTainted()) {
++    resultString->taint().extend(
++        TaintOperation("replaceAll", true, TaintLocationFromContext(cx),
++                       taintargs_jsstring(cx, resultString)));
++  }
++
+   return resultString;
+ }
+ 
+@@ -3992,10 +4034,10 @@ static bool ReplaceAllInterleaveInternal(const AutoCheckCannotGC& nogc,
+     if (dollarIndex != UINT32_MAX) {
+       return AppendDollarReplacement(result, dollarIndex, match, match, string,
+                                      repChars, replaceLength,
+-                                       replaceString->taint());
++                                     replaceString->taint());
+     }
+-      // Foxhound: propagate taint
+-      result.taint().concat(replaceString->taint(), result.length());
++    // Foxhound: propagate taint
++    result.taint().concat(replaceString->taint(), result.length());
+     return result.append(repChars, replaceLength);
+   };
+ 
+@@ -4007,7 +4049,7 @@ static bool ReplaceAllInterleaveInternal(const AutoCheckCannotGC& nogc,
+     }
+ 
+     // Foxhound: append taint for each character
+-    const TaintFlow *flow = string->taint().at(index);
++    const TaintFlow* flow = string->taint().at(index);
+     if (flow) {
+       result.taint().set(result.length(), *flow);
+     }
+@@ -4173,7 +4215,7 @@ static ArrayObject* SplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+   size_t index = 0;
+   // Foxhound: tainting count
+   size_t count = 0;
+- 
++
+   // Step 14.
+   while (index != strLength) {
+     // Step 14.a.
+@@ -4220,10 +4262,11 @@ static ArrayObject* SplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+       return nullptr;
+     }
+ 
+-    if(sub->isTainted()) {
++    if (sub->isTainted()) {
+       // Foxhound: extend taint flow
+-      sub->taint().extend(TaintOperation("split", true, TaintLocationFromContext(cx),
+-                                        { taintarg(cx, sep), taintarg(cx, count++) }));
++      sub->taint().extend(TaintOperation("split", true,
++                                         TaintLocationFromContext(cx),
++                                         taintargs_jsstring(cx, sub)));
+     }
+ 
+     // Step 14.c.ii.5.
+@@ -4248,8 +4291,10 @@ static ArrayObject* SplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+   }
+ 
+   // Foxhound: extend taint flow
+-  if(sub->isTainted()) {
+-    sub->taint().extend(TaintOperation("split", true, TaintLocationFromContext(cx), { taintarg(cx, sep), taintarg(cx, count++) }));
++  if (sub->isTainted()) {
++    sub->taint().extend(TaintOperation("split", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, sub)));
+   }
+ 
+   // Step 18.
+@@ -4268,7 +4313,7 @@ static ArrayObject* CharSplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+   //  js::StaticStrings& staticStrings = cx->staticStrings();
+   uint32_t resultlen = (limit < strLength ? limit : strLength);
+   size_t count = 0;
+-      
++
+   MOZ_ASSERT(limit > 0 && resultlen > 0,
+              "Neither limit nor strLength is zero, so resultlen is greater "
+              "than zero.");
+@@ -4282,7 +4327,8 @@ static ArrayObject* CharSplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+   splits->ensureDenseInitializedLength(0, resultlen);
+ 
+   for (size_t i = 0; i < resultlen; ++i) {
+-    // Foxhound: code modified to avoid atoms, and added rooting because TaintLocationFromContext can trigger a GC.
++    // Foxhound: code modified to avoid atoms, and added rooting because
++    // TaintLocationFromContext can trigger a GC.
+     JS::Rooted<JSString*> sub(cx, NewDependentString(cx, str, i, 1));
+     // was:
+     // JSString* sub = staticStrings.getUnitStringForElement(cx, str, i);
+@@ -4290,8 +4336,10 @@ static ArrayObject* CharSplitHelper(JSContext* cx, Handle<JSLinearString*> str,
+       return nullptr;
+     }
+     // Foxhound: extend taint flow
+-    if(sub->isTainted()) {
+-      sub->taint().extend(TaintOperation("split", true, TaintLocationFromContext(cx), { taintarg(cx, u""), taintarg(cx, count++) }));
++    if (sub->isTainted()) {
++      sub->taint().extend(TaintOperation("split", true,
++                                         TaintLocationFromContext(cx),
++                                         taintargs_jsstring(cx, sub)));
+     }
+ 
+     splits->initDenseElement(i, StringValue(sub));
+@@ -4324,8 +4372,6 @@ static MOZ_ALWAYS_INLINE ArrayObject* SplitSingleCharHelper(
+   }
+   splits->ensureDenseInitializedLength(0, count + 1);
+ 
+-  TaintOperation op = TaintOperationFromContext(cx, "split", true);
+-
+   // Add substrings.
+   uint32_t splitsIndex = 0;
+   size_t lastEndIndex = 0;
+@@ -4337,8 +4383,10 @@ static MOZ_ALWAYS_INLINE ArrayObject* SplitSingleCharHelper(
+         return nullptr;
+       }
+       // Foxhound: extend taint flow
+-      if(sub->isTainted()) {
+-        sub->taint().extend(op);
++      if (sub->isTainted()) {
++        sub->taint().extend(TaintOperation("split", true,
++                                           TaintLocationFromContext(cx),
++                                           taintargs_jsstring(cx, sub)));
+       }
+ 
+       splits->initDenseElement(splitsIndex++, StringValue(sub));
+@@ -4354,8 +4402,10 @@ static MOZ_ALWAYS_INLINE ArrayObject* SplitSingleCharHelper(
+     return nullptr;
+   }
+   // Foxhound: extend taint flow
+-  if(sub->isTainted()) {
+-    sub->taint().extend(op);
++  if (sub->isTainted()) {
++    sub->taint().extend(TaintOperation("split", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, sub)));
+   }
+ 
+   splits->initDenseElement(splitsIndex++, StringValue(sub));
+@@ -4491,11 +4541,9 @@ static const JSFunctionSpec string_methods[] = {
+ // ES6 rev 27 (2014 Aug 24) 21.1.1
+ 
+ /* Foxhound: Add |taint| property. */
+-static const
+-JSPropertySpec string_taint_properties[] = {
++static const JSPropertySpec string_taint_properties[] = {
+     JS_PSGS("taint", str_taint_getter, str_taint_setter, JSPROP_PERMANENT),
+-    JS_PS_END
+-};
++    JS_PS_END};
+ 
+ bool js::StringConstructor(JSContext* cx, unsigned argc, Value* vp) {
+   CallArgs args = CallArgsFromVp(argc, vp);
+@@ -4825,7 +4873,7 @@ static const JSFunctionSpec string_static_methods[] = {
+     JS_SELF_HOSTED_FN("raw", "String_static_raw", 1, 0),
+ 
+     // Foxhound: Helper function for manual taint sources.
+-    JS_FN("tainted",              str_tainted,          1,0),
++    JS_FN("tainted", str_tainted, 1, 0),
+ 
+     JS_FS_END,
+ };
+@@ -4906,7 +4954,7 @@ const ClassSpec StringObject::classSpec_ = {
+     string_static_methods,
+     nullptr,
+     string_methods,
+-    string_taint_properties,    
++    string_taint_properties,
+     StringClassFinish,
+ };
+ 
+@@ -4981,7 +5029,8 @@ static const bool js_isUriUnescaped[] = {
+ 
+ #undef ____
+ 
+-static inline bool TransferBufferToString(JSContext* cx, JSStringBuilder& sb, JSString* str,
++static inline bool TransferBufferToString(JSContext* cx, JSStringBuilder& sb,
++                                          JSString* str,
+                                           const StringTaint& taint,
+                                           MutableHandleValue rval) {
+   if (!sb.empty()) {
+@@ -4991,8 +5040,7 @@ static inline bool TransferBufferToString(JSContext* cx, JSStringBuilder& sb, JS
+     }
+   } else if (str->isTainted()) {
+     str = NewDependentString(cx, str, 0, str->length());
+-    if (!str)
+-      return false;
++    if (!str) return false;
+   }
+   str->setTaint(cx, taint);
+   rval.setString(str);
+@@ -5127,10 +5175,12 @@ static MOZ_ALWAYS_INLINE bool Encode(JSContext* cx, Handle<JSLinearString*> str,
+   EncodeResult res;
+   if (str->hasLatin1Chars()) {
+     AutoCheckCannotGC nogc;
+-    res = Encode(sb, str->latin1Chars(nogc), str->length(), unescapedSet, str->taint());
++    res = Encode(sb, str->latin1Chars(nogc), str->length(), unescapedSet,
++                 str->taint());
+   } else {
+     AutoCheckCannotGC nogc;
+-    res = Encode(sb, str->twoByteChars(nogc), str->length(), unescapedSet, str->taint());
++    res = Encode(sb, str->twoByteChars(nogc), str->length(), unescapedSet,
++                 str->taint());
+   }
+ 
+   if (res == Encode_Failure) {
+@@ -5144,11 +5194,12 @@ static MOZ_ALWAYS_INLINE bool Encode(JSContext* cx, Handle<JSLinearString*> str,
+ 
+   // Foxhound: Add encode operation to output taint.
+   SafeStringTaint taint(sb.empty() ? str->taint() : sb.taint());
+-  if(taint.hasTaint()) {
++  if (taint.hasTaint()) {
+     if (unescapedSet == js_isUriReservedPlusPound) {
+       taint.extend(TaintOperationFromContext(cx, "encodeURI", true, str));
+     } else {
+-      taint.extend(TaintOperationFromContext(cx, "encodeURIComponent", true, str));
++      taint.extend(
++          TaintOperationFromContext(cx, "encodeURIComponent", true, str));
+     }
+   }
+ 
+@@ -5198,7 +5249,8 @@ static DecodeResult Decode(StringBuilder& sb, const CharT* chars, size_t length,
+         }
+ 
+         if (taint.at(k))
+-          sb.taint().append(TaintRange(sb.length(), sb.length() + 1, *taint.at(k)));
++          sb.taint().append(
++              TaintRange(sb.length(), sb.length() + 1, *taint.at(k)));
+ 
+         if (!sb.append(ch)) {
+           return Decode_Failure;
+@@ -5245,7 +5297,8 @@ static DecodeResult Decode(StringBuilder& sb, const CharT* chars, size_t length,
+         }
+ 
+         if (taint.at(k))
+-          sb.taint().append(TaintRange(sb.length(), sb.length() + 1, *taint.at(k)));
++          sb.taint().append(
++              TaintRange(sb.length(), sb.length() + 1, *taint.at(k)));
+ 
+         char32_t v = JS::Utf8ToOneUcs4Char(octets, n);
+         MOZ_ASSERT(v >= 128);
+@@ -5293,10 +5346,12 @@ static bool Decode(JSContext* cx, Handle<JSLinearString*> str,
+   DecodeResult res;
+   if (str->hasLatin1Chars()) {
+     AutoCheckCannotGC nogc;
+-    res = Decode(sb, str->latin1Chars(nogc), str->length(), reservedSet, str->taint());
++    res = Decode(sb, str->latin1Chars(nogc), str->length(), reservedSet,
++                 str->taint());
+   } else {
+     AutoCheckCannotGC nogc;
+-    res = Decode(sb, str->twoByteChars(nogc), str->length(), reservedSet, str->taint());
++    res = Decode(sb, str->twoByteChars(nogc), str->length(), reservedSet,
++                 str->taint());
+   }
+ 
+   if (res == Decode_Failure) {
+@@ -5310,11 +5365,12 @@ static bool Decode(JSContext* cx, Handle<JSLinearString*> str,
+ 
+   // Foxhound: Add decode operation to output taint.
+   SafeStringTaint taint(sb.empty() ? str->taint() : sb.taint());
+-  if(taint.hasTaint()) {
+-    if(reservedSet == js_isUriReservedPlusPound) {
++  if (taint.hasTaint()) {
++    if (reservedSet == js_isUriReservedPlusPound) {
+       taint.extend(TaintOperationFromContext(cx, "decodeURI", true, str));
+     } else {
+-      taint.extend(TaintOperationFromContext(cx, "decodeURIComponent", true, str));
++      taint.extend(
++          TaintOperationFromContext(cx, "decodeURIComponent", true, str));
+     }
+   }
+ 
+diff --git a/js/src/jit/VMFunctions.cpp b/js/src/jit/VMFunctions.cpp
+index cd75693ca7f0..3a098bab21db 100644
+--- a/js/src/jit/VMFunctions.cpp
++++ b/js/src/jit/VMFunctions.cpp
+@@ -1357,10 +1357,13 @@ JSString* StringReplace(JSContext* cx, HandleString string,
+   MOZ_ASSERT(pattern);
+   MOZ_ASSERT(repl);
+   // Foxhound: this will propagate the taint but not add the operation.
+-  // Foxhound: We have to root the string here, as we introduce the TaintOperationFromContext call, which can trigger the GC.
++  // Foxhound: We have to root the string here, as we introduce the
++  // TaintOperationFromContext call, which can trigger the GC.
+   Rooted<JSString*> str(cx, str_replace_string_raw(cx, string, pattern, repl));
+-  if (str && str->taint().hasTaint()) {
+-    str->taint().extend(TaintOperationFromContext(cx, "replace", true, pattern, repl));
++  if (str && str->isTainted()) {
++    str->taint().extend(TaintOperation("replace", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+   }
+   return str;
+ }
+diff --git a/js/src/jsapi.cpp b/js/src/jsapi.cpp
+index 1028cc0d13c3..726a2970adc4 100644
+--- a/js/src/jsapi.cpp
++++ b/js/src/jsapi.cpp
+@@ -53,7 +53,7 @@
+ #include "js/ContextOptions.h"  // JS::ContextOptions{,Ref}
+ #include "js/Conversions.h"
+ #include "js/Date.h"  // JS::GetReduceMicrosecondTimePrecisionCallback
+-#include "js/EnvironmentChain.h"       // JS::EnvironmentChain
++#include "js/EnvironmentChain.h"  // JS::EnvironmentChain
+ #include "js/ErrorInterceptor.h"
+ #include "js/ErrorReport.h"           // JSErrorBase
+ #include "js/experimental/JitInfo.h"  // JSJitInfo
+@@ -3787,10 +3787,10 @@ JS_PUBLIC_API bool JS_ParseJSONWithReviver(JSContext* cx, HandleString str,
+   }
+ 
+   return stableChars.isLatin1()
+-             ? ParseJSONWithReviver(cx, stableChars.latin1Range(), reviver,
+-                                    vp, str->taint())
+-             : ParseJSONWithReviver(cx, stableChars.twoByteRange(), reviver,
+-                                    vp, str->taint());
++             ? ParseJSONWithReviver(cx, stableChars.latin1Range(), reviver, vp,
++                                    str->taint())
++             : ParseJSONWithReviver(cx, stableChars.twoByteRange(), reviver, vp,
++                                    str->taint());
+ }
+ 
+ /************************************************************************/
+@@ -4948,37 +4948,30 @@ JS_PUBLIC_API void JS::detail::AssertArgumentsAreSane(JSContext* cx,
+ #endif /* JS_DEBUG */
+ 
+ // Foxhound: Taint related JSAPI code.
+-JS_PUBLIC_API const StringTaint&
+-JS_GetStringTaint(const JSString* str)
+-{
++JS_PUBLIC_API const StringTaint& JS_GetStringTaint(const JSString* str) {
+   return str->taint();
+ }
+ 
+-JS_PUBLIC_API const StringTaint&
+-JS_GetStringTaint(const JSLinearString* str)
+-{
++JS_PUBLIC_API const StringTaint& JS_GetStringTaint(const JSLinearString* str) {
+   return str->taint();
+ }
+ 
+-JS_PUBLIC_API void
+-JS_SetStringTaint(JSContext* cx, JSString* str, const StringTaint& taint)
+-{
++JS_PUBLIC_API void JS_SetStringTaint(JSContext* cx, JSString* str,
++                                     const StringTaint& taint) {
+   if (str) {
+     str->setTaint(cx, taint);
+   }
+ }
+ 
+-JS_PUBLIC_API void
+-JS_SetTaint(JSContext* cx, JS::MutableHandleValue value, const StringTaint& taint)
+-{
++JS_PUBLIC_API void JS_SetTaint(JSContext* cx, JS::MutableHandleValue value,
++                               const StringTaint& taint) {
+   if (value.isString()) {
+     JS_SetStringTaint(cx, value.toString(), taint);
+   }
+ }
+ 
+-JS_PUBLIC_API void
+-JS_MarkTaintSource(JSContext* cx, JSString* str, const TaintOperation& op)
+-{
++JS_PUBLIC_API void JS_MarkTaintSource(JSContext* cx, JSString* str,
++                                      const TaintOperation& op) {
+   if (!str->isTainted()) {
+     JS_SetStringTaint(cx, str, SafeStringTaint(0, str->length(), op));
+   } else {
+@@ -4986,9 +4979,9 @@ JS_MarkTaintSource(JSContext* cx, JSString* str, const TaintOperation& op)
+   }
+ }
+ 
+-JS_PUBLIC_API void
+-JS_MarkTaintSource(JSContext* cx, JS::MutableHandleValue value, const TaintOperation& op)
+-{
++JS_PUBLIC_API void JS_MarkTaintSource(JSContext* cx,
++                                      JS::MutableHandleValue value,
++                                      const TaintOperation& op) {
+   if (value.isString()) {
+     // If we have a string, set taint directly
+     JS_MarkTaintSource(cx, value.toString(), op);
+@@ -4996,7 +4989,7 @@ JS_MarkTaintSource(JSContext* cx, JS::MutableHandleValue value, const TaintOpera
+     // If it is an object, loop over contents
+     // This function is used for convenience to taint all
+     // strings in an object like '{ payload : "hello!" }'
+-    NativeObject *obj = MaybeNativeObject(value.toObjectOrNull());
++    NativeObject* obj = MaybeNativeObject(value.toObjectOrNull());
+     if (obj) {
+       for (size_t i = 0; i < obj->slotSpan(); i++) {
+         JS::Value slot = obj->getSlot(i);
+@@ -5008,56 +5001,50 @@ JS_MarkTaintSource(JSContext* cx, JS::MutableHandleValue value, const TaintOpera
+   }
+ }
+ 
+-JS_PUBLIC_API TaintOperation
+-JS_GetTaintOperation(JSContext* cx, const char* sink, JS::HandleValue arg)
+-{
++JS_PUBLIC_API TaintOperation JS_GetTaintOperation(JSContext* cx,
++                                                  const char* sink,
++                                                  JS::HandleValue arg) {
+   return TaintOperationFromContext(cx, sink, false, arg, false);
+ }
+ 
+-JS_PUBLIC_API TaintOperation
+-JS_GetTaintOperationFullArgs(JSContext* cx, const char* sink, JS::HandleValue arg)
+-{
++JS_PUBLIC_API TaintOperation JS_GetTaintOperationFullArgs(JSContext* cx,
++                                                          const char* sink,
++                                                          JS::HandleValue arg) {
+   return TaintOperationFromContext(cx, sink, false, arg, true);
+ }
+ 
+-JS_PUBLIC_API TaintOperation
+-JS_GetTaintOperation(JSContext* cx, const char* sink)
+-{
++JS_PUBLIC_API TaintOperation JS_GetTaintOperation(JSContext* cx,
++                                                  const char* sink) {
+   return TaintOperationFromContext(cx, sink, false);
+ }
+ 
+-JS_PUBLIC_API TaintLocation
+-JS_GetTaintLocation(JSContext* cx)
+-{
++JS_PUBLIC_API TaintLocation JS_GetTaintLocation(JSContext* cx) {
+   return TaintLocationFromContext(cx);
+ }
+ 
+-JS_PUBLIC_API void
+-JS_SetFallbackTaintLocation(JSContext* cx, const TaintLocation& taintLocation) {
++JS_PUBLIC_API void JS_SetFallbackTaintLocation(
++    JSContext* cx, const TaintLocation& taintLocation) {
+   cx->setFallbackTaintLocation(taintLocation);
+ }
+ 
+-JS_PUBLIC_API void
+-JS_ReportTaintSink(JSContext* cx, JS::HandleValue val, const char* sink)
+-{
++JS_PUBLIC_API void JS_ReportTaintSink(JSContext* cx, JS::HandleValue val,
++                                      const char* sink) {
+   RootedValue arg(cx);
+   arg.setNull();
+   JS_ReportTaintSink(cx, val, sink, arg);
+ }
+ 
+-JS_PUBLIC_API void
+-JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink)
+-{
++JS_PUBLIC_API void JS_ReportTaintSink(JSContext* cx, JS::HandleString str,
++                                      const char* sink) {
+   RootedValue arg(cx);
+   arg.setNull();
+   JS_ReportTaintSink(cx, str, sink, arg);
+ }
+ 
+-JS_PUBLIC_API void
+-JS_ReportTaintSink(JSContext* cx, JS::HandleValue value, const char* sink, JS::HandleValue arg)
+-{
++JS_PUBLIC_API void JS_ReportTaintSink(JSContext* cx, JS::HandleValue value,
++                                      const char* sink, JS::HandleValue arg) {
+   if (value.isString()) {
+-    JSString *str = value.toString();
++    JSString* str = value.toString();
+     if (str) {
+       JS::RootedString strobj(cx, str);
+       JS_ReportTaintSink(cx, strobj, sink, arg);
+@@ -5065,9 +5052,8 @@ JS_ReportTaintSink(JSContext* cx, JS::HandleValue value, const char* sink, JS::H
+   }
+ }
+ 
+-JS_PUBLIC_API void
+-JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink, JS::HandleValue arg)
+-{
++JS_PUBLIC_API void JS_ReportTaintSink(JSContext* cx, JS::HandleString str,
++                                      const char* sink, JS::HandleValue arg) {
+   const unsigned TAINT_REPORT_FUNCTION_SLOT = 5;
+ 
+   if (!str->isTainted()) {
+@@ -5079,19 +5065,21 @@ JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink, JS::Ha
+   // Print a message to stdout. Also include the current JS backtrace.
+   auto& firstRange = *str->taint().begin();
+ 
+-  std::cerr << "!!! Tainted flow into " << sink << " from " << firstRange.flow().source().name() << " !!!" << std::endl;
++  std::cerr << "!!! Tainted flow into " << sink << " from "
++            << firstRange.flow().source().name() << " !!!" << std::endl;
+   // DumpBacktrace(cx);
+ 
+   // Report a warning to show up on the web console
+-  JS_ReportWarningUTF8(cx, "Tainted flow from %s into %s!", firstRange.flow().source().name(), sink);
++  JS_ReportWarningUTF8(cx, "Tainted flow from %s into %s!",
++                       firstRange.flow().source().name(), sink);
+ 
+   // Extend the taint flow to include the sink function
+   str->taint().extend(TaintOperationFromContext(cx, sink, true, arg, true));
+ 
+   // Trigger a custom event that can be caught by an extension.
+-  // To simplify things, this part is implemented in JavaScript. Since we don't want to recompile
+-  // this code everytime we detect a tainted flow, we store the compiled function into a reserved
+-  // slot of the current global object.
++  // To simplify things, this part is implemented in JavaScript. Since we don't
++  // want to recompile this code everytime we detect a tainted flow, we store
++  // the compiled function into a reserved slot of the current global object.
+   RootedFunction report(cx);
+ 
+   JS::Rooted<JSObject*> global(cx, cx->global());
+@@ -5101,33 +5089,20 @@ JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink, JS::Ha
+     // Need to compile.
+     const char* argnames[3] = {"str", "sink", "stack"};
+     const char* funbody =
++        // clang-format off
+       "if (typeof window !== 'undefined' && typeof document !== 'undefined') {\n"
+       "    var t = window;\n"
+       "    if (location.protocol == 'javascript:' || location.protocol == 'data:' || location.protocol == 'about:') {\n"
+-      "        t = parent.window;\n"
++      "        t = t.parent;\n"
+       "    }\n"
+-      "    var pl;\n"
+-      "    try {\n"
+-      "        pl = parent.location.href;\n"
+-      "    } catch (e) {\n"
+-      "        pl = 'different origin';\n"
+-      "    }\n"  
+-      "    var timestamp = -1;\n"
+-      "    try {\n"
+-      "        timestamp = Date.now();\n"
+-      "    } catch (e) {\n"
+-      "        timestamp = -2;\n"
+-      "    }\n"  
+       "    var e = document.createEvent('CustomEvent');\n"
+       "    var info = {\n"
+-      "        subframe: t !== window,\n"
+-      "        loc: location.href,\n"
+-      "        parentloc: pl,\n"
+-      "        referrer: document.referrer,\n"
++      "        subframe: window !== window.top,\n"
++      "        loc: t.location.href,\n"
++      "        baseURI: t.document.baseURI,\n"
+       "        str: str,\n"
+       "        sink: sink,\n"
+       "        stack: stack,\n"
+-      "        timestamp: timestamp\n"
+       "    }\n"
+       "    e.initCustomEvent('__taintreport', true, false, info);\n"
+       "    t.dispatchEvent(e);\n"
+@@ -5135,24 +5110,24 @@ JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink, JS::Ha
+       "} else {\n"
+       "    return undefined;\n"
+       "}\n";
++    // clang-format on
+     CompileOptions options(cx);
+     options.setFile("taint_reporting.js");
+ 
+     JS::EnvironmentChain emptyChain(cx, JS::SupportUnscopables::No);
+-    report = CompileFunctionUtf8(cx, emptyChain,
+-                                 options, "ReportTaintSink", 3,
++    report = CompileFunctionUtf8(cx, emptyChain, options, "ReportTaintSink", 3,
+                                  argnames, funbody, strlen(funbody));
+     MOZ_ASSERT(report);
+ 
+     // Store the compiled function into the current global object.
+-    JS_SetReservedSlot(global, TAINT_REPORT_FUNCTION_SLOT, ObjectValue(*report));
++    JS_SetReservedSlot(global, TAINT_REPORT_FUNCTION_SLOT,
++                       ObjectValue(*report));
+   } else {
+     report = JS_ValueToFunction(cx, slot);
+   }
+ 
+   RootedObject stack(cx);
+-  if (!JS::CaptureCurrentStack(cx, &stack,
+-                               JS::StackCapture(JS::AllFrames()))) {
++  if (!JS::CaptureCurrentStack(cx, &stack, JS::StackCapture(JS::AllFrames()))) {
+     JS_ReportErrorUTF8(cx, "Invalid stack object in CaptureCurrentStack!");
+     return;
+   }
+@@ -5176,7 +5151,7 @@ JS_ReportTaintSink(JSContext* cx, JS::HandleString str, const char* sink, JS::Ha
+ #endif
+ 
+ // Enable with ac_add_options --enable-jitspew
+-#if defined (JS_JITSPEW)
++#if defined(JS_JITSPEW)
+   MaybeSpewStringTaint(cx, str, retVal);
+ #endif
+ }
+diff --git a/js/src/jstaint.cpp b/js/src/jstaint.cpp
+index ac1d77cdd64f..84b5c10a1599 100644
+--- a/js/src/jstaint.cpp
++++ b/js/src/jstaint.cpp
+@@ -28,8 +28,7 @@
+ 
+ using namespace JS;
+ 
+-const size_t max_length = 128;
+-const size_t copy_length = (max_length >> 1) - 2;
++const size_t MAX_ARG_LENGTH = 128;
+ 
+ static std::u16string ascii2utf16(const std::string& str) {
+   std::u16string res;
+@@ -37,8 +36,8 @@ static std::u16string ascii2utf16(const std::string& str) {
+   return res;
+ }
+ 
+-std::u16string JS::taintarg_char(JSContext* cx, const char16_t ch) {
+-  return std::u16string(1, ch);
++std::u16string JS::taintarg_char(JSContext* cx, const char16_t c) {
++  return std::u16string(1, c);
+ }
+ 
+ std::u16string JS::taintarg(JSContext* cx, const char16_t* str) {
+@@ -69,21 +68,9 @@ std::u16string JS::taintarg(JSContext* cx, HandleString str) {
+ 
+   js::UniquePtr<char16_t, JS::FreePolicy> buf(cx->pod_malloc<char16_t>(len));
+   js::CopyChars(buf.get(), *linear);
+-  if (len > max_length) {
+-    // Foxhound was crashing after startup after copying start and end
+-    // of the long strings, so disable copying here
+-    // TODO: work out why windows doesn't like this...
+-    // Update: this also caused issues with some URLs causing crashes
+-    // I have a feeling there are some encoding/length issues
+-#if 1  // defined(_WIN32)
+-    return std::u16string(buf.get(), max_length);
+-#else
+-    std::u16string result(buf.get(), copy_length);
+-    result.append(u"....");
+-    result.append(std::u16string(buf.get(), len - copy_length, copy_length));
+-    return result;
+-#endif
+-  }
++  // if (len > MAX_ARG_LENGTH) {
++  //   return std::u16string(buf.get(), MAX_ARG_LENGTH);
++  // }
+   return std::u16string(buf.get(), len);
+ }
+ 
+@@ -97,21 +84,9 @@ std::u16string JS::taintarg_jsstring(JSContext* cx,
+ 
+   js::UniquePtr<char16_t, JS::FreePolicy> buf(cx->pod_malloc<char16_t>(len));
+   js::CopyChars(buf.get(), *str);
+-  if (len > max_length) {
+-    // Foxhound was crashing after startup after copying start and end
+-    // of the long strings, so disable copying here
+-    // TODO: work out why windows doesn't like this...
+-    // Update: this also caused issues with some URLs causing crashes
+-    // I have a feeling there are some encoding/length issues
+-#if 1  // defined(_WIN32)
+-    return std::u16string(buf.get(), max_length);
+-#else
+-    std::u16string result(buf.get(), copy_length);
+-    result.append(u"....");
+-    result.append(std::u16string(buf.get(), len - copy_length, copy_length));
+-    return result;
+-#endif
+-  }
++  // if (len > MAX_ARG_LENGTH) {
++  //   return std::u16string(buf.get(), MAX_ARG_LENGTH);
++  // }
+   return std::u16string(buf.get(), len);
+ }
+ 
+@@ -190,16 +165,16 @@ std::vector<std::u16string> JS::taintargs(JSContext* cx, HandleString str1,
+   return args;
+ }
+ 
+-std::vector<std::u16string> JS::taintargs(JSContext* cx, HandleString arg) {
++std::vector<std::u16string> JS::taintargs(JSContext* cx, HandleString str) {
+   std::vector<std::u16string> args;
+-  args.push_back(taintarg(cx, arg));
++  args.push_back(taintarg(cx, str));
+   return args;
+ }
+ 
+ std::vector<std::u16string> JS::taintargs_jsstring(JSContext* cx,
+-                                                   JSString* const& arg) {
++                                                   JSString* const& str) {
+   std::vector<std::u16string> args;
+-  args.push_back(taintarg_jsstring(cx, arg));
++  args.push_back(taintarg_jsstring(cx, str));
+   return args;
+ }
+ 
+@@ -337,31 +312,13 @@ TaintOperation JS::TaintOperationFromContextJSString(
+ TaintOperation JS::TaintOperationConcat(JSContext* cx, const char* name,
+                                         bool native, JS::HandleString arg1,
+                                         JS::HandleString arg2) {
+-  std::vector<std::u16string> args = taintargs(cx, arg1, arg2);
+-  std::u16string whichStringsAreTainted = u"tainted:";
+-  if (arg1->isTainted()) {
+-    whichStringsAreTainted.append(u"L");
+-  }
+-  if (arg2->isTainted()) {
+-    whichStringsAreTainted.append(u"R");
+-  }
+-  args.push_back(whichStringsAreTainted);
+-  return TaintOperation(name, native, TaintLocationFromContext(cx), args);
++  return TaintOperation(name, native, TaintLocationFromContext(cx));
+ }
+ 
+ TaintOperation JS::TaintOperationConcat(JSContext* cx, const char* name,
+                                         bool native, JSString* const& arg1,
+                                         JSString* const& arg2) {
+-  std::vector<std::u16string> args = taintargs_jsstring(cx, arg1, arg2);
+-  std::u16string whichStringsAreTainted = u"tainted:";
+-  if (arg1->isTainted()) {
+-    whichStringsAreTainted.append(u"L");
+-  }
+-  if (arg2->isTainted()) {
+-    whichStringsAreTainted.append(u"R");
+-  }
+-  args.push_back(whichStringsAreTainted);
+-  return TaintOperation(name, native, TaintLocationFromContext(cx), args);
++  return TaintOperation(name, native, TaintLocationFromContext(cx));
+ }
+ 
+ TaintOperation JS::TaintOperationFromContext(JSContext* cx, const char* name,
+@@ -370,49 +327,7 @@ TaintOperation JS::TaintOperationFromContext(JSContext* cx, const char* name,
+ }
+ 
+ void JS::MarkTaintedFunctionArguments(JSContext* cx, JSFunction* function,
+-                                      const CallArgs& args) {
+-  if (!function) return;
+-
+-  RootedValue name(cx);
+-
+-  JS::Rooted<JSAtom*> atom(cx);
+-  JSAtom* ma = function->maybePartialDisplayAtom();
+-  if (ma != nullptr) {
+-    atom = ma;
+-  } else {
+-    atom = Atomize(cx, "", 0);
+-  }
+-  name = StringValue(atom);
+-
+-  RootedFunction fun(cx, function);
+-
+-  std::u16string sourceinfo(u"unknown");
+-  if (fun->isInterpreted() && fun->hasBaseScript()) {
+-    RootedScript script(cx, JSFunction::getOrCreateScript(cx, fun));
+-    if (script) {
+-      int lineno = script->lineno();
+-      js::ScriptSource* source = script->scriptSource();
+-      if (source && source->filename()) {
+-        std::string filename(source->filename());
+-        sourceinfo =
+-            ascii2utf16(filename) + u":" + ascii2utf16(std::to_string(lineno));
+-      }
+-    }
+-  }
+-
+-  TaintLocation location = TaintLocationFromContext(cx);
+-  for (unsigned i = 0; i < args.length(); i++) {
+-    if (args[i].isString()) {
+-      RootedString arg(cx, args[i].toString());
+-      if (arg->isTainted()) {
+-        arg->taint().extend(
+-            TaintOperation("function", location,
+-                           {taintarg(cx, name), sourceinfo, taintarg(cx, i),
+-                            taintarg(cx, args.length())}));
+-      }
+-    }
+-  }
+-}
++                                      const CallArgs& args) {}
+ 
+ #if defined(JS_JITSPEW)
+ void JS::MaybeSpewStringTaint(JSContext* cx, JSString* str,
+diff --git a/js/src/jstaint.h b/js/src/jstaint.h
+index fd9a3d1a70a3..e9b046f19b11 100644
+--- a/js/src/jstaint.h
++++ b/js/src/jstaint.h
+@@ -22,7 +22,7 @@
+ namespace JS {
+ 
+ // Converts a char into the argument type for a taint operation.
+-std::u16string taintarg_char(JSContext* cx, const char16_t str);
++std::u16string taintarg_char(JSContext* cx, const char16_t c);
+ 
+ // Converts a raw char pointer into the argument type for a taint operation.
+ std::u16string taintarg(JSContext* cx, const char16_t* str);
+@@ -51,7 +51,7 @@ std::u16string taintarg(JSContext* cx, JS::HandleValue val,
+ std::u16string taintarg(JSContext* cx, int32_t num);
+ 
+ // Converts a JS Handle to a taint argument string.
+-std::vector<std::u16string> taintargs(JSContext* cx, JS::HandleValue str,
++std::vector<std::u16string> taintargs(JSContext* cx, JS::HandleValue val,
+                                       bool fullArgs);
+ 
+ std::vector<std::u16string> taintargs(JSContext* cx, JS::HandleString str);
+@@ -88,24 +88,24 @@ TaintOperation TaintOperationFromContext(JSContext* cx, const char* name,
+ 
+ TaintOperation TaintOperationFromContextJSString(JSContext* cx,
+                                                  const char* name, bool native,
+-                                                 JSString* const& str);
++                                                 JSString* const& arg);
+ 
+ TaintOperation TaintOperationFromContextJSString(JSContext* cx,
+                                                  const char* name, bool native,
+-                                                 JSString* const& str1,
+-                                                 JSString* const& str2);
++                                                 JSString* const& arg1,
++                                                 JSString* const& arg2);
+ 
+ TaintOperation TaintOperationFromContextJSString(
+     JSContext* cx, const char* name, bool native,
+-    const JSLinearString* const& str1, const JSLinearString* const& str2);
++    const JSLinearString* const& arg1, const JSLinearString* const& arg2);
+ 
+ TaintOperation TaintOperationConcat(JSContext* cx, const char* name,
+-                                    bool native, JS::HandleString str1,
+-                                    JS::HandleString str2);
++                                    bool native, JS::HandleString arg1,
++                                    JS::HandleString arg2);
+ 
+ TaintOperation TaintOperationConcat(JSContext* cx, const char* name,
+-                                    bool native, JSString* const& str1,
+-                                    JSString* const& str2);
++                                    bool native, JSString* const& arg1,
++                                    JSString* const& arg2);
+ 
+ TaintOperation TaintOperationFromContext(JSContext* cx, const char* name,
+                                          bool native);
+diff --git a/js/src/vm/Interpreter.cpp b/js/src/vm/Interpreter.cpp
+index 5cf4fff6fb22..52bb63f9f725 100644
+--- a/js/src/vm/Interpreter.cpp
++++ b/js/src/vm/Interpreter.cpp
+@@ -581,8 +581,9 @@ bool js::InternalCallOrConstruct(JSContext* cx, const CallArgs& args,
+   /* Invoke native functions. */
+   RootedFunction fun(cx, &args.callee().as<JSFunction>());
+   // Foxhound: mark tainted function call arguments for tracing purposes.
+-  if (!fun->isSelfHostedOrIntrinsic() && fun->isInterpreted())
+-      MarkTaintedFunctionArguments(cx, fun, args);
++  if (!fun->isSelfHostedOrIntrinsic() && fun->isInterpreted()) {
++    MarkTaintedFunctionArguments(cx, fun, args);
++  }
+ 
+   if (fun->isNativeFun()) {
+     MOZ_ASSERT_IF(construct, !fun->isConstructor());
+@@ -3288,8 +3289,9 @@ bool MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER js::Interpret(JSContext* cx,
+         }
+ 
+         // Foxhound: mark tainted function call arguments for tracing purposes.
+-        if (!fun->isSelfHostedOrIntrinsic() && fun->isInterpreted())
+-            MarkTaintedFunctionArguments(cx, fun, args);
++        if (!fun->isSelfHostedOrIntrinsic() && fun->isInterpreted()) {
++          MarkTaintedFunctionArguments(cx, fun, args);
++        }
+ 
+         // Enter the callee's realm if this is a cross-realm call. Use
+         // MakeScopeExit to leave this realm on all error/JIT-return paths
+diff --git a/js/src/vm/JSONParser.cpp b/js/src/vm/JSONParser.cpp
+index b53238ece986..7852769b8e9a 100644
+--- a/js/src/vm/JSONParser.cpp
++++ b/js/src/vm/JSONParser.cpp
+@@ -326,9 +326,10 @@ JSONToken JSONTokenizer<CharT, ParserT>::advanceAfterArrayElement() {
+ template <typename CharT, typename ParserT>
+ template <JSONStringType ST>
+ JSONToken JSONTokenizer<CharT, ParserT>::stringToken(const CharPtr start,
+-                                                     size_t length, const StringTaint& taint) {
+-  if (!parser->handler.template setStringValue<ST>(start, length,
+-                                                   getSource(), taint, parser)) {
++                                                     size_t length,
++                                                     const StringTaint& taint) {
++  if (!parser->handler.template setStringValue<ST>(start, length, getSource(),
++                                                   taint, parser)) {
+     return JSONToken::OOM;
+   }
+   return JSONToken::String;
+@@ -338,10 +339,11 @@ template <typename CharT, typename ParserT>
+ template <JSONStringType ST>
+ JSONToken JSONTokenizer<CharT, ParserT>::stringToken(
+     JSONStringBuilder& builder) {
+-  if (!parser->handler.template setStringValue<ST>(builder, getSource(), parser)) {
++  if (!parser->handler.template setStringValue<ST>(builder, getSource(),
++                                                   parser)) {
+     return JSONToken::OOM;
+   }
+-  return JSONToken::String;    
++  return JSONToken::String;
+ }
+ 
+ template <typename CharT, typename ParserT>
+@@ -378,7 +380,8 @@ JSONToken JSONTokenizer<CharT, ParserT>::readString() {
+       size_t length = current - start;
+       ptrdiff_t offset = start - begin;
+       current++;
+-      return stringToken<ST>(start, length, mTaint.safeSubTaint(offset, offset + length));
++      return stringToken<ST>(start, length,
++                             mTaint.safeSubTaint(offset, offset + length));
+     }
+ 
+     if (*current == '\\') {
+@@ -398,7 +401,9 @@ JSONToken JSONTokenizer<CharT, ParserT>::readString() {
+    */
+   JSONStringBuilder builder(parser->handler.context());
+   do {
+-    if (start < current && !builder.append(start.get(), current.get(), mTaint.safeSubTaint(start - begin, current - begin))) {
++    if (start < current &&
++        !builder.append(start.get(), current.get(),
++                        mTaint.safeSubTaint(start - begin, current - begin))) {
+       return token(JSONToken::OOM);
+     }
+ 
+@@ -782,21 +787,23 @@ void JSONFullParseHandlerAnyChar::trace(JSTracer* trc) {
+ }
+ 
+ template <typename CharT>
+-bool JSONFullParseHandler<CharT>::JSONStringBuilder::append(char16_t c, const TaintFlow& taintFlow) {
++bool JSONFullParseHandler<CharT>::JSONStringBuilder::append(
++    char16_t c, const TaintFlow& taintFlow) {
+   // Foxhound: add taint information for next output character.
+-  buffer.taint().append(TaintRange(buffer.length(), buffer.length() + 1, taintFlow));
++  buffer.taint().append(
++      TaintRange(buffer.length(), buffer.length() + 1, taintFlow));
+   return buffer.append(c);
+ }
+ 
+ template <typename CharT>
+-bool JSONFullParseHandler<CharT>::JSONStringBuilder::append(const CharT* begin,
+-                                                            const CharT* end,
+-                                                            const StringTaint& taint) {
++bool JSONFullParseHandler<CharT>::JSONStringBuilder::append(
++    const CharT* begin, const CharT* end, const StringTaint& taint) {
+   buffer.appendTaintAt(buffer.length(), taint);
+   return buffer.append(begin, end);
+ }
+ 
+-JSString* JSONFullParseHandlerAnyChar::CurrentJsonPath(const Vector<StackEntry, 10>& stack) const {
++JSString* JSONFullParseHandlerAnyChar::CurrentJsonPath(
++    const Vector<StackEntry, 10>& stack) const {
+   // https://www.ietf.org/archive/id/draft-goessner-dispatch-jsonpath-00.html
+ 
+   JSStringBuilder builder(cx);
+@@ -846,15 +853,6 @@ template <JSONStringType ST, typename ParserT>
+ inline bool JSONFullParseHandler<CharT>::setStringValue(
+     CharPtr start, size_t length, mozilla::Span<const CharT>&& source,
+     const StringTaint& taint, const ParserT* parser) {
+-
+-  TaintOperation op("JSON.parse");
+-  // Foxhound: propagate taint.
+-  if (ST != JSONStringType::PropertyName && taint.hasTaint()) {
+-    JSString* path = parser->CurrentJsonPath();
+-    RootedString jsonPath(cx, path);
+-    op = TaintOperationFromContextJSString(cx, "JSON.parse", true, jsonPath);
+-  }
+-  
+   JSString* str;
+   if constexpr (ST == JSONStringType::PropertyName) {
+     str = AtomizeChars(cx, start.get(), length);
+@@ -869,7 +867,9 @@ inline bool JSONFullParseHandler<CharT>::setStringValue(
+   // Foxhound: propagate taint.
+   if (ST != JSONStringType::PropertyName && taint.hasTaint()) {
+     str->setTaint(cx, taint);
+-    str->taint().extend(op);
++    str->taint().extend(TaintOperation("JSON.parse", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+   }
+ 
+   v = JS::StringValue(str);
+@@ -879,16 +879,8 @@ inline bool JSONFullParseHandler<CharT>::setStringValue(
+ template <typename CharT>
+ template <JSONStringType ST, typename ParserT>
+ inline bool JSONFullParseHandler<CharT>::setStringValue(
+-    JSONStringBuilder& builder, mozilla::Span<const CharT>&& source, const ParserT* parser) {
+-
+-  TaintOperation op("JSON.parse");
+-  // Foxhound: propagate taint.
+-  if (ST != JSONStringType::PropertyName && builder.buffer.taint()) {
+-    JSString* path = parser->CurrentJsonPath();
+-    RootedString jsonPath(cx, path);
+-    op = TaintOperationFromContextJSString(cx, "JSON.parse", true, jsonPath);
+-  }
+-
++    JSONStringBuilder& builder, mozilla::Span<const CharT>&& source,
++    const ParserT* parser) {
+   JSString* str;
+   if constexpr (ST == JSONStringType::PropertyName) {
+     str = builder.buffer.finishAtom();
+@@ -901,8 +893,10 @@ inline bool JSONFullParseHandler<CharT>::setStringValue(
+   }
+ 
+   // Foxhound: Add taint operation.
+-  if (str->taint().hasTaint()) {
+-    str->taint().extend(op);
++  if (str->isTainted()) {
++    str->taint().extend(TaintOperation("JSON.parse", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+   }
+ 
+   v = JS::StringValue(str);
+@@ -1475,8 +1469,11 @@ class MOZ_STACK_CLASS DelegateHandler {
+ 
+     explicit JSONStringBuilder(FrontendContext* fc) : buffer(fc) {}
+ 
+-    bool append(char16_t c, const TaintFlow& taintFlow) { return buffer.append(c, taintFlow); }
+-    bool append(const CharT* begin, const CharT* end, const StringTaint& taint) {
++    bool append(char16_t c, const TaintFlow& taintFlow) {
++      return buffer.append(c, taintFlow);
++    }
++    bool append(const CharT* begin, const CharT* end,
++                const StringTaint& taint) {
+       return buffer.append(begin, end, taint);
+     }
+   };
+@@ -1669,8 +1666,8 @@ class MOZ_STACK_CLASS DelegateParser
+   using Base = JSONPerHandlerParser<CharT, HandlerT>;
+ 
+  public:
+-  DelegateParser(FrontendContext* fc, mozilla::Range<const CharT> data, const StringTaint& taint,
+-                 JS::JSONParseHandler* handler)
++  DelegateParser(FrontendContext* fc, mozilla::Range<const CharT> data,
++                 const StringTaint& taint, JS::JSONParseHandler* handler)
+       : Base(fc, data, taint) {
+     this->handler.setDelegateHandler(handler);
+   }
+@@ -1702,7 +1699,8 @@ static bool ParseJSONWithHandlerImpl(const CharT* chars, uint32_t len,
+   FrontendContext fc;
+   // NOTE: We don't set stack quota here because JSON parser doesn't use it.
+ 
+-  DelegateParser<CharT> parser(&fc, mozilla::Range(chars, len), EmptyTaint, handler);
++  DelegateParser<CharT> parser(&fc, mozilla::Range(chars, len), EmptyTaint,
++                               handler);
+   if (!parser.parse()) {
+     return false;
+   }
+diff --git a/js/src/vm/SelfHosting.cpp b/js/src/vm/SelfHosting.cpp
+index 59a094a7f38b..1e2aa50508b5 100644
+--- a/js/src/vm/SelfHosting.cpp
++++ b/js/src/vm/SelfHosting.cpp
+@@ -1680,196 +1680,136 @@ static bool intrinsic_ConstructorForTypedArray(JSContext* cx, unsigned argc,
+ }
+ 
+ // Foxhound: Add taint operation to JSString.
+-static bool
+-taint_addTaintOperation(JSContext* cx, unsigned argc, Value* vp)
+-{
+-    // String, operation, args...
+-    CallArgs args = CallArgsFromVp(argc, vp);
+-
+-    // check String and operations
+-    MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
++static bool taint_addTaintOperation(JSContext* cx, unsigned argc, Value* vp) {
++  // String, operation, args...
++  CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-    RootedString str(cx, args[0].toString());
+-    if (!str) {
+-        return false;
+-    }
++  // check String and operations
++  MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
+ 
+-    if(!str->isTainted()) {
+-      return true;
+-    }
++  RootedString str(cx, args[0].toString());
++  if (!str) {
++    return false;
++  }
+ 
+-    RootedString opName(cx, args[1].toString());
+-    if (!opName)
+-        return false;
++  if (!str->isTainted()) {
++    return true;
++  }
+ 
+-    UniqueChars op_chars = JS_EncodeStringToUTF8(cx, opName);
+-    if (!op_chars)
+-        return false;
++  RootedString opName(cx, args[1].toString());
++  if (!opName) {
++    return false;
++  }
+ 
+-    // add arguments
+-    std::vector<std::u16string> taint_args;
+-
+-    for(size_t i = 2; i < args.length(); i++) {
+-        JSString* argStr = ToString<NoGC>(cx, args[i]);
+-        if (!argStr) {
+-            argStr = ToString<CanGC>(cx, args[i]);
+-            if (!argStr) {
+-                taint_args.push_back(taintarg(cx, u""));
+-            } else {
+-                RootedString rs(cx, argStr);
+-                taint_args.push_back(taintarg(cx, rs));
+-            }
+-        } else {
+-            RootedString rs(cx, argStr);
+-            taint_args.push_back(taintarg(cx, rs));
+-        }
+-    }
++  UniqueChars opNameChars = JS_EncodeStringToUTF8(cx, opName);
++  if (!opNameChars) {
++    return false;
++  }
+ 
+-    str->taint().extend(TaintOperation(op_chars.get(), TaintLocationFromContext(cx), taint_args));
++  str->taint().extend(TaintOperation(opNameChars.get(),
++                                     TaintLocationFromContext(cx),
++                                     taintargs_jsstring(cx, str)));
+ 
+-    return true;
++  return true;
+ }
+ 
+-static bool
+-taint_addTaintOperation_native_full(JSContext* cx, unsigned argc, Value* vp)
+-{
+-    // String, operation, args...
+-    CallArgs args = CallArgsFromVp(argc, vp);
+-
+-    // check String and operations
+-    MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
++static bool taint_addTaintOperation_native_full(JSContext* cx, unsigned argc,
++                                                Value* vp) {
++  // String, operation, args...
++  CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-    RootedString str(cx, args[0].toString());
+-    if (!str) {
+-        return false;
+-    }
++  // check String and operations
++  MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
+ 
+-    if(!str->isTainted()) {
+-      return true;
+-    }
++  RootedString str(cx, args[0].toString());
++  if (!str) {
++    return false;
++  }
+ 
+-    RootedString opName(cx, args[1].toString());
+-    if (!opName)
+-        return false;
++  if (!str->isTainted()) {
++    return true;
++  }
+ 
+-    UniqueChars op_chars = JS_EncodeStringToUTF8(cx, opName);
+-    if (!op_chars)
+-        return false;
++  RootedString opName(cx, args[1].toString());
++  if (!opName) return false;
+ 
+-    // add arguments
+-    std::vector<std::u16string> taint_args;
+-
+-    for(size_t i = 2; i < args.length(); i++) {
+-        JSString* argStr = ToString<NoGC>(cx, args[i]);
+-        if (!argStr) {
+-            argStr = ToString<CanGC>(cx, args[i]);
+-            if (!argStr) {
+-                taint_args.push_back(taintarg(cx, u""));
+-            } else {
+-                RootedString rs(cx, argStr);
+-                taint_args.push_back(taintarg_full(cx, rs));
+-            }
+-        } else {
+-            RootedString rs(cx, argStr);
+-            taint_args.push_back(taintarg_full(cx, rs));
+-        }
+-    }
++  UniqueChars opNameChars = JS_EncodeStringToUTF8(cx, opName);
++  if (!opNameChars) return false;
+ 
+-    str->taint().extend(TaintOperation(op_chars.get(), true, TaintLocationFromContext(cx), taint_args));
++  str->taint().extend(TaintOperation(opNameChars.get(), true,
++                                     TaintLocationFromContext(cx),
++                                     taintargs_jsstring(cx, str)));
+ 
+-    return true;
++  return true;
+ }
+ 
+-static bool
+-taint_addTaintOperation_native(JSContext* cx, unsigned argc, Value* vp)
+-{
+-    // String, operation, args...
+-    CallArgs args = CallArgsFromVp(argc, vp);
+-
+-    // check String and operations
+-    MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
++static bool taint_addTaintOperation_native(JSContext* cx, unsigned argc,
++                                           Value* vp) {
++  // String, operation, args...
++  CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-    RootedString str(cx, args[0].toString());
+-    if (!str) {
+-        return false;
+-    }
++  // check String and operations
++  MOZ_ASSERT(args.length() >= 2 && args[0].isString() && args[1].isString());
+ 
+-    if(!str->isTainted()) {
+-      return true;
+-    }
++  RootedString str(cx, args[0].toString());
++  if (!str) {
++    return false;
++  }
+ 
+-    RootedString opName(cx, args[1].toString());
+-    if (!opName)
+-        return false;
++  if (!str->isTainted()) {
++    return true;
++  }
+ 
+-    UniqueChars op_chars = JS_EncodeStringToUTF8(cx, opName);
+-    if (!op_chars)
+-        return false;
++  RootedString opName(cx, args[1].toString());
++  if (!opName) return false;
+ 
+-    // add arguments
+-    std::vector<std::u16string> taint_args;
+-
+-    for(size_t i = 2; i < args.length(); i++) {
+-        JSString* argStr = ToString<NoGC>(cx, args[i]);
+-        if (!argStr) {
+-            argStr = ToString<CanGC>(cx, args[i]);
+-            if (!argStr) {
+-                taint_args.push_back(taintarg(cx, u""));
+-            } else {
+-                RootedString rs(cx, argStr);
+-                taint_args.push_back(taintarg(cx, rs));
+-            }
+-        } else {
+-            RootedString rs(cx, argStr);
+-            taint_args.push_back(taintarg(cx, rs));
+-        }
+-    }
++  UniqueChars opNameChars = JS_EncodeStringToUTF8(cx, opName);
++  if (!opNameChars) return false;
+ 
+-    str->taint().extend(TaintOperation(op_chars.get(), true, TaintLocationFromContext(cx), taint_args));
++  str->taint().extend(TaintOperation(opNameChars.get(), true,
++                                     TaintLocationFromContext(cx),
++                                     taintargs_jsstring(cx, str)));
+ 
+-    return true;
++  return true;
+ }
+ 
+ // Foxhound: Returns a copy of the given string.
+-static bool
+-taint_copyString(JSContext* cx, unsigned argc, Value* vp)
+-{
+-    // String, operation, args...
+-    CallArgs args = CallArgsFromVp(argc, vp);
+-
+-    RootedString str(cx, args[0].toString());
+-    if (!str) {
+-        return false;
+-    }
++static bool taint_copyString(JSContext* cx, unsigned argc, Value* vp) {
++  // String, operation, args...
++  CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-    JSString* res = NewDependentString(cx, str, 0, str->length());
+-    args.rval().setString(res);
++  RootedString str(cx, args[0].toString());
++  if (!str) {
++    return false;
++  }
+ 
+-    return true;
++  JSString* res = NewDependentString(cx, str, 0, str->length());
++  args.rval().setString(res);
++
++  return true;
+ }
+ 
+-static bool
+-taint_setTaintForSubString(JSContext* cx, unsigned argc, Value* vp)
+-{
+-    // dstStr, srcStr, begin, end
+-    CallArgs args = CallArgsFromVp(argc, vp);
++static bool taint_setTaintForSubString(JSContext* cx, unsigned argc,
++                                       Value* vp) {
++  // dstStr, srcStr, begin, end
++  CallArgs args = CallArgsFromVp(argc, vp);
+ 
+-    RootedString dstStr(cx, args[0].toString());
+-    if (!dstStr) {
+-        return false;
+-    }
++  RootedString dstStr(cx, args[0].toString());
++  if (!dstStr) {
++    return false;
++  }
+ 
+-    RootedString srcStr(cx, args[1].toString());
+-    if (!srcStr) {
+-        return false;
+-    }
++  RootedString srcStr(cx, args[1].toString());
++  if (!srcStr) {
++    return false;
++  }
+ 
+-    int32_t begin = args[2].toInt32();
+-    int32_t end = args[3].toInt32();
++  int32_t begin = args[2].toInt32();
++  int32_t end = args[3].toInt32();
+ 
+-    dstStr->setTaint(srcStr->Taint().safeSubTaint(begin, end));
++  dstStr->setTaint(srcStr->Taint().safeSubTaint(begin, end));
+ 
+-    return true;
++  return true;
+ }
+ 
+ static bool intrinsic_PromiseResolve(JSContext* cx, unsigned argc, Value* vp) {
+@@ -2179,7 +2119,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
+     // Intrinsic helper functions
+     JS_FN("AddTaintOperation", taint_addTaintOperation, 2, 0),
+     JS_FN("AddTaintOperationNative", taint_addTaintOperation_native, 2, 0),
+-    JS_FN("AddTaintOperationNativeFull", taint_addTaintOperation_native_full, 2, 0),
++    JS_FN("AddTaintOperationNativeFull", taint_addTaintOperation_native_full, 2,
++          0),
+     JS_INLINABLE_FN("ArrayBufferByteLength",
+                     intrinsic_ArrayBufferByteLength<ArrayBufferObject>, 1, 0,
+                     IntrinsicArrayBufferByteLength),
+diff --git a/js/src/vm/StringType.cpp b/js/src/vm/StringType.cpp
+index 6cf3df866798..aaaf9ce75fb8 100644
+--- a/js/src/vm/StringType.cpp
++++ b/js/src/vm/StringType.cpp
+@@ -21,7 +21,7 @@
+ #include "mozilla/Utf8.h"
+ #include "mozilla/Vector.h"
+ 
+-#include <algorithm>    // std::{all_of,copy_n,enable_if,is_const,move}
++#include <algorithm>  // std::{all_of,copy_n,enable_if,is_const,move}
+ #include <cstdint>
+ #include <iterator>     // std::size
+ #include <type_traits>  // std::is_same, std::is_unsigned
+@@ -262,7 +262,8 @@ mozilla::Maybe<std::tuple<size_t, size_t>> JSString::encodeUTF8Partial(
+   return mozilla::Some(std::make_tuple(totalRead, totalWritten));
+ }
+ 
+-#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
++#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || \
++    defined(JS_TAINTSPEW)
+ template <typename CharT>
+ /*static */
+ void JSString::dumpCharsNoQuote(const CharT* s, size_t n,
+@@ -863,7 +864,8 @@ bool JSRope::hash(uint32_t* outHash) const {
+   return true;
+ }
+ 
+-#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
++#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || \
++    defined(JS_TAINTSPEW)
+ void JSRope::dumpOwnRepresentationFields(js::JSONPrinter& json) const {
+   json.beginObjectProperty("leftChild");
+   leftChild()->dumpRepresentationFields(json);
+@@ -1359,7 +1361,7 @@ JSString* js::ConcatStringsQuiet(
+     }
+     // Foxhound: Propagate taint
+     if (str->length() > 0) {
+-        str->setTaint(cx, newTaint);
++      str->setTaint(cx, newTaint);
+     }
+     return str;
+   }
+@@ -1368,29 +1370,26 @@ JSString* js::ConcatStringsQuiet(
+   return JSRope::new_<allowGC>(cx, left, right, wholeLength, heap);
+ }
+ 
+-template JSString* js::ConcatStringsQuiet<CanGC>(JSContext* cx, HandleString left,
+-                                            HandleString right,
+-                                            gc::Heap heap);
++template JSString* js::ConcatStringsQuiet<CanGC>(JSContext* cx,
++                                                 HandleString left,
++                                                 HandleString right,
++                                                 gc::Heap heap);
+ 
+-template JSString* js::ConcatStringsQuiet<NoGC>(JSContext* cx, JSString* const& left,
+-                                           JSString* const& right,
+-                                           gc::Heap heap);
++template JSString* js::ConcatStringsQuiet<NoGC>(JSContext* cx,
++                                                JSString* const& left,
++                                                JSString* const& right,
++                                                gc::Heap heap);
+ 
+ template <AllowGC allowGC>
+ JSString* js::ConcatStrings(
+     JSContext* cx, typename MaybeRooted<JSString*, allowGC>::HandleType left,
+-    typename MaybeRooted<JSString*, allowGC>::HandleType right,
+-    gc::Heap heap) {
+-
+-  TaintOperation op("concat");
+-  if ((left && right) && (left->taint().hasTaint() || right->taint().hasTaint())) {
+-    op = JS::TaintOperationConcat(cx, "concat", true, left, right);
+-  }
+-  
++    typename MaybeRooted<JSString*, allowGC>::HandleType right, gc::Heap heap) {
+   JSString* str = ConcatStringsQuiet<allowGC>(cx, left, right, heap);
+ 
+-  if (str && str->taint().hasTaint()) {
+-     str->taint().extend(op);
++  if (str && str->isTainted()) {
++    str->taint().extend(TaintOperation("concat", true,
++                                       TaintLocationFromContext(cx),
++                                       taintargs_jsstring(cx, str)));
+   }
+ 
+   return str;
+@@ -1403,7 +1402,8 @@ template JSString* js::ConcatStrings<NoGC>(JSContext* cx, JSString* const& left,
+                                            JSString* const& right,
+                                            gc::Heap heap);
+ 
+-#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
++#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || \
++    defined(JS_TAINTSPEW)
+ void JSDependentString::dumpOwnRepresentationFields(
+     js::JSONPrinter& json) const {
+   json.property("baseOffset", baseOffset());
+@@ -1835,7 +1835,8 @@ bool AutoStableStringChars::copyTwoByteChars(
+ 
+ template <>
+ bool JS::SourceText<char16_t>::initMaybeBorrowed(
+-    JSContext* cx, JS::AutoStableStringChars& linearChars, const StringTaint& taint) {
++    JSContext* cx, JS::AutoStableStringChars& linearChars,
++    const StringTaint& taint) {
+   MOZ_ASSERT(linearChars.isTwoByte(),
+              "AutoStableStringChars must be initialized with char16_t");
+ 
+@@ -1849,7 +1850,8 @@ bool JS::SourceText<char16_t>::initMaybeBorrowed(
+ 
+ template <>
+ bool JS::SourceText<char16_t>::initMaybeBorrowed(
+-    JS::FrontendContext* fc, JS::AutoStableStringChars& linearChars, const StringTaint& taint) {
++    JS::FrontendContext* fc, JS::AutoStableStringChars& linearChars,
++    const StringTaint& taint) {
+   MOZ_ASSERT(linearChars.isTwoByte(),
+              "AutoStableStringChars must be initialized with char16_t");
+ 
+@@ -1861,7 +1863,8 @@ bool JS::SourceText<char16_t>::initMaybeBorrowed(
+   return initImpl(fc, chars, length, taint, ownership);
+ }
+ 
+-#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
++#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || \
++    defined(JS_TAINTSPEW)
+ void JSAtom::dump(js::GenericPrinter& out) {
+   out.printf("JSAtom* (%p) = ", (void*)this);
+   this->JSString::dump(out);
+@@ -1912,7 +1915,7 @@ JSLinearString* js::NewDependentString(JSContext* cx, JSString* baseArg,
+     useInline = JSInlineString::lengthFits<char16_t>(length);
+   } else {
+     AutoCheckCannotGC nogc;
+-    /* Foxhound: disabled 
++    /* Foxhound: disabled
+     const Latin1Char* chars = base->latin1Chars(nogc) + start;
+     if (JSLinearString* staticStr = cx->staticStrings().lookup(chars, length)) {
+       return staticStr;
+@@ -1929,9 +1932,11 @@ JSLinearString* js::NewDependentString(JSContext* cx, JSString* baseArg,
+     // chars, which would be an awkward moving-GC hazard. Second, this makes
+     // it more likely to have a very short string keep a very long string alive.
+     if (base->hasTwoByteChars()) {
+-      return NewInlineString<char16_t>(cx, rootedBase, start, length, nullptr, heap);
++      return NewInlineString<char16_t>(cx, rootedBase, start, length, nullptr,
++                                       heap);
+     }
+-    return NewInlineString<Latin1Char>(cx, rootedBase, start, length, nullptr, heap);
++    return NewInlineString<Latin1Char>(cx, rootedBase, start, length, nullptr,
++                                       heap);
+   }
+ 
+   return JSDependentString::new_(cx, base, start, length, heap);
+@@ -2035,8 +2040,8 @@ static JSAtom* NewAtomDeflatedValidLength(JSContext* cx, const char16_t* s,
+ 
+ template <AllowGC allowGC, typename CharT>
+ JSLinearString* js::NewStringDontDeflate(
+-  JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
+-  gc::Heap heap) {
++    JSContext* cx, UniquePtr<CharT[], JS::FreePolicy> chars, size_t length,
++    gc::Heap heap) {
+   if (JSLinearString* str = TryEmptyOrStaticString(cx, chars.get(), length)) {
+     return str;
+   }
+@@ -2562,7 +2567,8 @@ JS_PUBLIC_API JSString* JS::NewStringFromKnownLiveUTF8Buffer(
+   return ::NewStringFromUTF8Buffer(cx, buffer, length);
+ }
+ 
+-#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
++#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_CACHEIR_SPEW) || \
++    defined(JS_CACHEIR_SPEW) || defined(JS_TAINTSPEW)
+ void JSExtensibleString::dumpOwnRepresentationFields(
+     js::JSONPrinter& json) const {
+   json.property("capacity", capacity());
+diff --git a/netwerk/protocol/http/HttpChannelChild.cpp b/netwerk/protocol/http/HttpChannelChild.cpp
+index cbdfda22c8fb..56a83496d3fc 100644
+--- a/netwerk/protocol/http/HttpChannelChild.cpp
++++ b/netwerk/protocol/http/HttpChannelChild.cpp
+@@ -621,8 +621,7 @@ void HttpChannelChild::DoOnStartRequest(nsIRequest* aRequest) {
+ void HttpChannelChild::ProcessOnTransportAndData(
+     const nsresult& aChannelStatus, const nsresult& aTransportStatus,
+     const uint64_t& aOffset, const uint32_t& aCount, const nsACString& aData,
+-    const nsACString& aTaint,
+-    const TimeStamp& aOnDataAvailableStartTime) {
++    const nsACString& aTaint, const TimeStamp& aOnDataAvailableStartTime) {
+   LOG(("HttpChannelChild::ProcessOnTransportAndData [this=%p]\n", this));
+   MOZ_ASSERT(OnSocketThread());
+   mEventQ->RunOrEnqueue(new ChannelFunctionEvent(
+@@ -630,8 +629,8 @@ void HttpChannelChild::ProcessOnTransportAndData(
+         return self->GetODATarget();
+       },
+       [self = UnsafePtr<HttpChannelChild>(this), aChannelStatus,
+-       aTransportStatus, aOffset, aCount, aData = nsCString(aData), aTaint = nsCString(aTaint),
+-       aOnDataAvailableStartTime]() {
++       aTransportStatus, aOffset, aCount, aData = nsCString(aData),
++       aTaint = nsCString(aTaint), aOnDataAvailableStartTime]() {
+         self->mOnDataAvailableStartTime = aOnDataAvailableStartTime;
+         self->OnTransportAndData(aChannelStatus, aTransportStatus, aOffset,
+                                  aCount, aData, aTaint);
+@@ -703,9 +702,9 @@ void HttpChannelChild::OnTransportAndData(const nsresult& aChannelStatus,
+   nsCOMPtr<nsIInputStream> stringStream;
+   std::string taintData(aTaint.BeginReading());
+   SafeStringTaint taint(ParseStringTaintForE2E(taintData));
+-  nsresult rv =
+-      NS_NewByteInputStream(getter_AddRefs(stringStream),
+-                            Span(aData).To(aCount), NS_ASSIGNMENT_DEPEND, taint);
++  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stringStream),
++                                      Span(aData).To(aCount),
++                                      NS_ASSIGNMENT_DEPEND, taint);
+   if (NS_FAILED(rv)) {
+     CancelWithReason(rv, "HttpChannelChild NS_NewByteInputStream failed"_ns);
+     return;
+diff --git a/netwerk/protocol/http/nsHttpAtomList.h b/netwerk/protocol/http/nsHttpAtomList.h
+index 6fad71c0c324..f9c804e568c9 100644
+--- a/netwerk/protocol/http/nsHttpAtomList.h
++++ b/netwerk/protocol/http/nsHttpAtomList.h
+@@ -114,5 +114,9 @@ HTTP_ATOM(X_Firefox_Http3, "X-Firefox-Http3")
+ HTTP_ATOM(X_Frame_Options, "X-Frame-Options")
+ // Foxhound: end2end taint information header
+ HTTP_ATOM(X_Taint, "X-Taint")
++// Foxhound: requestId header
++HTTP_ATOM(X_Foxhound_RequestId, "X-Foxhound-RequestId")
++// Foxhound: redirectCount header
++HTTP_ATOM(X_Foxhound_RedirectCount, "X-Foxhound-RedirectCount")
+ 
+ // methods are case sensitive and do not use atom table
+diff --git a/netwerk/protocol/http/nsHttpChannel.cpp b/netwerk/protocol/http/nsHttpChannel.cpp
+index 3477c2b33c5f..ceb55f5f443e 100644
+--- a/netwerk/protocol/http/nsHttpChannel.cpp
++++ b/netwerk/protocol/http/nsHttpChannel.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include <inttypes.h>
+ 
++#include "mozilla/HttpRequestId.h"
+ #include "mozilla/ScopeExit.h"
+ #include "mozilla/Sprintf.h"
+ #include "mozilla/dom/nsCSPContext.h"
+@@ -6718,6 +6719,20 @@ nsHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
+     MOZ_ASSERT(NS_SUCCEEDED(rv));
+   }
+ 
++  if (!mRequestHead.HasHeader(nsHttp::X_Foxhound_RequestId)) {
++    nsAutoCString requestId;
++    mozilla::NextHttpRequestId(requestId);
++    rv = mRequestHead.SetHeader(nsHttp::X_Foxhound_RequestId, requestId, false);
++    MOZ_ASSERT(NS_SUCCEEDED(rv));
++  }
++
++  {
++    nsAutoCString redirectCount;
++    redirectCount.AppendInt(mRedirectCount);
++    rv = mRequestHead.SetHeader(nsHttp::X_Foxhound_RedirectCount, redirectCount, false);
++    MOZ_ASSERT(NS_SUCCEEDED(rv));
++  }
++
+   if (WaitingForTailUnblock()) {
+     // This channel is marked as Tail and is part of a request context
+     // that has positive number of non-tailed requestst, hence this channel
+@@ -9177,14 +9192,17 @@ class OnTransportStatusAsyncEvent : public Runnable {
+ NS_IMETHODIMP
+ nsHttpChannel::OnDataAvailable(nsIRequest* request, nsIInputStream* input,
+                                uint64_t offset, uint32_t count) {
+-
+ #if (DEBUG_E2E_TAINTING)
+   // Foxhound: see if there's taint information available.
+   nsCOMPtr<nsITaintawareInputStream> taintInputStream(do_QueryInterface(input));
+   if (!taintInputStream) {
+-    puts("!!!!! NO taint-aware input stream available in nsHttpChannel::OnDataAvailable !!!!!");
++    puts(
++        "!!!!! NO taint-aware input stream available in "
++        "nsHttpChannel::OnDataAvailable !!!!!");
+   } else {
+-    puts("+++++ Taint-aware input stream available in nsHttpChannel::OnDataAvailable +++++");
++    puts(
++        "+++++ Taint-aware input stream available in "
++        "nsHttpChannel::OnDataAvailable +++++");
+   }
+ #endif
+   nsresult rv;
+diff --git a/xpcom/base/HttpRequestId.cpp b/xpcom/base/HttpRequestId.cpp
+new file mode 100644
+index 000000000000..a0b814d3ffce
+--- /dev/null
++++ b/xpcom/base/HttpRequestId.cpp
+@@ -0,0 +1,17 @@
++#include "HttpRequestId.h"
++
++#include "mozilla/Atomics.h"
++#include "base/process_util.h"
++
++namespace mozilla {
++
++static Atomic<uint32_t> sNextCurrentProcHttpRequestId{1};
++
++void NextHttpRequestId(nsACString& aRequestId) {
++  aRequestId.Truncate();
++  aRequestId.AppendInt(base::GetCurrentProcId());
++  aRequestId.Append(':');
++  aRequestId.AppendInt(sNextCurrentProcHttpRequestId++);
++}
++
++}  // namespace mozilla
+diff --git a/xpcom/base/HttpRequestId.h b/xpcom/base/HttpRequestId.h
+new file mode 100644
+index 000000000000..eeff7821f1c2
+--- /dev/null
++++ b/xpcom/base/HttpRequestId.h
+@@ -0,0 +1,14 @@
++#ifndef mozilla_HttpRequestId_h
++#define mozilla_HttpRequestId_h
++
++#include <stdint.h>
++
++#include "nsString.h"
++
++namespace mozilla {
++
++void NextHttpRequestId(nsACString& aRequestId);
++
++}  // namespace mozilla
++
++#endif  // mozilla_HttpRequestId_h
+diff --git a/xpcom/base/moz.build b/xpcom/base/moz.build
+index 5f01b7b13643..549c141afe86 100644
+--- a/xpcom/base/moz.build
++++ b/xpcom/base/moz.build
+@@ -121,6 +121,7 @@ EXPORTS.mozilla += [
+     "ErrorNames.h",
+     "GkRustUtils.h",
+     "HoldDropJSObjects.h",
++    "HttpRequestId.h",
+     "IntentionalCrash.h",
+     "JSObjectHolder.h",
+     "JSONStringWriteFuncs.h",
+@@ -167,6 +168,7 @@ UNIFIED_SOURCES += [
+     "ErrorNames.cpp",
+     "GkRustUtils.cpp",
+     "HoldDropJSObjects.cpp",
++    "HttpRequestId.cpp",
+     "JSObjectHolder.cpp",
+     "LogCommandLineHandler.cpp",
+     "Logging.cpp",
+diff --git a/xpcom/string/nsReadableUtils.cpp b/xpcom/string/nsReadableUtils.cpp
+index 7dfb13c2bec9..e03671852c28 100644
+--- a/xpcom/string/nsReadableUtils.cpp
++++ b/xpcom/string/nsReadableUtils.cpp
+@@ -240,8 +240,10 @@ void ToUpperCase(const nsACString& aSource, nsACString& aDest) {
+   }
+ 
+   // Foxhound: propagate taint into aDest.
++  nsString nsDest = NS_ConvertUTF8toUTF16(aDest);
++  std::u16string u16Dest(nsDest.BeginReading(), nsDest.EndReading());
+   aDest.AssignTaint(aSource.Taint());
+-  aDest.Taint().extend(TaintOperation("ToUpperCase", true));
++  aDest.Taint().extend(TaintOperation("ToUpperCase", true, {u16Dest}));
+ }
+ 
+ void ToLowerCase(nsACString& aCString) {
+@@ -273,8 +275,10 @@ void ToLowerCase(const nsACString& aSource, nsACString& aDest) {
+   }
+ 
+   // Foxhound: propagate taint into aDest.
++  nsString nsDest = NS_ConvertUTF8toUTF16(aDest);
++  std::u16string u16Dest(nsDest.BeginReading(), nsDest.EndReading());
+   aDest.AssignTaint(aSource.Taint());
+-  aDest.Taint().extend(TaintOperation("ToLowerCase", true));
++  aDest.Taint().extend(TaintOperation("ToLowerCase", true, {u16Dest}));
+ }
+ 
+ void ParseString(const nsACString& aSource, char aDelimiter,
