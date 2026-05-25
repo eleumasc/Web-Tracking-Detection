@@ -1,7 +1,7 @@
 import cmdAnalyze from "./commands/cmdAnalyze";
 import cmdLoadSiteList from "./commands/cmdLoadSiteList";
 import cmdMeasure from "./commands/cmdMeasure";
-import cmdReport from "./commands/cmdReport";
+import cmdProcess from "./commands/cmdProcess";
 import yargs from "yargs";
 import { createStatefulTrackingAnalysis } from "./core/Analysis";
 import { hideBin } from "yargs/helpers";
@@ -66,7 +66,7 @@ async function main() {
     )
 
     .command(
-      "measure <analysisId>",
+      "process <analysisId>",
       "Perform data processing from an analysis",
       (yargs) =>
         yargs
@@ -83,19 +83,19 @@ async function main() {
             type: "boolean",
             default: false,
           }),
-      (args) => cmdMeasure(args),
+      (args) => cmdProcess(args),
     )
 
     .command(
-      "report <measureOutDir>",
-      "Generate report",
+      "measure <processOutDir>",
+      "Measure processed data and generate report",
       (yargs) =>
-        yargs.positional("measureOutDir", {
+        yargs.positional("processOutDir", {
           type: "string",
-          describe: "Output directory of measure command",
+          describe: "Output directory of process command",
           demandOption: true,
         }),
-      (args) => cmdReport(args),
+      (args) => cmdMeasure(args),
     )
 
     .demandCommand(1, "You must provide a valid command.")

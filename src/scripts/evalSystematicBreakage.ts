@@ -1,6 +1,6 @@
 import _ from "lodash";
 import { readFileSync } from "fs";
-import { TrackingRequestsFile } from "../commands/cmdMeasure";
+import { TrackingRequestsFile } from "../commands/cmdProcess";
 
 function main() {
   const trackingRequestsFile = JSON.parse(
