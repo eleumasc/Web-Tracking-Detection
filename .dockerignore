@@ -1,0 +1,11 @@
+node_modules/
+build/
+*.sqlite
+*.sqlite-journal
+*.out
+/output/
+/secret/
+/.env
+/tmp/
+/foxhound/
+disconnect.json
