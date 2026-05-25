@@ -11,7 +11,7 @@ cd $TF_PATH
 ./mach package
 
 cd $TF_DIST_PATH/foxhound
-cat $PW_PREFS_PATH/playwright.cfg $MAIN_PATH/playwright-prefs-extra.txt > playwright.cfg
+cat $PW_PREFS_PATH/playwright.cfg $MAIN_PATH/misc/playwright-prefs-extra.txt > playwright.cfg
 mkdir -p defaults/pref/
 cp $PW_PREFS_PATH/00-playwright-prefs.js defaults/pref/
 
