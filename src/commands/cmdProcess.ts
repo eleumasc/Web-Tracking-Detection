@@ -10,6 +10,7 @@ import { computeTrackingRequests } from "../core/computeTrackingRequests";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
 import { processTaskQueue } from "../util/TaskQueue";
+import { relabelSyntacticVerif } from "../core/relabelSyntacticVerif";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
 import { TrackingSiteEntry } from "../core/TrackingRequest";
 import { writeOutputFileSync } from "../data/outputDir";
@@ -68,11 +69,11 @@ export default async function cmdProcess(args: {
             staResult,
             forceNoVerif: args.forceNoVerif,
           },
-        ]),
+        ])
       );
 
       entries.push({ site, trackingRequests });
-    },
+    }
   );
 
   const trackingRequestsFile: TrackingRequestsFile = {
@@ -81,8 +82,15 @@ export default async function cmdProcess(args: {
     entries,
   };
   writeOutputFileSync(
+    path.join(outputName, "trackingRequests.norelabel.json"),
+    JSON.stringify(trackingRequestsFile)
+  );
+  writeOutputFileSync(
     path.join(outputName, "trackingRequests.json"),
-    JSON.stringify(trackingRequestsFile),
+    JSON.stringify({
+      ...trackingRequestsFile,
+      entries: relabelSyntacticVerif(entries),
+    })
   );
 
   process.exit(0);

@@ -1,10 +1,15 @@
 import _ from "lodash";
+import path from "path";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 import { readFileSync } from "fs";
 import { TrackingRequestsFile } from "../commands/cmdProcess";
 
-function main() {
+function main(args: { processOutDir: string }) {
+  const { processOutDir } = args;
+
   const trackingRequestsFile = JSON.parse(
-    readFileSync("output/trackingRequests.relabeled.json").toString()
+    readFileSync(path.join(processOutDir, "trackingRequests.json")).toString()
   ) as TrackingRequestsFile;
 
   const { entries } = trackingRequestsFile;
@@ -35,4 +40,15 @@ function main() {
   console.log(coveredNonMatchingRequests);
 }
 
-main();
+yargs(hideBin(process.argv))
+  .command(
+    "$0 <processOutDir>",
+    "Evaluate systematic breakage",
+    (yargs) =>
+      yargs.positional("processOutDir", {
+        type: "string",
+        demandOption: true,
+      }),
+    (args) => main(args)
+  )
+  .parse();
