@@ -1,5 +1,5 @@
 import currentTime from "../util/currentTime";
-import execContainer from "../worker/execContainer";
+import execThread from "../worker/execThread";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { makeTaskFromFunction } from "../worker/Task";
@@ -10,7 +10,7 @@ async function main(args: { site: string }) {
   const { site } = args;
 
   const completion = await toFlatCompletion(() =>
-    execContainer<ReturnType<typeof runAnalyze>>(
+    execThread<ReturnType<typeof runAnalyze>>(
       makeTaskFromFunction(runAnalyze, [
         {
           site,
@@ -20,8 +20,8 @@ async function main(args: { site: string }) {
             noVerif: false,
           },
         },
-      ]),
-    ),
+      ])
+    )
   );
 
   console.log(completion);
@@ -38,6 +38,6 @@ yargs(hideBin(process.argv))
         type: "string",
         demandOption: true,
       }),
-    (args) => main(args),
+    (args) => main(args)
   )
   .parse();
