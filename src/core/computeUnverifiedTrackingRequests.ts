@@ -1,21 +1,21 @@
 import detectIdentifiableStorageItems from "./identifierDetection/detectIdentifiableStorageItems";
 import FoxTaintArchive from "../foxhound/FoxTaintArchive";
-import path from "path";
 import { computeSyntacticRequests } from "./syntacticMatching/SyntacticRequest";
 import { computeTaintRequests } from "./taintTracking/TaintRequest";
 import { createCanaryStorageItems } from "./syntacticMatching/CanaryStorageItem";
-import { getOutputPath } from "../data/outputDir";
 import { getSiteFromUrl } from "../util/site";
 import { getStorageItemsFromStorageState } from "./StorageItem";
 import { Har } from "../util/Har";
+import { makeDataPath } from "../data/path";
 import { Request } from "./Request";
 import { StatefulTrackingAnalysisResult } from "./AnalysisResult";
+import { toArray } from "iter-tools";
 
 export function computeUnverifiedTrackingRequests(args: {
-  analysisName: string;
+  analyzeDataName: string;
   staResult: StatefulTrackingAnalysisResult;
 }) {
-  const { analysisName, staResult } = args;
+  const { analyzeDataName, staResult } = args;
   const auxConnectResult = staResult.aux.connectResult;
   const preConnectResult = staResult.pre.connectResult;
   const taintHarFile = staResult.taint.harFile;
@@ -23,13 +23,15 @@ export function computeUnverifiedTrackingRequests(args: {
 
   const identifiers = detectIdentifiableStorageItems(
     getStorageItemsFromStorageState(preConnectResult.storageState),
-    getStorageItemsFromStorageState(auxConnectResult.storageState),
+    getStorageItemsFromStorageState(auxConnectResult.storageState)
   );
 
-  const har = new Har(path.join(getOutputPath(analysisName), taintHarFile));
-  const foxReports = new FoxTaintArchive(
-    path.join(getOutputPath(analysisName), taintTaintFile),
-  ).getReports();
+  const har = new Har(makeDataPath(analyzeDataName, taintHarFile));
+  const foxReports = toArray(
+    FoxTaintArchive.open(
+      makeDataPath(analyzeDataName, taintTaintFile)
+    ).getReports()
+  );
 
   const pageUrl = staResult.taint.connectResult.landingPageUrl;
   const firstParty = getSiteFromUrl(pageUrl);
@@ -37,10 +39,10 @@ export function computeUnverifiedTrackingRequests(args: {
     requests.filter((request) => getSiteFromUrl(request.url) !== firstParty);
 
   const taintRequests = filterThirdPartyRequests(
-    computeTaintRequests(foxReports, identifiers, har),
+    computeTaintRequests(foxReports, identifiers, har)
   );
   const syntacticRequests = filterThirdPartyRequests(
-    computeSyntacticRequests(identifiers, har),
+    computeSyntacticRequests(identifiers, har)
   );
 
   const canaryStorageItems = createCanaryStorageItems(syntacticRequests);

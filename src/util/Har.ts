@@ -36,13 +36,12 @@ export class Har {
 
 export function findRequestId(entry: Entry): string | undefined {
   const { request } = entry;
-  const rawRequestId = request.headers.find(
+  const requestId = request.headers.find(
     ({ name }) => name === "X-Foxhound-RequestId",
   )?.value;
-  if (!rawRequestId) {
+  if (!requestId) {
     return undefined;
   }
-  const requestId = rawRequestId.replace(/,.*/, "");
   const redirectCountStr = request.headers.find(
     ({ name }) => name === "X-Foxhound-RedirectCount",
   )?.value;

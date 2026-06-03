@@ -91,8 +91,11 @@ export function relabelSyntacticVerif(
         cluster.map(({ request }) =>
           getValueOfSyntacticVerifLabel(request.syntacticVerifLabel!)
         )
-      )!;
-      const label = getSyntacticVerifLabelFromValue(labelValue);
+      );
+      const label =
+        labelValue !== undefined
+          ? getSyntacticVerifLabelFromValue(labelValue)
+          : "NO_MATCHING_REQUESTS";
       return cluster.map(({ request }) => [request, label]);
     })
   );

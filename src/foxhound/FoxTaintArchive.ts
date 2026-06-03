@@ -1,40 +1,40 @@
-import DocumentStore from "../data/DocumentStore";
+import DB, { Database } from "better-sqlite3";
 import { FoxReport } from "./types";
 import { unCompact } from "../util/unCompact";
 
-export const TAINT_REPORTS_COLL_NAME = "taintReports";
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  data JSON
+);
+`;
 
 export default class FoxTaintArchive {
-  constructor(readonly dbPath: string) {}
+  constructor(readonly db: Database) {}
 
-  getReports(): FoxReport[] {
-    const store = DocumentStore.open(this.dbPath);
-    try {
-      const collection = store.getCollectionByName(
-        null,
-        TAINT_REPORTS_COLL_NAME,
-      );
-      return store
-        .getDocumentsWithDataByCollection(collection.id)
-        .map(({ data }) => unCompact(data) as FoxReport);
-    } finally {
-      store.db.close();
-    }
+  static open(dbPath?: string): FoxTaintArchive {
+    const db = new DB(dbPath);
+    db.exec(SCHEMA);
+    return new FoxTaintArchive(db);
   }
 
-  insertRawReports(rawReports: any[]): void {
-    const store = DocumentStore.open(this.dbPath);
-    try {
-      const collection = store.createCollection(null, TAINT_REPORTS_COLL_NAME);
-      store.insertDocuments(
-        collection.id,
-        rawReports.map((rawReport, i) => ({
-          name: `${i}`,
-          data: rawReport,
-        })),
-      );
-    } finally {
-      store.db.close();
+  addRawReports(rawReports: any[]): void {
+    if (rawReports.length === 0) return;
+    const { db } = this;
+    const stmt = db.prepare("INSERT INTO reports (data) VALUES (?)");
+    db.transaction(() => {
+      for (const rawReport of rawReports) {
+        stmt.run([JSON.stringify(rawReport)]);
+      }
+    })();
+  }
+
+  *getReports(): IterableIterator<FoxReport> {
+    const { db } = this;
+    const stmt = db.prepare("SELECT data FROM reports ORDER BY id");
+    for (const row of stmt.iterate()) {
+      const { data } = row as any;
+      yield unCompact(JSON.parse(data)) as FoxReport;
     }
   }
 }

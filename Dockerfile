@@ -1,9 +1,9 @@
-FROM node:20-slim
+FROM node:22-slim
 
 RUN apt update
-RUN apt install -y libpci3 unzip
+RUN apt install -y sqlite3 unzip
 
-WORKDIR /app
+WORKDIR /root
 
 COPY ./foxhound-fixed.zip ./foxhound.zip
 RUN unzip foxhound.zip
@@ -11,15 +11,14 @@ RUN unzip foxhound.zip
 COPY ./package.json ./package.json
 COPY ./package-lock.json ./package-lock.json
 
-RUN npm i
-RUN npm run init
+RUN npm run bootstrap
 
 COPY ./tsconfig.json ./tsconfig.json
 COPY ./setup ./setup
 COPY ./src ./src
 
-RUN npm run build
+RUN npx tsc
 
 COPY ./.env ./.env
 
-CMD ["node", "build/worker/__containerEntry.js"]
+ENTRYPOINT ["node", "build/index.js"]

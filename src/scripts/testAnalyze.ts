@@ -14,7 +14,7 @@ async function main(args: { site: string }) {
       makeTaskFromFunction(runAnalyze, [
         {
           site,
-          outputName: `${currentTime()}-testAnalyze`,
+          dataName: `${currentTime()}-testAnalyze`,
           analysis: {
             type: "StatefulTracking",
             noVerif: false,

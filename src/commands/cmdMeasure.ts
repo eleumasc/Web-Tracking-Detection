@@ -3,7 +3,7 @@ import currentTime from "../util/currentTime";
 import path from "path";
 import { checkInDisconnect, initDisconnect } from "../util/Disconnect";
 import { FoxURL } from "../foxhound/FoxURL";
-import { outputDir } from "../data/outputDir";
+import { makeDataPath } from "../data/path";
 import { readFileSync, writeFileSync } from "fs";
 import { siteTrackers, TrackingSiteEntry } from "../core/TrackingRequest";
 import { TrackingRequest } from "../core/TrackingRequest";
@@ -25,8 +25,7 @@ export default async function cmdMeasure(args: { processOutDir: string }) {
     ...getStats(entries),
   };
   writeFileSync(
-    path.join(
-      outputDir,
+    makeDataPath(
       `${currentTime()}-Report-${path.basename(processOutDir)}.json`
     ),
     JSON.stringify(reportRecord)

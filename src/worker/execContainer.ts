@@ -2,11 +2,11 @@ import _ from "lodash";
 import assert from "assert";
 import Docker from "dockerode";
 import path from "path";
-import useTempPath from "../util/useTempPath";
+import useTempPath from "../data/temp";
 import { Completion, isSuccess } from "../util/Completion";
-import { CONTAINER_IMAGE } from "../env";
+import { dataHostDir } from "../data/path";
+import { DOCKER_IMAGE } from "../env";
 import { GuestError } from "./GuestError";
-import { outputDir } from "../data/outputDir";
 import { readFileSync, writeFileSync } from "fs";
 import { Task } from "./Task";
 
@@ -16,25 +16,26 @@ export default async function execContainer<R>(
     extraBinds?: string[];
   }
 ): Promise<Awaited<R>> {
-  assert(CONTAINER_IMAGE, "CONTAINER_IMAGE env variable is empty or not found");
+  assert(DOCKER_IMAGE, "DOCKER_IMAGE env variable is empty or not found");
 
   const docker = new Docker();
 
-  return useTempPath({ localTmpDir: true }, async (ipcDir) => {
+  return useTempPath(async (ipcDir, ipcHostDir) => {
     writeFileSync(path.join(ipcDir, "request"), JSON.stringify(task));
 
-    const guestIpcDir = "/ipc";
+    const ipcWorkerDir = "/ipc";
     const container = await docker.createContainer({
-      Image: CONTAINER_IMAGE,
+      Image: DOCKER_IMAGE,
+      Entrypoint: ["node", "build/worker/__containerEntry.js"],
       HostConfig: {
         Binds: [
-          `${ipcDir}:${guestIpcDir}`,
-          `${outputDir}:/app/output`,
+          `${ipcHostDir}:${ipcWorkerDir}`,
+          `${dataHostDir}:/root/data`,
           ...(options?.extraBinds ?? []),
         ],
         AutoRemove: true,
       },
-      Env: [`IPCDIR=${guestIpcDir}`],
+      Env: [`IPCDIR=${ipcWorkerDir}`],
     });
 
     await container.start();

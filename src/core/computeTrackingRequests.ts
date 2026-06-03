@@ -1,11 +1,10 @@
 import _ from "lodash";
 import assert from "assert";
-import path from "path";
 import { computeUnverifiedTrackingRequests } from "./computeUnverifiedTrackingRequests";
 import { FoxURL } from "../foxhound/FoxURL";
-import { getOutputPath, writeOutputFileSync } from "../data/outputDir";
 import { Har } from "../util/Har";
-import { readFileSync } from "fs";
+import { makeDataPath } from "../data/path";
+import { readFileSync, writeFileSync } from "fs";
 import { Request, toAbstractRequests } from "./Request";
 import { RequestParam } from "./RequestParam";
 import { RequestTemplate } from "./syntacticMatching/RequestTemplate";
@@ -22,12 +21,12 @@ import {
 
 export function computeTrackingRequests(args: {
   site: string;
-  analysisName: string;
-  outputName: string;
+  analyzeDataName: string;
+  dataName: string;
   staResult: StatefulTrackingAnalysisResult;
   forceNoVerif?: boolean;
 }): TrackingRequest[] {
-  const { site, analysisName, outputName, staResult, forceNoVerif } = args;
+  const { site, analyzeDataName, dataName, staResult, forceNoVerif } = args;
 
   let taintRequests: TaintRequest[];
   let syntacticRequests: SyntacticRequest[];
@@ -35,55 +34,44 @@ export function computeTrackingRequests(args: {
   if (staResult.verif && !forceNoVerif) {
     taintRequests = JSON.parse(
       readFileSync(
-        path.join(
-          getOutputPath(analysisName),
-          staResult.verif.taintRequestsFile,
-        ),
-      ).toString(),
+        makeDataPath(analyzeDataName, staResult.verif.taintRequestsFile)
+      ).toString()
     );
     syntacticRequests = JSON.parse(
       readFileSync(
-        path.join(
-          getOutputPath(analysisName),
-          staResult.verif.syntacticRequestsFile,
-        ),
-      ).toString(),
+        makeDataPath(analyzeDataName, staResult.verif.syntacticRequestsFile)
+      ).toString()
     );
     const canaryStorageItems = JSON.parse(
       readFileSync(
-        path.join(
-          getOutputPath(analysisName),
-          staResult.verif.canaryStorageItemsFile,
-        ),
-      ).toString(),
+        makeDataPath(analyzeDataName, staResult.verif.canaryStorageItemsFile)
+      ).toString()
     );
     syntacticVerifResult = verifySyntacticRequests(
       syntacticRequests,
       canaryStorageItems,
-      new Har(path.join(getOutputPath(analysisName), staResult.verif!.harFile)),
-      new Har(
-        path.join(getOutputPath(analysisName), staResult.auxVerif!.harFile),
-      ),
+      new Har(makeDataPath(analyzeDataName, staResult.verif!.harFile)),
+      new Har(makeDataPath(analyzeDataName, staResult.auxVerif!.harFile))
     );
   } else {
     const computed = computeUnverifiedTrackingRequests({
-      analysisName,
+      analyzeDataName: analyzeDataName,
       staResult,
     });
     taintRequests = computed.taintRequests;
     syntacticRequests = computed.syntacticRequests;
     const canaryStorageItems = computed.canaryStorageItems;
-    writeOutputFileSync(
-      path.join(outputName, `${site}+T.json`),
-      JSON.stringify(taintRequests),
+    writeFileSync(
+      makeDataPath(dataName, `${site}+T.json`),
+      JSON.stringify(taintRequests)
     );
-    writeOutputFileSync(
-      path.join(outputName, `${site}+S.json`),
-      JSON.stringify(syntacticRequests),
+    writeFileSync(
+      makeDataPath(dataName, `${site}+S.json`),
+      JSON.stringify(syntacticRequests)
     );
-    writeOutputFileSync(
-      path.join(outputName, `${site}+C.json`),
-      JSON.stringify(canaryStorageItems),
+    writeFileSync(
+      makeDataPath(dataName, `${site}+C.json`),
+      JSON.stringify(canaryStorageItems)
     );
   }
 
@@ -100,17 +88,17 @@ export function computeTrackingRequests(args: {
   const intersectRequests = _.intersectionWith(
     absTaintRequests,
     absSyntacticRequests,
-    _.isEqual,
+    _.isEqual
   );
   const onlyTaintRequests = _.differenceWith(
     absTaintRequests,
     absSyntacticRequests,
-    _.isEqual,
+    _.isEqual
   );
   const onlySyntacticRequests = _.differenceWith(
     absSyntacticRequests,
     absTaintRequests,
-    _.isEqual,
+    _.isEqual
   );
   addDetails({
     intersectRequests,
@@ -138,24 +126,24 @@ export function computeTrackingRequests(args: {
       refutedSyntacticRequests: toAbstractRequests(refutedRequests),
       unknownSyntacticRequests: toAbstractRequests(unknownRequests),
       noMatchingRequestsRequests: toAbstractRequests(
-        noMatchingRequestsRequests,
+        noMatchingRequestsRequests
       ),
     });
   }
 
-  writeOutputFileSync(
-    path.join(outputName, `${site}.json`),
-    JSON.stringify(detailRecord),
+  writeFileSync(
+    makeDataPath(dataName, `${site}.json`),
+    JSON.stringify(detailRecord)
   );
 
   const unionRequests = _.unionWith(
     absTaintRequests,
     absSyntacticRequests,
-    _.isEqual,
+    _.isEqual
   );
   return unionRequests.map(({ requestId, url }): TrackingRequest => {
     const includesThisRequest = <T extends Request>(
-      requests: T[] | undefined,
+      requests: T[] | undefined
     ): boolean =>
       requests?.some((request) => request.requestId === requestId) ?? false;
 
@@ -165,7 +153,7 @@ export function computeTrackingRequests(args: {
     const syntactic = includesThisRequest(syntacticRequests);
 
     const confirmedTaint = includesThisRequest(
-      taintVerifResult.confirmedRequests,
+      taintVerifResult.confirmedRequests
     );
     const unknownTaint = includesThisRequest(taintVerifResult.unknownRequests);
     if (true) {
@@ -181,16 +169,16 @@ export function computeTrackingRequests(args: {
     }
 
     const noMatchingRequestsSyntactic = includesThisRequest(
-      syntacticVerifResult?.noMatchingRequestsRequests,
+      syntacticVerifResult?.noMatchingRequestsRequests
     );
     const confirmedSyntactic = includesThisRequest(
-      syntacticVerifResult?.confirmedRequests,
+      syntacticVerifResult?.confirmedRequests
     );
     const refutedSyntactic = includesThisRequest(
-      syntacticVerifResult?.refutedRequests,
+      syntacticVerifResult?.refutedRequests
     );
     const unknownSyntactic = includesThisRequest(
-      syntacticVerifResult?.unknownRequests,
+      syntacticVerifResult?.unknownRequests
     );
     if (syntacticVerifResult) {
       // the following verif flags should be mutually exclusive
@@ -215,7 +203,7 @@ export function computeTrackingRequests(args: {
     let syntacticHoles: RequestParam[] | undefined;
     if (syntactic) {
       const syntacticRequest = syntacticRequests.find(
-        (request) => request.requestId === requestId,
+        (request) => request.requestId === requestId
       );
       assert(syntacticRequest, JSON.stringify({ site, requestId }));
       syntacticHoles =

@@ -1,19 +1,18 @@
 import _ from "lodash";
-import assert from "assert";
 import currentTime from "../util/currentTime";
+import DataArchive from "../data/DataArchive";
 import execThread from "../worker/execThread";
-import openDocumentStore from "../data/openDocumentStore";
-import path from "path";
-import { ANALYSIS_LOGS_COLL_TYPE } from "./cmdAnalyze";
-import { AnalysisLogEntry } from "../core/AnalysisLogEntry";
+import { AnalysisCompletion } from "../core/AnalysisCompletion";
 import { computeTrackingRequests } from "../core/computeTrackingRequests";
+import { extractDataPath, makeDataPath } from "../data/path";
 import { isFailure } from "../util/Completion";
 import { makeTaskFromFunction } from "../worker/Task";
+import { mkdirSync, writeFileSync } from "fs";
 import { processTaskQueue } from "../util/TaskQueue";
 import { relabelSyntacticVerif } from "../core/relabelSyntacticVerif";
 import { StatefulTrackingAnalysisResult } from "../core/AnalysisResult";
+import { toArray } from "iter-tools";
 import { TrackingSiteEntry } from "../core/TrackingRequest";
-import { writeOutputFileSync } from "../data/outputDir";
 
 export interface TrackingRequestsFile {
   totalSites: number;
@@ -22,39 +21,43 @@ export interface TrackingRequestsFile {
 }
 
 export default async function cmdProcess(args: {
-  analysisId: number;
+  analyzeOutDir: string;
   maxTasks: number;
   forceNoVerif: boolean;
 }) {
-  const { analysisId } = args;
+  const { analyzeOutDir } = args;
+  const analyzeDataName = extractDataPath(analyzeOutDir);
 
-  const store = openDocumentStore();
+  const dataArchive = DataArchive.open(
+    makeDataPath(analyzeDataName, "data.sqlite")
+  );
 
-  const analysisCollection = store.getCollectionById(analysisId);
-  assert(analysisCollection, ANALYSIS_LOGS_COLL_TYPE);
-  const { name: analysisName } = analysisCollection;
+  const completedRecords = toArray(dataArchive.getCompletedRecords());
 
-  const outputName = `${currentTime()}-Process-${analysisId}`;
+  const dataName = `${currentTime()}-Process`;
+  mkdirSync(makeDataPath(dataName), { recursive: true });
 
   let totalSites = 0;
   let successSites = 0;
-  const entries: TrackingSiteEntry[] = [];
+  let entries = new Array<TrackingSiteEntry>(completedRecords.length);
 
   await processTaskQueue(
-    store.getDocumentsByCollection(analysisCollection.id),
+    completedRecords,
     { maxTasks: args.maxTasks },
-    (analysisDocument, queueIndex) => async () => {
-      const site = analysisDocument.name;
+    (record, queueIndex) => async () => {
+      const {
+        siteEntry: { name: site },
+      } = record;
       console.log(site, queueIndex);
 
       totalSites += 1;
 
-      const analysisLogEntry = store.getDocumentData<
-        AnalysisLogEntry<StatefulTrackingAnalysisResult>
-      >(analysisDocument.id);
+      const analysisCompletion = dataArchive.getRecordData<
+        AnalysisCompletion<StatefulTrackingAnalysisResult>
+      >(record.id);
 
-      if (isFailure(analysisLogEntry)) return;
-      const { value: staResult } = analysisLogEntry;
+      if (isFailure(analysisCompletion)) return;
+      const { value: staResult } = analysisCompletion;
 
       successSites += 1;
 
@@ -64,29 +67,31 @@ export default async function cmdProcess(args: {
         makeTaskFromFunction(computeTrackingRequests, [
           {
             site,
-            analysisName,
-            outputName,
+            analyzeDataName,
+            dataName,
             staResult,
             forceNoVerif: args.forceNoVerif,
           },
         ])
       );
 
-      entries.push({ site, trackingRequests });
+      entries[queueIndex] = { site, trackingRequests };
     }
   );
+
+  entries = entries.filter((x) => x);
 
   const trackingRequestsFile: TrackingRequestsFile = {
     totalSites,
     successSites,
     entries,
   };
-  writeOutputFileSync(
-    path.join(outputName, "trackingRequests.norelabel.json"),
+  writeFileSync(
+    makeDataPath(dataName, "trackingRequests.norelabel.json"),
     JSON.stringify(trackingRequestsFile)
   );
-  writeOutputFileSync(
-    path.join(outputName, "trackingRequests.json"),
+  writeFileSync(
+    makeDataPath(dataName, "trackingRequests.json"),
     JSON.stringify({
       ...trackingRequestsFile,
       entries: relabelSyntacticVerif(entries),

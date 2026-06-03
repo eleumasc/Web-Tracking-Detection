@@ -5,13 +5,13 @@ import installFoxhoundTaintReporter from "../foxhound/installFoxhoundTaintReport
 import path from "path";
 import simulateConnect, { SimulateConnectResult } from "./simulateConnect";
 import useFoxhound from "../foxhound/useFoxhound";
-import useTempPath from "../util/useTempPath";
+import useTempPath from "../data/temp";
 import { Analysis, StatefulTrackingAnalysis } from "./Analysis";
-import { AnalysisLogEntry } from "./AnalysisLogEntry";
+import { AnalysisCompletion } from "./AnalysisCompletion";
 import { bomb } from "../util/timeout";
 import { computeUnverifiedTrackingRequests } from "./computeUnverifiedTrackingRequests";
-import { cpSync } from "fs";
-import { createOutputDir, writeOutputFileSync } from "../data/outputDir";
+import { cpSync, writeFileSync } from "fs";
+import { makeDataPath } from "../data/path";
 import { makeTaskFromFunction } from "../worker/Task";
 import { patchFoxhoundProfileStorage } from "../foxhound/patchFoxhoundProfileStorage";
 import { toCompletion } from "../util/Completion";
@@ -22,28 +22,30 @@ import {
 
 export type RunAnalyzeOptions<T extends Analysis> = {
   site: string;
-  outputName: string;
+  dataName: string;
   analysis: T;
 };
 
 export const ANALYSIS_TIMEOUT_MS: number = 5 * 60 * 1000; // 5 minutes
 
-export async function runAnalyze(
-  options: RunAnalyzeOptions<Analysis>,
-): Promise<AnalysisLogEntry<AnalysisResult>> {
+export async function runAnalyze<T extends Analysis>(options: {
+  site: string;
+  dataName: string;
+  analysis: T;
+}): Promise<AnalysisCompletion<AnalysisResult>> {
   const { analysis } = options;
   switch (analysis.type) {
     case "StatefulTracking":
       return runAnalyzeForStatefulTrackingAnalysis(
-        options as RunAnalyzeOptions<StatefulTrackingAnalysis>,
+        options as RunAnalyzeOptions<StatefulTrackingAnalysis>
       );
   }
 }
 
 export async function runAnalyzeForStatefulTrackingAnalysis(
-  options: RunAnalyzeOptions<StatefulTrackingAnalysis>,
-): Promise<AnalysisLogEntry<StatefulTrackingAnalysisResult>> {
-  const { site, outputName } = options;
+  options: RunAnalyzeOptions<StatefulTrackingAnalysis>
+): Promise<AnalysisCompletion<StatefulTrackingAnalysisResult>> {
+  const { site, dataName } = options;
 
   const taintHarFile = `${site}+taint.har.zip`;
   const taintTaintFile = `${site}+taint.taint.sqlite`;
@@ -56,19 +58,19 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
   return toCompletion(async () => {
     let staResult: StatefulTrackingAnalysisResult;
 
-    await useTempPath({ localTmpDir: true }, async (profilesDir) => {
-      const guestProfilesDir = "/profiles";
-      const profilesBind = `${profilesDir}:${guestProfilesDir}`;
+    await useTempPath(async (profilesDir, profilesHostDir) => {
+      const profilesWorkerDir = "/profiles";
+      const profilesBind = `${profilesHostDir}:${profilesWorkerDir}`;
 
       const auxConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           site,
           {
-            userDataDir: path.join(guestProfilesDir, "aux"),
-            outputName,
+            userDataDir: path.join(profilesWorkerDir, "aux"),
+            dataName,
           },
         ]),
-        { extraBinds: [profilesBind] },
+        { extraBinds: [profilesBind] }
       );
       const aux: StatefulTrackingAnalysisResult["aux"] = {
         connectResult: auxConnectResult,
@@ -78,11 +80,11 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         makeTaskFromFunction(runSimulateConnect, [
           site,
           {
-            userDataDir: path.join(guestProfilesDir, "taint"),
-            outputName,
+            userDataDir: path.join(profilesWorkerDir, "taint"),
+            dataName,
           },
         ]),
-        { extraBinds: [profilesBind] },
+        { extraBinds: [profilesBind] }
       );
       const pre: StatefulTrackingAnalysisResult["pre"] = {
         connectResult: preConnectResult,
@@ -97,14 +99,14 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
         makeTaskFromFunction(runSimulateConnect, [
           site,
           {
-            userDataDir: path.join(guestProfilesDir, "taint"),
-            outputName,
+            userDataDir: path.join(profilesWorkerDir, "taint"),
+            dataName,
             harFile: taintHarFile,
             taintFile: taintTaintFile,
             screenshotFile: `${site}.png`,
           },
         ]),
-        { extraBinds: [profilesBind] },
+        { extraBinds: [profilesBind] }
       );
       const taint: StatefulTrackingAnalysisResult["taint"] = {
         connectResult: taintConnectResult,
@@ -118,36 +120,36 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       const { taintRequests, syntacticRequests, canaryStorageItems } =
         computeUnverifiedTrackingRequests({
-          analysisName: outputName,
+          analyzeDataName: dataName,
           staResult,
         });
-      writeOutputFileSync(
-        path.join(outputName, taintRequestsFile),
-        JSON.stringify(taintRequests),
+      writeFileSync(
+        makeDataPath(dataName, taintRequestsFile),
+        JSON.stringify(taintRequests)
       );
-      writeOutputFileSync(
-        path.join(outputName, syntacticRequestsFile),
-        JSON.stringify(syntacticRequests),
+      writeFileSync(
+        makeDataPath(dataName, syntacticRequestsFile),
+        JSON.stringify(syntacticRequests)
       );
-      writeOutputFileSync(
-        path.join(outputName, canaryStorageItemsFile),
-        JSON.stringify(canaryStorageItems),
+      writeFileSync(
+        makeDataPath(dataName, canaryStorageItemsFile),
+        JSON.stringify(canaryStorageItems)
       );
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "verif"),
-        canaryStorageItems.map(({ storageItem }) => storageItem),
+        canaryStorageItems.map(({ storageItem }) => storageItem)
       );
       const verifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           site,
           {
-            userDataDir: path.join(guestProfilesDir, "verif"),
-            outputName,
+            userDataDir: path.join(profilesWorkerDir, "verif"),
+            dataName,
             harFile: verifHarFile,
           },
         ]),
-        { extraBinds: [profilesBind] },
+        { extraBinds: [profilesBind] }
       );
       const verif: StatefulTrackingAnalysisResult["verif"] = {
         connectResult: verifConnectResult,
@@ -159,18 +161,18 @@ export async function runAnalyzeForStatefulTrackingAnalysis(
 
       patchFoxhoundProfileStorage(
         path.join(profilesDir, "aux"),
-        canaryStorageItems.map(({ storageItem }) => storageItem),
+        canaryStorageItems.map(({ storageItem }) => storageItem)
       );
       const auxVerifConnectResult: SimulateConnectResult = await execContainer(
         makeTaskFromFunction(runSimulateConnect, [
           site,
           {
-            userDataDir: path.join(guestProfilesDir, "aux"),
-            outputName,
+            userDataDir: path.join(profilesWorkerDir, "aux"),
+            dataName,
             harFile: auxVerifHarFile,
           },
         ]),
-        { extraBinds: [profilesBind] },
+        { extraBinds: [profilesBind] }
       );
       const auxVerif: StatefulTrackingAnalysisResult["auxVerif"] = {
         connectResult: auxVerifConnectResult,
@@ -189,20 +191,18 @@ export async function runSimulateConnect(
   site: string,
   options: {
     userDataDir: string;
-    outputName: string;
+    dataName: string;
     harFile?: string;
     taintFile?: string;
     screenshotFile?: string;
-  },
+  }
 ) {
-  const { userDataDir, outputName, harFile, taintFile, screenshotFile } =
-    options;
+  const { userDataDir, dataName, harFile, taintFile, screenshotFile } = options;
 
-  const outputPath = createOutputDir(outputName);
-  const harPath = harFile && path.join(outputPath, harFile);
-  const taintPath = taintFile && path.join(outputPath, taintFile);
+  const harPath = harFile && makeDataPath(dataName, harFile);
+  const taintPath = taintFile && makeDataPath(dataName, taintFile);
   const screenshotPath =
-    screenshotFile && path.join(outputPath, screenshotFile);
+    screenshotFile && makeDataPath(dataName, screenshotFile);
 
   return bomb(ANALYSIS_TIMEOUT_MS, () =>
     useFoxhound(
@@ -229,10 +229,10 @@ export async function runSimulateConnect(
           return result;
         } finally {
           if (taintPath) {
-            new FoxTaintArchive(taintPath).insertRawReports(rawReports!);
+            FoxTaintArchive.open(taintPath).addRawReports(rawReports!);
           }
         }
-      },
-    ),
+      }
+    )
   );
 }

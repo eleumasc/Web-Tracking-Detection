@@ -1,11 +1,8 @@
-import _ from "lodash";
-import assert from "assert";
-
 export interface BaseAnalysis {
   type: string;
 }
 
-export interface StatefulTrackingAnalysis {
+export interface StatefulTrackingAnalysis extends BaseAnalysis {
   type: "StatefulTracking";
   noVerif: boolean;
 }

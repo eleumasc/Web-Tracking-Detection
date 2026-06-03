@@ -1,10 +1,10 @@
 import _ from "lodash";
 import assert from "assert";
 import path from "path";
+import { dataDir } from "../data/path";
 import { download } from "./download";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { HostnameSuffixMap } from "./HostnameSuffixMap";
-import { rootDir } from "../env";
 import { text } from "stream/consumers";
 
 export type Disconnect = HostnameSuffixMap;
@@ -16,17 +16,19 @@ export async function initDisconnect() {
     return;
   }
 
-  const disconnectPath = path.join(rootDir, "disconnect.json");
+  const disconnectPath = path.join(dataDir, "disconnect.json");
 
   let raw: string;
   if (!existsSync(disconnectPath)) {
+    console.log("Downloading latest version of Disconnect...");
     raw = await text(
       await download(
-        "https://raw.githubusercontent.com/disconnectme/disconnect-tracking-protection/refs/heads/master/services.json",
-      ),
+        "https://raw.githubusercontent.com/disconnectme/disconnect-tracking-protection/refs/heads/master/services.json"
+      )
     );
     writeFileSync(disconnectPath, raw);
   } else {
+    console.log("Loading local version of Disconnect...");
     raw = readFileSync(disconnectPath).toString();
   }
 
@@ -48,9 +50,9 @@ export async function initDisconnect() {
           const homepageRecord = Object.values<any>(orgRecord)[0];
           const trackers = Object.values<string[]>(homepageRecord)[0];
           return trackers;
-        }),
+        })
       )
-      .filter((s) => /^[A-Za-z0-9\-.]+$/.test(s)),
+      .filter((s) => /^[A-Za-z0-9\-.]+$/.test(s))
   );
 
   disconnect = new HostnameSuffixMap(trackers);
