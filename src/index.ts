@@ -81,11 +81,17 @@ async function main() {
       "measure <processOutDir>",
       "Measure processed data and generate report",
       (yargs) =>
-        yargs.positional("processOutDir", {
-          type: "string",
-          describe: "Path to data directory created by process command",
-          demandOption: true,
-        }),
+        yargs
+          .positional("processOutDir", {
+            type: "string",
+            describe: "Path to data directory created by process command",
+            demandOption: true,
+          })
+          .option("ae", {
+            type: "boolean",
+            describe: "Generate report for artifact evaluation",
+            default: false,
+          }),
       (args) => cmdMeasure(args)
     )
 
