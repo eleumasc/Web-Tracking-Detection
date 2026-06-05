@@ -1,12 +1,11 @@
-FROM node:22-slim
+FROM node:22.19.0-slim
 
-RUN apt update
-RUN apt install -y sqlite3 unzip
+RUN apt update && apt install -y sqlite3 curl p7zip-full
 
 WORKDIR /root
 
 COPY ./foxhound-fixed.zip ./foxhound.zip
-RUN unzip foxhound.zip
+RUN 7z x foxhound.zip
 
 COPY ./package.json ./package.json
 COPY ./package-lock.json ./package-lock.json

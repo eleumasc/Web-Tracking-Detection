@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "scripts": {
     "bootstrap": "npm i && npx playwright install-deps",
-    "dev": "ts-node src/index",
-    "build": "docker compose build",
-    "start": "docker compose run -e WTD_HOST_DIR=\"$(pwd)\" --rm wtd"
+    "dev": "./dev.sh",
+    "build": "./build.sh",
+    "start": "./start.sh"
   },
   "keywords": [],
   "author": "",

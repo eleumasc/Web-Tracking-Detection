@@ -7,17 +7,16 @@ A tool for automated comparison of web tracking detection techniques.
 Tested on Ubuntu 24.04.1 LTS
 
 - Docker (works using version 29.5.2, build 79eb04c)
-- Node.js (works using version 22.17.0)
 
 ## Setup
 
 1. Clone this repository: `git clone https://github.com/eleumasc/Web-Tracking-Detection && cd Web-Tracking-Detection`
 2. Copy `.env.example` to `.env`, then edit `.env` by setting the correct values (the default version should be good to go for most environments)
-3. Build: `npm run build`
+3. Build: `./build.sh`
 
 ## How to Use
 
-Execute each command using `npm run start -- <command>`.
+Execute each command using `./start.sh <command>`.
 
 1. Create a new analysis (data collection): `analyze <siteListPath>`
    - `<siteListPath>`: Path to Tranco-like site list. The file should reside in the `data` directory.
