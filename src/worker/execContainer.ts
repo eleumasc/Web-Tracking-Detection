@@ -5,7 +5,7 @@ import path from "path";
 import useTempPath from "../data/temp";
 import { Completion, isSuccess } from "../util/Completion";
 import { dataHostDir } from "../data/path";
-import { DOCKER_IMAGE } from "../env";
+import { DOCKER_IMAGE, DOCKER_NET } from "../env";
 import { GuestError } from "./GuestError";
 import { readFileSync, writeFileSync } from "fs";
 import { Task } from "./Task";
@@ -17,6 +17,7 @@ export default async function execContainer<R>(
   }
 ): Promise<Awaited<R>> {
   assert(DOCKER_IMAGE, "DOCKER_IMAGE env variable is empty or not found");
+  assert(DOCKER_NET, "DOCKER_NET env variable is empty or not found");
 
   const docker = new Docker();
 
@@ -28,6 +29,7 @@ export default async function execContainer<R>(
       Image: DOCKER_IMAGE,
       Entrypoint: ["node", "build/worker/__containerEntry.js"],
       HostConfig: {
+        NetworkMode: DOCKER_NET,
         Binds: [
           `${ipcHostDir}:${ipcWorkerDir}`,
           `${dataHostDir}:/root/data`,

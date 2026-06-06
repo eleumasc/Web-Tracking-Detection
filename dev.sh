@@ -1,3 +1,3 @@
 #!/bin/bash
 
-npx ts-node src/index "$@"
+./build.sh && ./start.sh "$@"

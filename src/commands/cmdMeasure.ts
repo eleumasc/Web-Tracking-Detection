@@ -1,6 +1,6 @@
 import currentTime from "../util/currentTime";
 import path from "path";
-import { generateAEMD } from "../core/measurement/generateAEMD";
+import { generateReportMD } from "../core/measurement/generateReportMD";
 import { generateReportRecord } from "../core/measurement/generateReportRecord";
 import { initDisconnect } from "../util/Disconnect";
 import { makeDataPath } from "../data/path";
@@ -9,7 +9,7 @@ import { TrackingRequestsFile } from "./cmdProcess";
 
 export default async function cmdMeasure(args: {
   processOutDir: string;
-  ae: boolean;
+  md: boolean;
 }) {
   await initDisconnect();
 
@@ -28,10 +28,10 @@ export default async function cmdMeasure(args: {
     JSON.stringify(reportRecord)
   );
 
-  if (args.ae) {
+  if (args.md) {
     writeFileSync(
-      makeDataPath(`${currentTime()}-AE-${path.basename(processOutDir)}.md`),
-      generateAEMD(reportRecord)
+      makeDataPath(`${currentTime()}-Report-${path.basename(processOutDir)}.md`),
+      generateReportMD(reportRecord)
     );
   }
 

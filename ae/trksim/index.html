@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <title>www.internal</title>
+  </head>
+  <body>
+    <h1>www.internal</h1>
+
+    <script>
+      function generateUid() {
+        const chars =
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+
+        let result = "";
+        for (let i = 0; i < array.length; i++) {
+          result += chars[array[i] % chars.length];
+        }
+        return result;
+      }
+
+      (function () {
+        if (!localStorage.getItem("uid")) {
+          const uid = generateUid();
+          localStorage.setItem("uid", uid);
+        } else {
+          const url =
+            "http://trk.internal/track?uid=" + btoa(localStorage.getItem("uid"));
+          const img = document.createElement("img");
+          img.src = url;
+          document.body.appendChild(img);
+        }
+      })();
+    </script>
+  </body>
+</html>

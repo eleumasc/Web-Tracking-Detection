@@ -10,7 +10,8 @@ ANALYZE_DIR="${DATA_DIR}/1771085049936-Analyze-10k"
 
 mkdir -p "${DATA_DIR}"
 
-echo "[1/3] Downloading dataset..."
+echo "[+] Downloading dataset..."
+
 docker compose run --rm \
   --entrypoint bash \
   -e ANALYZE_URL="${ANALYZE_URL}" \
@@ -38,17 +39,21 @@ else
 fi
 '
 
-echo "[2/3] Running process step..."
+echo "[+] Running process step..."
+
 CPU_CORES="$(nproc)"
 
 ./start.sh process "${ANALYZE_DIR}" --maxTasks "${CPU_CORES}"
 
-LAST_PROCESS_DIR="$(ls -1dt ${DATA_DIR}/*-Process 2>/dev/null | head -n 1 || true)"
+PROCESS_DIR="$(ls -1dt ${DATA_DIR}/*-Process 2>/dev/null | head -n 1 || true)"
 
-if [[ -z "${LAST_PROCESS_DIR}" ]]; then
+if [[ -z "${PROCESS_DIR}" ]]; then
   echo "Error: no *-Process directory found under ${DATA_DIR}" >&2
   exit 1
 fi
 
-echo "[3/3] Running measure step..."
-./start.sh measure "${LAST_PROCESS_DIR}" --ae
+echo "[+] Running measure step..."
+
+./start.sh measure "${PROCESS_DIR}" --md
+
+echo "[+] Done"

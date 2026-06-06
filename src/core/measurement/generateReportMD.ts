@@ -1,9 +1,9 @@
 import _ from "lodash";
 import { ReportRecord } from "./generateReportRecord";
 
-export function generateAEMD(data: ReportRecord): string {
+export function generateReportMD(data: ReportRecord): string {
   return `
-# Artifact Evaluation
+# Web Tracking Detection: Analysis Report
 
 ## General Stats
 - Size of site list: ${fmtNum(data.totalSites)}
@@ -125,7 +125,9 @@ function table6(data: ReportRecord): string {
     [s, n, c, t]
       .map((x) => {
         const ranking = x.trackerRankings[i];
-        return `${ranking.tracker} | ${fmtNum(ranking.popularity)}`;
+        return ranking
+          ? `${ranking.tracker} | ${fmtNum(ranking.popularity)}`
+          : " | ";
       })
       .join(" | ");
 
@@ -146,7 +148,9 @@ function table7(data: ReportRecord): string {
     [cd, td]
       .map((x) => {
         const ranking = x.trackerRankings[i];
-        return `${ranking.tracker} | ${fmtNum(ranking.popularity)}`;
+        return ranking
+          ? `${ranking.tracker} | ${fmtNum(ranking.popularity)}`
+          : " | ";
       })
       .join(" | ");
 

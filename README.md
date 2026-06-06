@@ -43,6 +43,8 @@ A running analysis, initiated with `analyze` command, can be interrupted and res
 
 Got stuck? Execute a command with the `--help` option to print the command usage.
 
+For developers: execute each command using `./dev.sh <command>` instead of `./start.sh <command>`.
+
 ## Support
 
 Feel free to open an issue or send a pull request. We will try to sort it as soon as possible.

@@ -12,12 +12,12 @@ COPY ./package-lock.json ./package-lock.json
 
 RUN npm run bootstrap
 
+COPY ./.env ./.env
+
 COPY ./tsconfig.json ./tsconfig.json
 COPY ./setup ./setup
 COPY ./src ./src
 
 RUN npx tsc
-
-COPY ./.env ./.env
 
 ENTRYPOINT ["node", "build/index.js"]

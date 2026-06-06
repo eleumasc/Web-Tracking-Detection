@@ -87,9 +87,9 @@ async function main() {
             describe: "Path to data directory created by process command",
             demandOption: true,
           })
-          .option("ae", {
+          .option("md", {
             type: "boolean",
-            describe: "Generate report for artifact evaluation",
+            describe: "Generate report in Markdown",
             default: false,
           }),
       (args) => cmdMeasure(args)
