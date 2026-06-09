@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-ANALYZE_URL="https://zenodo.org/records/20553938/files/1771085049936-Analyze.7z?download=1"
+ANALYZE_URL="https://zenodo.org/records/20593708/files/1771085049936-Analyze.7z?download=1"
 DISCONNECT_URL="https://raw.githubusercontent.com/disconnectme/disconnect-tracking-protection/ea1d534182be4977861682de4408c8f250865b7c/services.json"
 
 DATA_DIR="data"
