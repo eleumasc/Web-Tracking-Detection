@@ -87,6 +87,10 @@ async function main() {
             describe: "Path to data directory created by process command",
             demandOption: true,
           })
+          .option("disconnectPath", {
+            type: "string",
+            describe: "Path to Disconnect tracker list",
+          })
           .option("md", {
             type: "boolean",
             describe: "Generate report in Markdown",

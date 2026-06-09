@@ -9,11 +9,12 @@ import { TrackingRequestsFile } from "./cmdProcess";
 
 export default async function cmdMeasure(args: {
   processOutDir: string;
+  disconnectPath?: string;
   md: boolean;
 }) {
-  await initDisconnect();
+  const { processOutDir, disconnectPath } = args;
 
-  const { processOutDir } = args;
+  await initDisconnect({ disconnectPath });
 
   const trackingRequestsFile = JSON.parse(
     readFileSync(path.join(processOutDir, "trackingRequests.json")).toString()
@@ -30,7 +31,9 @@ export default async function cmdMeasure(args: {
 
   if (args.md) {
     writeFileSync(
-      makeDataPath(`${currentTime()}-Report-${path.basename(processOutDir)}.md`),
+      makeDataPath(
+        `${currentTime()}-Report-${path.basename(processOutDir)}.md`
+      ),
       generateReportMD(reportRecord)
     );
   }

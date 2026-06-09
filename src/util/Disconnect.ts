@@ -1,7 +1,7 @@
 import _ from "lodash";
 import assert from "assert";
 import path from "path";
-import { dataDir } from "../data/path";
+import { dataDir, extractDataPath } from "../data/path";
 import { download } from "./download";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { HostnameSuffixMap } from "./HostnameSuffixMap";
@@ -11,12 +11,17 @@ export type Disconnect = HostnameSuffixMap;
 
 let disconnect: Disconnect | undefined;
 
-export async function initDisconnect() {
+export async function initDisconnect(args?: { disconnectPath?: string }) {
   if (disconnect) {
     return;
   }
 
-  const disconnectPath = path.join(dataDir, "disconnect.json");
+  const disconnectPath = path.join(
+    dataDir,
+    args?.disconnectPath
+      ? extractDataPath(args.disconnectPath)
+      : "disconnect.json"
+  );
 
   let raw: string;
   if (!existsSync(disconnectPath)) {

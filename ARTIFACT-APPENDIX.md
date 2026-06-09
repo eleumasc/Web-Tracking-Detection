@@ -151,7 +151,7 @@ Our paper claims that combining SyntacticC and taint tracking yields the most co
 
 #### Main Result 6: Effectiveness of Filter Lists
 
-Our paper claims that the Disconnect tracking list removes a comparable proportion of tracking requests identified by SyntacticC and taint tracking, while still missing relevant trackers. Table 5 shows reductions of -78% and -82%, respectively, and Table 7 highlights similarities between top trackers that are not covered by Disconnect. These results are discussed in Section 5.5 of the paper.
+Our paper claims that the Disconnect tracker list removes a comparable proportion of tracking requests identified by SyntacticC and taint tracking, while still missing relevant trackers. Table 5 shows reductions of -78% and -82%, respectively, and Table 7 highlights similarities between top trackers that are not covered by Disconnect. These results are discussed in Section 5.5 of the paper.
 
 ### Experiments
 
