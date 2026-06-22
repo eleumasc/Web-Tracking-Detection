@@ -121,7 +121,7 @@ bash ae/run_functional.sh
 
 This command runs a small end-to-end analysis on a synthetic website that simulates stateful tracking. The test exercises all major components of the artifact, including data collection and processing.
 
-The environment should be considered correctly configured if the script completes without fatal errors. Upon successful completion, the latest generated `data/*.md` report should be identical to the reference report `ae/example-Report.md`. This report serves as a reference output and demonstrates the expected structure of the results produced by the full pipeline.
+The environment should be considered correctly configured if the script completes without fatal errors. Upon successful completion, the latest generated report `data/*.md` should be identical to the reference report `ae/example-Report.md`. This report serves as a reference output and demonstrates the expected structure of the results produced by the full pipeline.
 
 The `data` directory is the tool's workspace. For more information about the input and generated files at each step of the pipeline, see `README.md`.
 
@@ -172,7 +172,7 @@ bash ae/run_reproduced.sh
 
 The script automatically downloads the crawl dataset and the Disconnect tracker list, executes the complete analysis pipeline, and generates a Markdown report containing all reproduced results. The downloaded dataset includes both the raw crawl artifacts (HTTP requests and taint reports) and the pre-computed lists of requests detected by taint tracking and syntactic matching that were used for the validation process described in Section 4.2 of the paper.
 
-Upon completion, the latest generated `data/*.md` report should be identical to the reference report available on Zenodo: https://zenodo.org/records/20593708/files/1780593007090-Report-1771542109548-Process.md. The report contains all results supporting the paper's main claims: the "Dataset Details" section supports **Main Results 1 and 2**, while the generated tables support **Main Results 3-6**. The reproduced values should match those reported in the paper exactly, as the experiment analyzes the same dataset used in the study.
+Upon completion, the latest generated report `data/*.md` should be identical to the reference report available on Zenodo: https://zenodo.org/records/20593708/files/1780593007090-Report-1771542109548-Process.md. The report contains all results supporting the paper's main claims: the "Dataset Details" section supports **Main Results 1 and 2**, while the generated tables support **Main Results 3-6**. The reproduced values should match those reported in the paper exactly, as the experiment analyzes the same dataset used in the study.
 
 The output of every pipeline step is also available on Zenodo and can be used to verify intermediate and final results independently.
 
