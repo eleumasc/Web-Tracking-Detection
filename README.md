@@ -30,7 +30,7 @@ Execute each command using `./start.sh <command>`.
    - **Effect**: It creates a `*-Process` directory in `data` with the result of data processing: per-site tracking request lists, taint and syntactic request lists and canary archives (if the analysis was initiated using `--noVerif`), and the tracking requests dataset `trackingRequests.json` (`trackingRequests.norelabel.json` for tracking requests before relabeling).
 3. Generate the report: `measure <processOutDir>`
    - `<processOutDir>`: Path to data directory created by process command.
-   - **Effect**: It creates a `*-Report-<processOutDir>` report file.
+   - **Effect**: It creates a `*-Report-<processOutDir>` report file in `data`.
 
 A running analysis, initiated with `analyze` command, can be interrupted and resumed in a second moment.
 
