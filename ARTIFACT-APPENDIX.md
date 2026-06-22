@@ -121,7 +121,9 @@ bash ae/run_functional.sh
 
 This command runs a small end-to-end analysis on a synthetic website that simulates stateful tracking. The test exercises all major components of the artifact, including data collection and processing.
 
-The environment should be considered correctly configured if the script completes without fatal errors and generates a report identical to `ae/example-Report.md`. This report serves as a reference output and demonstrates the expected structure of the results produced by the full pipeline.
+The environment should be considered correctly configured if the script completes without fatal errors. Upon successful completion, the latest generated `data/*.md` report should be identical to the reference report `ae/example-Report.md`. This report serves as a reference output and demonstrates the expected structure of the results produced by the full pipeline.
+
+The `data` directory is the tool's workspace. For more information about the input and generated files at each step of the pipeline, see `README.md`.
 
 ## Artifact Evaluation
 
